@@ -1917,7 +1917,7 @@ const FAVORITES_KEY = 'drivecalc_favorites_v1';
 const COMPANIONS_KEY = 'drivecalc_companions_v1';
 const COMPLETED_KEY = 'drivecalc_completed_v1';
 const AUTH_TOKEN_KEY = 'drivecalc_token_v1';
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = 'https://drivercalc.onrender.com/api';
 
 let favorites = [];
 let lastCalculatedTrip = null;
