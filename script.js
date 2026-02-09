@@ -1413,7 +1413,7 @@ async function loadCarModelsFromJson() {
     if (carTypeSelect.dataset.dynamicLoaded === 'yes') return;
     try {
         // no-store per evitare cache vecchie quando aggiorniamo il dataset
-        const res = await fetch('car_models.json?v=2', { cache: 'no-store' });
+        const res = await fetch('car_models.json?v=3', { cache: 'no-store' });
         if (!res.ok) throw new Error('Impossibile caricare car_models.json');
         const models = await res.json();
 
@@ -1443,7 +1443,8 @@ async function loadCarModelsFromJson() {
             const opt = document.createElement('option');
             opt.value = model.id;
             opt.textContent = `${model.label} (${model.year || 'n/d'}) - ${consumptionText}`;
-            if (model.brand) opt.dataset.brand = model.brand;
+            const brand = (model.brand || '').toLowerCase();
+            if (brand) opt.dataset.brand = brand;
             group.appendChild(opt);
         });
 
@@ -1646,28 +1647,32 @@ function tagModelOptionsByBrand() {
 
 // Mostra solo i modelli della marca selezionata (se vuoto mostra tutto)
 function filterModelsByBrand() {
-    const brandKey = (carBrandSelect.value || '').replace('brand-', '');
+    const brandKey = (carBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
     const showAll = !brandKey;
     const options = Array.from(carTypeSelect.querySelectorAll('option'));
 
     options.forEach(opt => {
         if (!opt.value) {
             opt.hidden = false;
+            opt.disabled = false;
+            opt.style.display = '';
             return;
         }
-        const optBrand = opt.dataset.brand || 'other';
-        const shouldShow = showAll ? true : optBrand === brandKey;
-        opt.hidden = !shouldShow;
-        if (opt.hidden && opt.selected) opt.selected = false;
+        const optBrand = (opt.dataset.brand || 'other').toLowerCase();
+        const isGeneric = optBrand === 'all';
+        const shouldShow = showAll || isGeneric || optBrand === brandKey;
+        const hidden = !shouldShow;
+        opt.hidden = hidden;
+        opt.disabled = hidden;
+        opt.style.display = hidden ? 'none' : '';
+        if (hidden && opt.selected) opt.selected = false;
     });
 
-    // Nasconde optgroup vuoti
     carTypeSelect.querySelectorAll('optgroup').forEach(group => {
         const hasVisible = Array.from(group.querySelectorAll('option')).some(o => !o.hidden);
         group.hidden = !hasVisible;
     });
 
-    // Resetta il modello e riallinea carburante
     carTypeSelect.value = '';
     syncFuelWithCarType();
 }
