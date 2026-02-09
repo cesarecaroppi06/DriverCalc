@@ -1513,6 +1513,13 @@ const brandMatchers = {
     omoda: ['omoda']
 };
 
+// Snapshot completo dei nodi option/optgroup per ricostruire il select (compatibilità mobile)
+let carOptionsSnapshot = [];
+function snapshotCarOptionsStructure() {
+    if (!carTypeSelect) return;
+    carOptionsSnapshot = Array.from(carTypeSelect.children).map(node => node.cloneNode(true));
+}
+
 // Elementi DOM
 const departureSelect = document.getElementById('departure');
 const arrivalSelect = document.getElementById('arrival');
@@ -1649,30 +1656,35 @@ function tagModelOptionsByBrand() {
 function filterModelsByBrand() {
     const brandKey = (carBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
     const showAll = !brandKey;
-    const options = Array.from(carTypeSelect.querySelectorAll('option'));
 
-    options.forEach(opt => {
-        if (!opt.value) {
-            opt.hidden = false;
-            opt.disabled = false;
-            opt.style.display = '';
+    if (!carOptionsSnapshot.length) snapshotCarOptionsStructure();
+    if (!carTypeSelect) return;
+
+    // Ricostruisce il select con solo le option compatibili (evita option grigie su mobile)
+    const fragment = document.createDocumentFragment();
+    carOptionsSnapshot.forEach(node => {
+        if (node.tagName === 'OPTION') {
+            fragment.appendChild(node.cloneNode(true));
             return;
         }
-        const optBrand = (opt.dataset.brand || 'other').toLowerCase();
-        const isGeneric = optBrand === 'all';
-        const shouldShow = showAll || isGeneric || optBrand === brandKey;
-        const hidden = !shouldShow;
-        opt.hidden = hidden;
-        opt.disabled = hidden;
-        opt.style.display = hidden ? 'none' : '';
-        if (hidden && opt.selected) opt.selected = false;
+        if (node.tagName === 'OPTGROUP') {
+            const clonedGroup = node.cloneNode(true);
+            const filtered = Array.from(clonedGroup.querySelectorAll('option')).filter(opt => {
+                const optBrand = (opt.dataset.brand || 'other').toLowerCase();
+                const isGeneric = optBrand === 'all';
+                return showAll || isGeneric || optBrand === brandKey;
+            });
+            if (!filtered.length) return;
+            const newGroup = document.createElement('optgroup');
+            newGroup.label = clonedGroup.label;
+            if (clonedGroup.id) newGroup.id = clonedGroup.id;
+            filtered.forEach(opt => newGroup.appendChild(opt.cloneNode(true)));
+            fragment.appendChild(newGroup);
+        }
     });
 
-    carTypeSelect.querySelectorAll('optgroup').forEach(group => {
-        const hasVisible = Array.from(group.querySelectorAll('option')).some(o => !o.hidden);
-        group.hidden = !hasVisible;
-    });
-
+    carTypeSelect.innerHTML = '';
+    carTypeSelect.appendChild(fragment);
     carTypeSelect.value = '';
     syncFuelWithCarType();
 }
@@ -2598,6 +2610,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeCities();
     await loadCarModelsFromJson();
     tagModelOptionsByBrand();
+    snapshotCarOptionsStructure();
     filterModelsByBrand();
     updateAuthUI();
     if (authToken) {
