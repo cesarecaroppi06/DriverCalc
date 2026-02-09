@@ -1,0 +1,12 @@
+{
+  "users": [
+    {
+      "id": "750f16c1-216e-499e-9c02-b1c416869606",
+      "email": "cesarecaroppi06@gmail.com",
+      "passwordHash": "$2a$10$W5RhnTOjtPZ9snfk5ZdBTeqaCRYl4gxS832Nd2YKQ2Rqa.LXIvW1K"
+    }
+  ],
+  "favorites": {},
+  "companions": {},
+  "completed": {}
+}

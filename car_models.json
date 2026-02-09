@@ -1,0 +1,335 @@
+[
+  {"id":"fiat-panda-2012","label":"Fiat Panda 1.2 (2012)","brand":"fiat","year":2012,"fuels":{"benzina":5.6,"gpl":7.1}},
+  {"id":"fiat-punto-2016","label":"Fiat Punto 1.3 MJET (2016)","brand":"fiat","year":2016,"fuels":{"diesel":4.5}},
+  {"id":"fiat-tipo-2018","label":"Fiat Tipo 1.4 T-Jet (2018)","brand":"fiat","year":2018,"fuels":{"benzina":6.6,"gpl":7.8}},
+  {"id":"fiat-600-2022","label":"Fiat 600 1.3 Hybrid (2022)","brand":"fiat","year":2022,"fuels":{"benzina":5.4}},
+
+  {"id":"toyota-yaris-2012","label":"Toyota Yaris 1.3 (2012)","brand":"toyota","year":2012,"fuels":{"benzina":5.7}},
+  {"id":"toyota-auris-hybrid-2016","label":"Toyota Auris 1.8 Hybrid (2016)","brand":"toyota","year":2016,"fuels":{"benzina":4.7}},
+  {"id":"toyota-rav4-2020","label":"Toyota RAV4 Hybrid AWD (2020)","brand":"toyota","year":2020,"fuels":{"benzina":6.1}},
+  {"id":"toyota-prius-2024","label":"Toyota Prius Plug-in (2024)","brand":"toyota","year":2024,"fuels":{"benzina":4.2}},
+
+  {"id":"vw-polo-2012","label":"Volkswagen Polo 1.2 TSI (2012)","brand":"volkswagen","year":2012,"fuels":{"benzina":5.4}},
+  {"id":"vw-golf-2016","label":"Volkswagen Golf 1.6 TDI (2016)","brand":"volkswagen","year":2016,"fuels":{"diesel":4.8}},
+  {"id":"vw-passat-2020","label":"Volkswagen Passat 2.0 TDI (2020)","brand":"volkswagen","year":2020,"fuels":{"diesel":5.0}},
+  {"id":"vw-id3-2024","label":"Volkswagen ID.3 Pro (2024)","brand":"volkswagen","year":2024,"fuels":{"elettrico":15.8}},
+
+  {"id":"renault-clio-2012","label":"Renault Clio 1.2 (2012)","brand":"renault","year":2012,"fuels":{"benzina":5.9}},
+  {"id":"renault-megane-2016","label":"Renault Megane 1.5 dCi (2016)","brand":"renault","year":2016,"fuels":{"diesel":4.5}},
+  {"id":"renault-kadjar-2020","label":"Renault Kadjar 1.5 Blue dCi (2020)","brand":"renault","year":2020,"fuels":{"diesel":5.1}},
+  {"id":"renault-megane-e-tech-2024","label":"Renault Megane E-Tech EV60 (2024)","brand":"renault","year":2024,"fuels":{"elettrico":16.4}},
+
+  {"id":"peugeot-208-2012","label":"Peugeot 208 1.2 VTi (2012)","brand":"peugeot","year":2012,"fuels":{"benzina":5.5}},
+  {"id":"peugeot-308-2016","label":"Peugeot 308 1.6 BlueHDi (2016)","brand":"peugeot","year":2016,"fuels":{"diesel":4.4}},
+  {"id":"peugeot-3008-2020","label":"Peugeot 3008 Hybrid4 (2020)","brand":"peugeot","year":2020,"fuels":{"benzina":5.9}},
+  {"id":"peugeot-e308-2024","label":"Peugeot e-308 (2024)","brand":"peugeot","year":2024,"fuels":{"elettrico":15.7}},
+
+  {"id":"ford-fiesta-2012","label":"Ford Fiesta 1.25 (2012)","brand":"ford","year":2012,"fuels":{"benzina":6.0}},
+  {"id":"ford-focus-2016","label":"Ford Focus 1.5 TDCi (2016)","brand":"ford","year":2016,"fuels":{"diesel":4.6}},
+  {"id":"ford-kuga-2020","label":"Ford Kuga 2.0 EcoBlue (2020)","brand":"ford","year":2020,"fuels":{"diesel":5.9}},
+  {"id":"ford-mustang-mach-e-2024","label":"Ford Mustang Mach-E (2024)","brand":"ford","year":2024,"fuels":{"elettrico":19.5}},
+
+  {"id":"opel-corsa-2012","label":"Opel Corsa 1.2 (2012)","brand":"opel","year":2012,"fuels":{"benzina":6.1}},
+  {"id":"opel-astra-2016","label":"Opel Astra 1.6 CDTI (2016)","brand":"opel","year":2016,"fuels":{"diesel":4.7}},
+  {"id":"opel-grandland-2020","label":"Opel Grandland X 1.5 D (2020)","brand":"opel","year":2020,"fuels":{"diesel":5.2}},
+  {"id":"opel-corsa-e-2024","label":"Opel Corsa Electric (2024)","brand":"opel","year":2024,"fuels":{"elettrico":15.9}},
+
+  {"id":"bmw-serie1-2012","label":"BMW Serie 1 116d (2012)","brand":"bmw","year":2012,"fuels":{"diesel":4.8}},
+  {"id":"bmw-serie3-2016","label":"BMW Serie 3 320d (2016)","brand":"bmw","year":2016,"fuels":{"diesel":5.1}},
+  {"id":"bmw-x3-2020","label":"BMW X3 xDrive20d (2020)","brand":"bmw","year":2020,"fuels":{"diesel":6.2}},
+  {"id":"bmw-i4-2024","label":"BMW i4 eDrive40 (2024)","brand":"bmw","year":2024,"fuels":{"elettrico":17.8}},
+
+  {"id":"mercedes-classea-2012","label":"Mercedes Classe A 180 CDI (2012)","brand":"mercedes","year":2012,"fuels":{"diesel":5.1}},
+  {"id":"mercedes-classec-2016","label":"Mercedes Classe C 220d (2016)","brand":"mercedes","year":2016,"fuels":{"diesel":5.3}},
+  {"id":"mercedes-gla-2020","label":"Mercedes GLA 200d (2020)","brand":"mercedes","year":2020,"fuels":{"diesel":5.6}},
+  {"id":"mercedes-eqe-2024","label":"Mercedes EQE 350+ (2024)","brand":"mercedes","year":2024,"fuels":{"elettrico":18.9}},
+
+  {"id":"audi-a1-2012","label":"Audi A1 1.6 TDI (2012)","brand":"audi","year":2012,"fuels":{"diesel":4.7}},
+  {"id":"audi-a3-2016","label":"Audi A3 1.4 TFSI (2016)","brand":"audi","year":2016,"fuels":{"benzina":5.3}},
+  {"id":"audi-q5-2020","label":"Audi Q5 40 TDI (2020)","brand":"audi","year":2020,"fuels":{"diesel":6.0}},
+  {"id":"audi-q4-etron-2024","label":"Audi Q4 e-tron 45 (2024)","brand":"audi","year":2024,"fuels":{"elettrico":18.2}},
+
+  {"id":"kia-picanto-2012","label":"Kia Picanto 1.0 (2012)","brand":"kia","year":2012,"fuels":{"benzina":5.1}},
+  {"id":"kia-ceed-2016","label":"Kia Ceed 1.6 CRDi (2016)","brand":"kia","year":2016,"fuels":{"diesel":4.9}},
+  {"id":"kia-sportage-2020","label":"Kia Sportage 1.6 CRDi (2020)","brand":"kia","year":2020,"fuels":{"diesel":5.6}},
+  {"id":"kia-ev6-2024","label":"Kia EV6 Air (2024)","brand":"kia","year":2024,"fuels":{"elettrico":17.2}},
+
+  {"id":"hyundai-i20-2012","label":"Hyundai i20 1.2 (2012)","brand":"hyundai","year":2012,"fuels":{"benzina":5.6}},
+  {"id":"hyundai-i30-2016","label":"Hyundai i30 1.6 CRDi (2016)","brand":"hyundai","year":2016,"fuels":{"diesel":4.8}},
+  {"id":"hyundai-tucson-2020","label":"Hyundai Tucson 1.6 CRDi (2020)","brand":"hyundai","year":2020,"fuels":{"diesel":5.7}},
+  {"id":"hyundai-ioniq6-2024","label":"Hyundai Ioniq 6 RWD (2024)","brand":"hyundai","year":2024,"fuels":{"elettrico":15.2}},
+
+  {"id":"nissan-micra-2012","label":"Nissan Micra 1.2 (2012)","brand":"nissan","year":2012,"fuels":{"benzina":5.8}},
+  {"id":"nissan-qashqai-2016","label":"Nissan Qashqai 1.5 dCi (2016)","brand":"nissan","year":2016,"fuels":{"diesel":5.0}},
+  {"id":"nissan-xtrail-2020","label":"Nissan X-Trail 1.7 dCi (2020)","brand":"nissan","year":2020,"fuels":{"diesel":6.1}},
+  {"id":"nissan-ariya-2024","label":"Nissan Ariya 63 kWh (2024)","brand":"nissan","year":2024,"fuels":{"elettrico":18.0}},
+
+  {"id":"dacia-sandero-2012","label":"Dacia Sandero 1.2 (2012)","brand":"dacia","year":2012,"fuels":{"benzina":6.5,"gpl":7.6}},
+  {"id":"dacia-duster-2016","label":"Dacia Duster 1.5 dCi (2016)","brand":"dacia","year":2016,"fuels":{"diesel":5.1}},
+  {"id":"dacia-jogger-2020","label":"Dacia Jogger 1.0 TCe (2020)","brand":"dacia","year":2020,"fuels":{"benzina":6.3}},
+  {"id":"dacia-spring-2024","label":"Dacia Spring Electric (2024)","brand":"dacia","year":2024,"fuels":{"elettrico":14.8}},
+
+  {"id":"jeep-compass-2012","label":"Jeep Compass 2.0 (2012)","brand":"jeep","year":2012,"fuels":{"benzina":8.8}},
+  {"id":"jeep-renegade-2016","label":"Jeep Renegade 1.6 MJD (2016)","brand":"jeep","year":2016,"fuels":{"diesel":5.6}},
+  {"id":"jeep-grand-cherokee-2020","label":"Jeep Grand Cherokee 3.0 CRD (2020)","brand":"jeep","year":2020,"fuels":{"diesel":8.5}},
+  {"id":"jeep-avenger-2024","label":"Jeep Avenger EV (2024)","brand":"jeep","year":2024,"fuels":{"elettrico":16.9}},
+
+  {"id":"alfa-giulietta-2012","label":"Alfa Romeo Giulietta 1.6 JTDM (2012)","brand":"alfa-romeo","year":2012,"fuels":{"diesel":5.2}},
+  {"id":"alfa-giulia-2016","label":"Alfa Romeo Giulia 2.2 (2016)","brand":"alfa-romeo","year":2016,"fuels":{"diesel":5.4}},
+  {"id":"alfa-stelvio-2020","label":"Alfa Romeo Stelvio 2.2 (2020)","brand":"alfa-romeo","year":2020,"fuels":{"diesel":6.4}},
+  {"id":"alfa-tonale-2024","label":"Alfa Romeo Tonale Plug-in (2024)","brand":"alfa-romeo","year":2024,"fuels":{"benzina":6.2}},
+
+  {"id":"volvo-v40-2012","label":"Volvo V40 D2 (2012)","brand":"volvo","year":2012,"fuels":{"diesel":4.3}},
+  {"id":"volvo-v60-2016","label":"Volvo V60 D4 (2016)","brand":"volvo","year":2016,"fuels":{"diesel":5.2}},
+  {"id":"volvo-xc60-2020","label":"Volvo XC60 B4 (2020)","brand":"volvo","year":2020,"fuels":{"benzina":7.0}},
+  {"id":"volvo-ex30-2024","label":"Volvo EX30 Single Motor (2024)","brand":"volvo","year":2024,"fuels":{"elettrico":16.0}},
+
+  {"id":"skoda-fabia-2012","label":"Skoda Fabia 1.2 TSI (2012)","brand":"skoda","year":2012,"fuels":{"benzina":5.7}},
+  {"id":"skoda-octavia-2016","label":"Skoda Octavia 1.6 TDI (2016)","brand":"skoda","year":2016,"fuels":{"diesel":4.6}},
+  {"id":"skoda-kodiaq-2020","label":"Skoda Kodiaq 2.0 TDI (2020)","brand":"skoda","year":2020,"fuels":{"diesel":6.4}},
+  {"id":"skoda-enyaq-2024","label":"Skoda Enyaq 60 (2024)","brand":"skoda","year":2024,"fuels":{"elettrico":17.0}},
+
+  {"id":"seat-ibiza-2012","label":"Seat Ibiza 1.4 (2012)","brand":"seat","year":2012,"fuels":{"benzina":6.0}},
+  {"id":"seat-leon-2016","label":"Seat Leon 1.6 TDI (2016)","brand":"seat","year":2016,"fuels":{"diesel":4.9}},
+  {"id":"seat-ateca-2020","label":"Seat Ateca 2.0 TDI (2020)","brand":"seat","year":2020,"fuels":{"diesel":5.9}},
+  {"id":"seat-born-2024","label":"Cupra Born 58 kWh (2024)","brand":"cupra","year":2024,"fuels":{"elettrico":16.1}},
+
+  {"id":"citroen-c3-2012","label":"Citroen C3 1.2 VTi (2012)","brand":"citroen","year":2012,"fuels":{"benzina":5.4}},
+  {"id":"citroen-c4-2016","label":"Citroen C4 1.6 BlueHDi (2016)","brand":"citroen","year":2016,"fuels":{"diesel":4.7}},
+  {"id":"citroen-c5-aircross-2020","label":"Citroen C5 Aircross 1.5 BlueHDi (2020)","brand":"citroen","year":2020,"fuels":{"diesel":5.3}},
+  {"id":"citroen-ec4-2024","label":"Citroen e-C4 (2024)","brand":"citroen","year":2024,"fuels":{"elettrico":15.9}},
+
+  {"id":"tesla-model-s-2012","label":"Tesla Model S 85 (2012)","brand":"tesla","year":2012,"fuels":{"elettrico":20.5}},
+  {"id":"tesla-model-x-2016","label":"Tesla Model X 90D (2016)","brand":"tesla","year":2016,"fuels":{"elettrico":22.8}},
+  {"id":"tesla-model-3-2020","label":"Tesla Model 3 LR (2020)","brand":"tesla","year":2020,"fuels":{"elettrico":15.8}},
+  {"id":"tesla-model-y-2024","label":"Tesla Model Y LR (2024)","brand":"tesla","year":2024,"fuels":{"elettrico":16.5}},
+
+  {"id":"mazda-2-2012","label":"Mazda 2 1.3 (2012)","brand":"mazda","year":2012,"fuels":{"benzina":5.8}},
+  {"id":"mazda-3-2016","label":"Mazda 3 1.5 Skyactiv-D (2016)","brand":"mazda","year":2016,"fuels":{"diesel":4.5}},
+  {"id":"mazda-cx5-2020","label":"Mazda CX-5 2.2d (2020)","brand":"mazda","year":2020,"fuels":{"diesel":6.3}},
+  {"id":"mazda-mx30-2024","label":"Mazda MX-30 R-EV (2024)","brand":"mazda","year":2024,"fuels":{"elettrico":18.0}},
+
+  {"id":"honda-jazz-2012","label":"Honda Jazz 1.4 (2012)","brand":"honda","year":2012,"fuels":{"benzina":5.9}},
+  {"id":"honda-civic-2016","label":"Honda Civic 1.6 i-DTEC (2016)","brand":"honda","year":2016,"fuels":{"diesel":4.3}},
+  {"id":"honda-crv-2020","label":"Honda CR-V Hybrid (2020)","brand":"honda","year":2020,"fuels":{"benzina":6.2}},
+  {"id":"honda-e-2024","label":"Honda e Advance (2024)","brand":"honda","year":2024,"fuels":{"elettrico":17.5}},
+
+  {"id":"suzuki-swift-2012","label":"Suzuki Swift 1.2 (2012)","brand":"suzuki","year":2012,"fuels":{"benzina":5.6}},
+  {"id":"suzuki-vitara-2016","label":"Suzuki Vitara 1.6 DDiS (2016)","brand":"suzuki","year":2016,"fuels":{"diesel":5.2}},
+  {"id":"suzuki-ignis-2020","label":"Suzuki Ignis Hybrid (2020)","brand":"suzuki","year":2020,"fuels":{"benzina":4.9}},
+  {"id":"suzuki-s-cross-2024","label":"Suzuki S-Cross Hybrid (2024)","brand":"suzuki","year":2024,"fuels":{"benzina":5.7}},
+
+  {"id":"landrover-freelander-2012","label":"Land Rover Freelander 2.2 (2012)","brand":"land-rover","year":2012,"fuels":{"diesel":7.6}},
+  {"id":"landrover-evoque-2016","label":"Land Rover Evoque 2.0 TD4 (2016)","brand":"land-rover","year":2016,"fuels":{"diesel":6.6}},
+  {"id":"landrover-velar-2020","label":"Range Rover Velar D200 (2020)","brand":"land-rover","year":2020,"fuels":{"diesel":7.1}},
+  {"id":"landrover-defender-2024","label":"Land Rover Defender D250 (2024)","brand":"land-rover","year":2024,"fuels":{"diesel":8.4}},
+
+  {"id":"lexus-ct200h-2012","label":"Lexus CT 200h (2012)","brand":"lexus","year":2012,"fuels":{"benzina":4.9}},
+  {"id":"lexus-is300h-2016","label":"Lexus IS 300h (2016)","brand":"lexus","year":2016,"fuels":{"benzina":5.1}},
+  {"id":"lexus-nx-2020","label":"Lexus NX 300h (2020)","brand":"lexus","year":2020,"fuels":{"benzina":6.0}},
+  {"id":"lexus-rz-2024","label":"Lexus RZ 450e (2024)","brand":"lexus","year":2024,"fuels":{"elettrico":18.4}},
+
+  {"id":"mitsubishi-asx-2012","label":"Mitsubishi ASX 1.6 (2012)","brand":"mitsubishi","year":2012,"fuels":{"benzina":7.2}},
+  {"id":"mitsubishi-outlander-2016","label":"Mitsubishi Outlander PHEV (2016)","brand":"mitsubishi","year":2016,"fuels":{"benzina":7.0}},
+  {"id":"mitsubishi-l200-2020","label":"Mitsubishi L200 2.2 DI-D (2020)","brand":"mitsubishi","year":2020,"fuels":{"diesel":8.1}},
+  {"id":"mitsubishi-colt-2024","label":"Mitsubishi Colt 1.0 (2024)","brand":"mitsubishi","year":2024,"fuels":{"benzina":5.5}},
+
+  {"id":"subaru-impreza-2012","label":"Subaru Impreza 1.6 (2012)","brand":"subaru","year":2012,"fuels":{"benzina":7.1}},
+  {"id":"subaru-forester-2016","label":"Subaru Forester 2.0D (2016)","brand":"subaru","year":2016,"fuels":{"diesel":6.5}},
+  {"id":"subaru-xv-2020","label":"Subaru XV e-Boxer (2020)","brand":"subaru","year":2020,"fuels":{"benzina":7.0}},
+  {"id":"subaru-forester-2024","label":"Subaru Forester e-Boxer (2024)","brand":"subaru","year":2024,"fuels":{"benzina":7.2}},
+
+  {"id":"porsche-cayman-2012","label":"Porsche Cayman 2.7 (2012)","brand":"porsche","year":2012,"fuels":{"benzina":9.5}},
+  {"id":"porsche-macan-2016","label":"Porsche Macan S Diesel (2016)","brand":"porsche","year":2016,"fuels":{"diesel":7.0}},
+  {"id":"porsche-panamera-2020","label":"Porsche Panamera 4 E-Hybrid (2020)","brand":"porsche","year":2020,"fuels":{"benzina":8.4}},
+  {"id":"porsche-taycan-2024","label":"Porsche Taycan 4S (2024)","brand":"porsche","year":2024,"fuels":{"elettrico":21.5}},
+
+  {"id":"mini-one-2012","label":"Mini One 1.6 (2012)","brand":"mini","year":2012,"fuels":{"benzina":6.2}},
+  {"id":"mini-cooper-d-2016","label":"Mini Cooper D (2016)","brand":"mini","year":2016,"fuels":{"diesel":4.7}},
+  {"id":"mini-countryman-2020","label":"Mini Countryman Cooper S (2020)","brand":"mini","year":2020,"fuels":{"benzina":6.9}},
+  {"id":"mini-cooper-se-2024","label":"Mini Cooper SE (2024)","brand":"mini","year":2024,"fuels":{"elettrico":15.9}},
+
+  {"id":"smart-fortwo-2012","label":"Smart ForTwo 1.0 (2012)","brand":"smart","year":2012,"fuels":{"benzina":5.1}},
+  {"id":"smart-forfour-2016","label":"Smart ForFour 1.0 (2016)","brand":"smart","year":2016,"fuels":{"benzina":5.4}},
+  {"id":"smart-fortwo-ed-2020","label":"Smart ForTwo EQ (2020)","brand":"smart","year":2020,"fuels":{"elettrico":16.0}},
+  {"id":"smart-hashtag1-2024","label":"Smart #1 Pro+ (2024)","brand":"smart","year":2024,"fuels":{"elettrico":16.8}},
+
+  {"id":"byd-atto3-2012","label":"BYD e6 (2012)","brand":"byd","year":2012,"fuels":{"elettrico":24.0}},
+  {"id":"byd-tang-2016","label":"BYD Tang (2016)","brand":"byd","year":2016,"fuels":{"elettrico":22.5}},
+  {"id":"byd-han-2020","label":"BYD Han EV (2020)","brand":"byd","year":2020,"fuels":{"elettrico":18.9}},
+  {"id":"byd-dolphin-2024","label":"BYD Dolphin Comfort (2024)","brand":"byd","year":2024,"fuels":{"elettrico":14.8}},
+
+  {"id":"mg-zs-2012","label":"MG6 1.8 (2012)","brand":"mg","year":2012,"fuels":{"benzina":7.4}},
+  {"id":"mg-hs-2016","label":"MG GS 1.5T (2016)","brand":"mg","year":2016,"fuels":{"benzina":7.6}},
+  {"id":"mg-hs-phev-2020","label":"MG HS Plug-in (2020)","brand":"mg","year":2020,"fuels":{"benzina":6.9}},
+  {"id":"mg5-ev-2024","label":"MG5 Electric (2024)","brand":"mg","year":2024,"fuels":{"elettrico":17.3}},
+
+  {"id":"dr-3-2012","label":"DR 3 1.6 (2012)","brand":"dr","year":2012,"fuels":{"benzina":7.9}},
+  {"id":"dr-4-2016","label":"DR 4 1.6 (2016)","brand":"dr","year":2016,"fuels":{"benzina":8.1,"gpl":9.0}},
+  {"id":"dr-6-2020","label":"DR 6 1.5 Turbo (2020)","brand":"dr","year":2020,"fuels":{"benzina":8.4}},
+  {"id":"dr-1ev-2024","label":"DR 1.0 EV (2024)","brand":"dr","year":2024,"fuels":{"elettrico":15.5}},
+
+  {"id":"ds3-2012","label":"DS 3 1.6 VTi (2012)","brand":"ds","year":2012,"fuels":{"benzina":6.4}},
+  {"id":"ds4-2016","label":"DS 4 1.6 BlueHDi (2016)","brand":"ds","year":2016,"fuels":{"diesel":4.8}},
+  {"id":"ds7-2020","label":"DS 7 Crossback 1.6 PureTech (2020)","brand":"ds","year":2020,"fuels":{"benzina":6.6}},
+  {"id":"ds4-e-tense-2024","label":"DS 4 E-Tense (2024)","brand":"ds","year":2024,"fuels":{"benzina":5.0}},
+
+  {"id":"maserati-ghibli-2012","label":"Maserati Ghibli 3.0 V6 (2012)","brand":"maserati","year":2012,"fuels":{"benzina":10.2}},
+  {"id":"maserati-levante-2016","label":"Maserati Levante 3.0d (2016)","brand":"maserati","year":2016,"fuels":{"diesel":8.9}},
+  {"id":"maserati-levante-2020","label":"Maserati Levante Hybrid (2020)","brand":"maserati","year":2020,"fuels":{"benzina":10.0}},
+  {"id":"maserati-grecale-2024","label":"Maserati Grecale Folgore (2024)","brand":"maserati","year":2024,"fuels":{"elettrico":22.0}},
+
+  {"id":"jaguar-xf-2012","label":"Jaguar XF 2.2d (2012)","brand":"jaguar","year":2012,"fuels":{"diesel":5.9}},
+  {"id":"jaguar-xe-2016","label":"Jaguar XE 2.0d (2016)","brand":"jaguar","year":2016,"fuels":{"diesel":5.4}},
+  {"id":"jaguar-e-pace-2020","label":"Jaguar E-Pace D180 (2020)","brand":"jaguar","year":2020,"fuels":{"diesel":6.8}},
+  {"id":"jaguar-i-pace-2024","label":"Jaguar I-Pace EV400 (2024)","brand":"jaguar","year":2024,"fuels":{"elettrico":22.5}},
+
+  {"id":"cupra-leon-2012","label":"Seat Leon FR 2.0 TSI (2012)","brand":"cupra","year":2012,"fuels":{"benzina":7.2}},
+  {"id":"cupra-ateca-2016","label":"Seat Ateca FR 2.0 TSI (2016)","brand":"cupra","year":2016,"fuels":{"benzina":7.7}},
+  {"id":"cupra-formentor-2020","label":"Cupra Formentor 2.0 TSI (2020)","brand":"cupra","year":2020,"fuels":{"benzina":7.4}},
+  {"id":"cupra-tavascan-2024","label":"Cupra Tavascan (2024)","brand":"cupra","year":2024,"fuels":{"elettrico":18.0}},
+
+  {"id":"lancia-ypsilon-2012","label":"Lancia Ypsilon 1.2 (2012)","brand":"lancia","year":2012,"fuels":{"benzina":5.8}},
+  {"id":"lancia-delta-2016","label":"Lancia Delta 1.6 Mjet (2016)","brand":"lancia","year":2016,"fuels":{"diesel":5.6}},
+  {"id":"lancia-ypsilon-2020","label":"Lancia Ypsilon 1.0 Hybrid (2020)","brand":"lancia","year":2020,"fuels":{"benzina":5.1}},
+  {"id":"lancia-ypsilon-2024","label":"Lancia Ypsilon 1.2 Hybrid (2024)","brand":"lancia","year":2024,"fuels":{"benzina":4.9}}
+ ,
+  {"id":"fiat-panda-2008","label":"Fiat Panda 1.2 Fire (2008)","brand":"fiat","year":2008,"fuels":{"benzina":6.2}},
+  {"id":"fiat-panda-2010-4x4","label":"Fiat Panda 1.3 MJET 4x4 (2010)","brand":"fiat","year":2010,"fuels":{"diesel":5.4}},
+  {"id":"fiat-panda-2015-twinair","label":"Fiat Panda 0.9 TwinAir (2015)","brand":"fiat","year":2015,"fuels":{"benzina":5.4,"gpl":6.5}},
+  {"id":"fiat-panda-2018-waze","label":"Fiat Panda 1.2 Waze (2018)","brand":"fiat","year":2018,"fuels":{"benzina":5.9}},
+  {"id":"fiat-panda-2020-cross","label":"Fiat Panda Cross Hybrid (2020)","brand":"fiat","year":2020,"fuels":{"benzina":5.2}},
+  {"id":"fiat-panda-2024-4x4","label":"Fiat Panda 1.0 Hybrid 4x4 (2024)","brand":"fiat","year":2024,"fuels":{"benzina":5.4}},
+  {"id":"fiat-panda-2004-mjet","label":"Fiat Panda 1.3 Multijet (2004)","brand":"fiat","year":2004,"fuels":{"diesel":4.9}},
+  {"id":"fiat-panda-2009-natural-power","label":"Fiat Panda Natural Power 1.2 (2009)","brand":"fiat","year":2009,"fuels":{"metano":4.1}},
+  {"id":"fiat-panda-2012-twinair","label":"Fiat Panda 0.9 TwinAir Turbo (2012)","brand":"fiat","year":2012,"fuels":{"benzina":5.1}},
+  {"id":"fiat-panda-2014-4x4-twinair","label":"Fiat Panda 0.9 TwinAir 4x4 (2014)","brand":"fiat","year":2014,"fuels":{"benzina":6.6}},
+  {"id":"fiat-panda-2016-easypower","label":"Fiat Panda EasyPower 1.2 GPL (2016)","brand":"fiat","year":2016,"fuels":{"gpl":7.4}},
+  {"id":"fiat-panda-2017-city-cross","label":"Fiat Panda City Cross 1.2 (2017)","brand":"fiat","year":2017,"fuels":{"benzina":5.9}},
+  {"id":"fiat-panda-2021-sport","label":"Fiat Panda Sport 1.0 Hybrid (2021)","brand":"fiat","year":2021,"fuels":{"benzina":5.1}},
+  {"id":"fiat-panda-2022-red","label":"Fiat Panda RED 1.0 Hybrid (2022)","brand":"fiat","year":2022,"fuels":{"benzina":5.2}},
+  {"id":"fiat-panda-2023-cross-4x4","label":"Fiat Panda Cross 1.0 Hybrid 4x4 (2023)","brand":"fiat","year":2023,"fuels":{"benzina":5.5}},
+  {"id":"fiat-panda-2024-gpl","label":"Fiat Panda 1.2 GPL (2024)","brand":"fiat","year":2024,"fuels":{"gpl":7.0,"benzina":5.7}},
+  {"id":"fiat-panda-2024-city","label":"Fiat Panda City Life 1.0 Hybrid (2024)","brand":"fiat","year":2024,"fuels":{"benzina":5.0}},
+
+  {"id":"toyota-yaris-2010","label":"Toyota Yaris 1.0 (2010)","brand":"toyota","year":2010,"fuels":{"benzina":5.6}},
+  {"id":"toyota-yaris-2018","label":"Toyota Yaris 1.5 Hybrid (2018)","brand":"toyota","year":2018,"fuels":{"benzina":4.1}},
+  {"id":"toyota-yaris-2022-gr","label":"Toyota GR Yaris 1.6 (2022)","brand":"toyota","year":2022,"fuels":{"benzina":8.2}},
+  {"id":"toyota-corolla-2012","label":"Toyota Corolla 1.4 D-4D (2012)","brand":"toyota","year":2012,"fuels":{"diesel":4.6}},
+  {"id":"toyota-corolla-2019","label":"Toyota Corolla 1.8 Hybrid (2019)","brand":"toyota","year":2019,"fuels":{"benzina":4.3}},
+  {"id":"toyota-corolla-2023","label":"Toyota Corolla 2.0 Hybrid (2023)","brand":"toyota","year":2023,"fuels":{"benzina":4.5}},
+  {"id":"toyota-rav4-2015","label":"Toyota RAV4 2.0 D-4D (2015)","brand":"toyota","year":2015,"fuels":{"diesel":6.5}},
+  {"id":"toyota-rav4-2023-plugin","label":"Toyota RAV4 Plug-in (2023)","brand":"toyota","year":2023,"fuels":{"benzina":5.8}},
+
+  {"id":"vw-golf-2009","label":"Volkswagen Golf 1.4 TSI (2009)","brand":"volkswagen","year":2009,"fuels":{"benzina":6.5}},
+  {"id":"vw-golf-2013-gt","label":"Volkswagen Golf 1.6 TDI (2013)","brand":"volkswagen","year":2013,"fuels":{"diesel":4.6}},
+  {"id":"vw-golf-2019-gti","label":"Volkswagen Golf GTI 2.0 (2019)","brand":"volkswagen","year":2019,"fuels":{"benzina":7.6}},
+  {"id":"vw-golf-2022-r","label":"Volkswagen Golf R 2.0 (2022)","brand":"volkswagen","year":2022,"fuels":{"benzina":8.4}},
+  {"id":"vw-polo-2018","label":"Volkswagen Polo 1.0 TSI (2018)","brand":"volkswagen","year":2018,"fuels":{"benzina":5.1}},
+  {"id":"vw-passat-2015","label":"Volkswagen Passat 2.0 TDI (2015)","brand":"volkswagen","year":2015,"fuels":{"diesel":4.9}},
+
+  {"id":"ford-fiesta-2018","label":"Ford Fiesta 1.0 EcoBoost (2018)","brand":"ford","year":2018,"fuels":{"benzina":5.0}},
+  {"id":"ford-focus-2012","label":"Ford Focus 1.6 TDCi (2012)","brand":"ford","year":2012,"fuels":{"diesel":4.8}},
+  {"id":"ford-focus-2019-st","label":"Ford Focus ST 2.3 (2019)","brand":"ford","year":2019,"fuels":{"benzina":7.9}},
+  {"id":"ford-kuga-2023-plugin","label":"Ford Kuga Plug-in (2023)","brand":"ford","year":2023,"fuels":{"benzina":6.1}},
+
+  {"id":"opel-corsa-2019","label":"Opel Corsa 1.2 Turbo (2019)","brand":"opel","year":2019,"fuels":{"benzina":5.3}},
+  {"id":"opel-mokka-2021-e","label":"Opel Mokka-e (2021)","brand":"opel","year":2021,"fuels":{"elettrico":16.8}},
+  {"id":"opel-astra-2019","label":"Opel Astra 1.6 CDTI (2019)","brand":"opel","year":2019,"fuels":{"diesel":4.5}},
+
+  {"id":"bmw-118i-2019","label":"BMW Serie 1 118i (2019)","brand":"bmw","year":2019,"fuels":{"benzina":5.8}},
+  {"id":"bmw-320i-2018","label":"BMW Serie 3 320i (2018)","brand":"bmw","year":2018,"fuels":{"benzina":6.2}},
+  {"id":"bmw-330e-2023","label":"BMW 330e Plug-in (2023)","brand":"bmw","year":2023,"fuels":{"benzina":5.4}},
+  {"id":"bmw-x1-2019","label":"BMW X1 sDrive18d (2019)","brand":"bmw","year":2019,"fuels":{"diesel":5.7}},
+
+  {"id":"mercedes-a180-2019","label":"Mercedes Classe A 180d (2019)","brand":"mercedes","year":2019,"fuels":{"diesel":5.1}},
+  {"id":"mercedes-c220-2018","label":"Mercedes Classe C 220d (2018)","brand":"mercedes","year":2018,"fuels":{"diesel":5.3}},
+  {"id":"mercedes-e300-2022","label":"Mercedes E300e Plug-in (2022)","brand":"mercedes","year":2022,"fuels":{"benzina":5.7}},
+  {"id":"mercedes-gla-2018","label":"Mercedes GLA 200d (2018)","brand":"mercedes","year":2018,"fuels":{"diesel":5.5}},
+
+  {"id":"audi-a3-2019","label":"Audi A3 35 TFSI (2019)","brand":"audi","year":2019,"fuels":{"benzina":5.6}},
+  {"id":"audi-a4-2018","label":"Audi A4 40 TDI (2018)","brand":"audi","year":2018,"fuels":{"diesel":5.0}},
+  {"id":"audi-a6-2019","label":"Audi A6 45 TDI (2019)","brand":"audi","year":2019,"fuels":{"diesel":5.8}},
+  {"id":"audi-q3-2019","label":"Audi Q3 35 TFSI (2019)","brand":"audi","year":2019,"fuels":{"benzina":6.9}},
+
+  {"id":"kia-sportage-2017","label":"Kia Sportage 1.7 CRDi (2017)","brand":"kia","year":2017,"fuels":{"diesel":6.0}},
+  {"id":"kia-stonic-2020","label":"Kia Stonic 1.0 T-GDi (2020)","brand":"kia","year":2020,"fuels":{"benzina":5.6}},
+  {"id":"kia-ceed-2022","label":"Kia Ceed 1.5 T-GDi (2022)","brand":"kia","year":2022,"fuels":{"benzina":5.7}},
+
+  {"id":"hyundai-tucson-2018","label":"Hyundai Tucson 1.7 CRDi (2018)","brand":"hyundai","year":2018,"fuels":{"diesel":6.0}},
+  {"id":"hyundai-kona-2019-electric","label":"Hyundai Kona Electric 64 kWh (2019)","brand":"hyundai","year":2019,"fuels":{"elettrico":15.5}},
+  {"id":"hyundai-i20-2021","label":"Hyundai i20 1.0 T-GDi (2021)","brand":"hyundai","year":2021,"fuels":{"benzina":5.2}},
+
+  {"id":"nissan-qashqai-2019","label":"Nissan Qashqai 1.3 DIG-T (2019)","brand":"nissan","year":2019,"fuels":{"benzina":5.9}},
+  {"id":"nissan-juke-2018","label":"Nissan Juke 1.5 dCi (2018)","brand":"nissan","year":2018,"fuels":{"diesel":5.2}},
+  {"id":"nissan-leaf-2018","label":"Nissan Leaf 40 kWh (2018)","brand":"nissan","year":2018,"fuels":{"elettrico":16.0}},
+
+  {"id":"dacia-sandero-2021","label":"Dacia Sandero 1.0 TCe (2021)","brand":"dacia","year":2021,"fuels":{"benzina":5.8,"gpl":7.0}},
+  {"id":"dacia-duster-2019","label":"Dacia Duster 1.5 Blue dCi (2019)","brand":"dacia","year":2019,"fuels":{"diesel":5.2}},
+
+  {"id":"jeep-compass-2019","label":"Jeep Compass 1.4 MultiAir (2019)","brand":"jeep","year":2019,"fuels":{"benzina":7.4}},
+  {"id":"jeep-renegade-2022-plugin","label":"Jeep Renegade 4xe PHEV (2022)","brand":"jeep","year":2022,"fuels":{"benzina":6.4}},
+
+  {"id":"alfa-giulia-2019","label":"Alfa Romeo Giulia 2.2 (2019)","brand":"alfa-romeo","year":2019,"fuels":{"diesel":5.5}},
+  {"id":"alfa-stelvio-2019","label":"Alfa Romeo Stelvio 2.2 (2019)","brand":"alfa-romeo","year":2019,"fuels":{"diesel":6.2}},
+
+  {"id":"volvo-xc40-2019","label":"Volvo XC40 D3 (2019)","brand":"volvo","year":2019,"fuels":{"diesel":6.1}},
+  {"id":"volvo-xc90-2020","label":"Volvo XC90 T8 Recharge (2020)","brand":"volvo","year":2020,"fuels":{"benzina":7.8}},
+
+  {"id":"skoda-octavia-2019","label":"Skoda Octavia 1.5 TSI (2019)","brand":"skoda","year":2019,"fuels":{"benzina":5.4}},
+  {"id":"skoda-karoq-2021","label":"Skoda Karoq 2.0 TDI (2021)","brand":"skoda","year":2021,"fuels":{"diesel":5.7}},
+
+  {"id":"seat-leon-2019","label":"Seat Leon 1.5 TSI (2019)","brand":"seat","year":2019,"fuels":{"benzina":5.6}},
+  {"id":"seat-ateca-2021","label":"Seat Ateca 2.0 TDI (2021)","brand":"seat","year":2021,"fuels":{"diesel":6.0}},
+
+  {"id":"citroen-c3-2019","label":"Citroen C3 1.2 PureTech (2019)","brand":"citroen","year":2019,"fuels":{"benzina":5.5}},
+  {"id":"citroen-c5aircross-2021","label":"Citroen C5 Aircross Hybrid (2021)","brand":"citroen","year":2021,"fuels":{"benzina":5.9}},
+
+  {"id":"tesla-model-3-2022","label":"Tesla Model 3 RWD LFP (2022)","brand":"tesla","year":2022,"fuels":{"elettrico":14.9}},
+  {"id":"tesla-model-y-2021","label":"Tesla Model Y LR (2021)","brand":"tesla","year":2021,"fuels":{"elettrico":16.8}},
+
+  {"id":"mazda-cx30-2021","label":"Mazda CX-30 2.0 e-Skyactiv X (2021)","brand":"mazda","year":2021,"fuels":{"benzina":6.0}},
+  {"id":"mazda-3-2019","label":"Mazda 3 2.0 Skyactiv-G (2019)","brand":"mazda","year":2019,"fuels":{"benzina":5.8}},
+
+  {"id":"honda-hrv-2022","label":"Honda HR-V e:HEV (2022)","brand":"honda","year":2022,"fuels":{"benzina":5.5}},
+  {"id":"honda-civic-2023","label":"Honda Civic e:HEV (2023)","brand":"honda","year":2023,"fuels":{"benzina":4.8}},
+
+  {"id":"suzuki-swift-2019","label":"Suzuki Swift 1.2 Hybrid (2019)","brand":"suzuki","year":2019,"fuels":{"benzina":5.0}},
+  {"id":"suzuki-vitara-2019","label":"Suzuki Vitara 1.4 Boosterjet (2019)","brand":"suzuki","year":2019,"fuels":{"benzina":6.2}},
+
+  {"id":"landrover-discovery-2019","label":"Land Rover Discovery SD4 (2019)","brand":"land-rover","year":2019,"fuels":{"diesel":8.1}},
+  {"id":"landrover-range-rover-2022","label":"Range Rover D300 (2022)","brand":"land-rover","year":2022,"fuels":{"diesel":8.4}},
+
+  {"id":"lexus-ux-2019","label":"Lexus UX 250h (2019)","brand":"lexus","year":2019,"fuels":{"benzina":5.5}},
+  {"id":"lexus-rx-2021","label":"Lexus RX 450h (2021)","brand":"lexus","year":2021,"fuels":{"benzina":7.3}},
+
+  {"id":"mitsubishi-asx-2019","label":"Mitsubishi ASX 2.0 (2019)","brand":"mitsubishi","year":2019,"fuels":{"benzina":7.4}},
+  {"id":"mitsubishi-eclipse-2021","label":"Mitsubishi Eclipse Cross PHEV (2021)","brand":"mitsubishi","year":2021,"fuels":{"benzina":6.7}},
+
+  {"id":"subaru-outback-2019","label":"Subaru Outback 2.5 (2019)","brand":"subaru","year":2019,"fuels":{"benzina":7.7}},
+  {"id":"subaru-xv-2022","label":"Subaru XV e-Boxer (2022)","brand":"subaru","year":2022,"fuels":{"benzina":7.1}},
+
+  {"id":"porsche-911-2021","label":"Porsche 911 Carrera (2021)","brand":"porsche","year":2021,"fuels":{"benzina":10.0}},
+  {"id":"porsche-cayenne-2019","label":"Porsche Cayenne E-Hybrid (2019)","brand":"porsche","year":2019,"fuels":{"benzina":9.1}},
+
+  {"id":"mini-cooper-2019","label":"Mini Cooper S 2.0 (2019)","brand":"mini","year":2019,"fuels":{"benzina":6.7}},
+  {"id":"mini-countryman-2021-phev","label":"Mini Countryman SE ALL4 (2021)","brand":"mini","year":2021,"fuels":{"benzina":6.4}},
+
+  {"id":"smart-forfour-2019","label":"Smart ForFour EQ (2019)","brand":"smart","year":2019,"fuels":{"elettrico":17.5}},
+
+  {"id":"byd-seal-2023","label":"BYD Seal Design (2023)","brand":"byd","year":2023,"fuels":{"elettrico":16.9}},
+
+  {"id":"mg-zs-ev-2022","label":"MG ZS EV 51 kWh (2022)","brand":"mg","year":2022,"fuels":{"elettrico":17.5}},
+
+  {"id":"dr-6-2023","label":"DR 6.0 1.5 Turbo (2023)","brand":"dr","year":2023,"fuels":{"benzina":8.2,"gpl":9.0}},
+
+  {"id":"ds7-2019","label":"DS 7 Crossback 1.6 PureTech (2019)","brand":"ds","year":2019,"fuels":{"benzina":6.5}},
+
+  {"id":"maserati-levante-2022","label":"Maserati Levante GT Hybrid (2022)","brand":"maserati","year":2022,"fuels":{"benzina":9.8}},
+
+  {"id":"jaguar-fpace-2019","label":"Jaguar F-Pace D180 (2019)","brand":"jaguar","year":2019,"fuels":{"diesel":6.5}},
+
+  {"id":"cupra-formentor-2022","label":"Cupra Formentor 1.4 e-Hybrid (2022)","brand":"cupra","year":2022,"fuels":{"benzina":5.8}},
+
+  {"id":"lancia-ypsilon-2015","label":"Lancia Ypsilon 0.9 TwinAir (2015)","brand":"lancia","year":2015,"fuels":{"benzina":5.1}}
+]
