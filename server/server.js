@@ -12,14 +12,14 @@ const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-prod';
 const DB_PATH = path.join(__dirname, 'data', 'db.json');
 
 app.use(cors());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '5mb' }));
 
 function readDb() {
     try {
         const raw = fs.readFileSync(DB_PATH, 'utf-8');
         return JSON.parse(raw);
     } catch (err) {
-        return { users: [], favorites: {}, companions: {}, completed: {} };
+        return { users: [], favorites: {}, companions: {}, completed: {}, mycarPhotos: {} };
     }
 }
 
@@ -110,6 +110,38 @@ function addCrudRoutes(resourceKey) {
 }
 
 ['favorites', 'companions', 'completed'].forEach(addCrudRoutes);
+
+app.get('/api/mycar-photo', authMiddleware, (req, res) => {
+    const db = readDb();
+    const photos = (db.mycarPhotos && db.mycarPhotos[req.user.userId]) || {};
+    return res.json({ items: photos });
+});
+
+app.post('/api/mycar-photo', authMiddleware, (req, res) => {
+    const { modelId, dataUrl } = req.body || {};
+    if (!dataUrl || typeof dataUrl !== 'string') {
+        return res.status(400).json({ error: 'Foto mancante' });
+    }
+    const db = readDb();
+    if (!db.mycarPhotos) db.mycarPhotos = {};
+    if (!db.mycarPhotos[req.user.userId]) db.mycarPhotos[req.user.userId] = {};
+    const key = modelId || 'default';
+    db.mycarPhotos[req.user.userId][key] = dataUrl;
+    writeDb(db);
+    return res.json({ ok: true });
+});
+
+app.delete('/api/mycar-photo/:modelId', authMiddleware, (req, res) => {
+    const db = readDb();
+    const modelId = req.params.modelId || 'default';
+    const bucket = db.mycarPhotos && db.mycarPhotos[req.user.userId];
+    if (bucket && bucket[modelId]) {
+        delete bucket[modelId];
+        writeDb(db);
+        return res.json({ ok: true });
+    }
+    return res.status(404).json({ error: 'Foto non trovata' });
+});
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 

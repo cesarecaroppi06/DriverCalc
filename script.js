@@ -1409,6 +1409,20 @@ Object.keys(carConsumption).forEach(key => {
 // Carica modelli estesi da JSON esterno per non appesantire il bundle
 const DYNAMIC_MODELS_GROUP_ID = 'dynamic-models-group';
 const BRAND_DATA_VERSION = '4';
+const MODEL_IMAGE_MAP = {
+    // Esempio: 'fiat-panda-2024': 'assets/cars/fiat-panda-2024.png'
+};
+const SILHOUETTE_MAP = {
+    city: 'assets/cars/silhouettes/city.svg',
+    hatchback: 'assets/cars/silhouettes/hatchback.svg',
+    sedan: 'assets/cars/silhouettes/sedan.svg',
+    coupe: 'assets/cars/silhouettes/coupe.svg',
+    sport: 'assets/cars/silhouettes/sport.svg',
+    suv: 'assets/cars/silhouettes/suv.svg',
+    wagon: 'assets/cars/silhouettes/wagon.svg',
+    van: 'assets/cars/silhouettes/van.svg',
+    pickup: 'assets/cars/silhouettes/pickup.svg'
+};
 const brandDataFiles = {
     fiat: 'models/brand_fiat.json',
     toyota: 'models/brand_toyota.json',
@@ -1789,6 +1803,27 @@ const budgetTotalCost = document.getElementById('budgetTotalCost');
 const budgetAvgCost = document.getElementById('budgetAvgCost');
 const budgetFuelCost = document.getElementById('budgetFuelCost');
 const budgetTollCost = document.getElementById('budgetTollCost');
+const myCarBtn = document.getElementById('myCarBtn');
+const myCarOverlay = document.getElementById('myCarOverlay');
+const closeMyCarBtn = document.getElementById('closeMyCar');
+const myCarImage = document.getElementById('myCarImage');
+const myCarTitle = document.getElementById('myCarTitle');
+const myCarMeta = document.getElementById('myCarMeta');
+const myCarHint = document.getElementById('myCarHint');
+const myCarBrandSelect = document.getElementById('myCarBrand');
+const myCarModelSelect = document.getElementById('myCarModel');
+const myCarKm = document.getElementById('myCarKm');
+const myCarTrips = document.getElementById('myCarTrips');
+const myCarTotalCost = document.getElementById('myCarTotalCost');
+const myCarAvgCost = document.getElementById('myCarAvgCost');
+const myCarUploadBtn = document.getElementById('myCarUploadBtn');
+const myCarUploadInput = document.getElementById('myCarUploadInput');
+const myCarRemoveBtn = document.getElementById('myCarRemoveBtn');
+const myCarUploadStatus = document.getElementById('myCarUploadStatus');
+const myCarConsentOverlay = document.getElementById('myCarConsentOverlay');
+const closeMyCarConsentBtn = document.getElementById('closeMyCarConsent');
+const cancelMyCarConsentBtn = document.getElementById('cancelMyCarConsent');
+const acceptMyCarConsentBtn = document.getElementById('acceptMyCarConsent');
 
 // Inizializza i select con tutte le città (fallback API per tratte mancanti)
 function initializeCities() {
@@ -1838,6 +1873,216 @@ function updateFuelPriceUI() {
     fuelPriceInput.dataset.unit = unit;
 }
 
+function normalizeOptionLabel(text) {
+        if (!text) return '';
+        return text.split(' - ')[0].trim();
+}
+
+function buildCarPlaceholderSvg(title, subtitle) {
+        const safeTitle = title || 'Auto';
+        const safeSubtitle = subtitle || 'Seleziona modello';
+        const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+    <defs>
+        <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stop-color="#0f172a"/>
+            <stop offset="100%" stop-color="#1e293b"/>
+        </linearGradient>
+        <linearGradient id="accent" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.8"/>
+        </linearGradient>
+    </defs>
+    <rect width="800" height="450" rx="28" fill="url(#bg)"/>
+    <rect x="32" y="32" width="736" height="386" rx="22" fill="none" stroke="rgba(255,255,255,0.08)"/>
+    <path d="M140 300c40-70 130-110 260-110s220 40 260 110" fill="none" stroke="url(#accent)" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="260" cy="310" r="36" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.25)" stroke-width="6"/>
+    <circle cx="540" cy="310" r="36" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.25)" stroke-width="6"/>
+    <text x="400" y="170" text-anchor="middle" font-size="34" fill="#e2e8f0" font-family="Arial, sans-serif" font-weight="700">${safeTitle}</text>
+    <text x="400" y="210" text-anchor="middle" font-size="20" fill="#94a3b8" font-family="Arial, sans-serif">${safeSubtitle}</text>
+    <text x="400" y="250" text-anchor="middle" font-size="14" fill="#64748b" font-family="Arial, sans-serif">Texture demo: sostituisci con una tua immagine</text>
+</svg>`;
+        return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+    function getCarImageSrc(modelId, title, subtitle) {
+        if (modelId && MODEL_IMAGE_MAP[modelId]) {
+            return MODEL_IMAGE_MAP[modelId];
+        }
+        const category = resolveModelCategory(modelId, `${title || ''} ${subtitle || ''}`);
+        if (category && SILHOUETTE_MAP[category]) {
+            return SILHOUETTE_MAP[category];
+        }
+        return buildCarPlaceholderSvg(title, subtitle);
+    }
+
+    function resolveModelCategory(modelId = '', labelText = '') {
+        const raw = `${modelId} ${labelText}`.toLowerCase();
+        if (!raw.trim()) return 'sedan';
+
+        const directMap = {
+            'city-car': 'city',
+            sedan: 'sedan',
+            suv: 'suv',
+            estate: 'wagon',
+            hybrid: 'sedan',
+            electric: 'sedan'
+        };
+        if (directMap[modelId]) return directMap[modelId];
+
+        const keywordSets = [
+            { key: 'pickup', words: ['pickup', 'pick-up', 'ranger', 'hilux', 'navara', 'amarok'] },
+            { key: 'van', words: ['van', 'touran', 'caddy', 'proace', 'zafira', 'traveller', 'berlingo', 'partner', 'v-class', 'galaxy', 's-max', 'alhambra', 'carnival', 'doblo', 'scudo', 'qubo', 'fiorino'] },
+            { key: 'wagon', words: ['wagon', 'estate', 'touring', 'variant', 'station', 'sw', 'allroad', 'v60', 'v90'] },
+            { key: 'coupe', words: ['coupe', 'coup', 'spider', 'cabrio', 'roadster'] },
+            { key: 'sport', words: ['sport', 'gt', 'gti', 'rs', 'type-r', 'amg', 'm3', 'm4', 'm5', '911', 'cayman', 'supra', 'wrx'] },
+            { key: 'suv', words: ['suv', 'crossover', 'cross', 'x1', 'x3', 'x5', 'x6', 'x7', 'q3', 'q5', 'q7', 'q8', 'gla', 'glb', 'glc', 'gle', 'gls', 't-roc', 't-cross', 'tiguan', 'taigo', 'tucson', 'sportage', 'qashqai', 'x-trail', 'rav4', 'c-hr', 'yaris cross', 'captur', 'kadjar', 'duster', 'karoq', 'kamiq', 'kodiaq', 'kuga', 'ecosport', 'puma', 'kona', 'santa fe', 'f-pace', 'e-pace', 'xc', 'stelvio', 'tonale', 'compass', 'renegade', 'avenger', 'wrangler', 'cherokee', 'defender', 'range rover', 'discovery', 'evoque', 'cayenne', 'macan'] },
+            { key: 'city', words: ['city', 'panda', '500', 'aygo', 'up', 'picanto', 'i10', 'micra', 'corsa', 'clio', 'polo', 'swift', 'yaris', 'fiesta', 'mini', 'smart', 'sandero', 'ypsilon', 'fabia', 'ibiza', 'twingo', 'i20'] },
+            { key: 'hatchback', words: ['hatch', 'golf', 'focus', 'megane', '308', 'i30', 'ceed', 'a3', 'serie 1', 'classe a', 'civic', 'corolla', 'astra', 'leon'] }
+        ];
+
+        for (const group of keywordSets) {
+            if (group.words.some(word => raw.includes(word))) {
+                return group.key;
+            }
+        }
+
+        return 'sedan';
+    }
+
+    function populateMyCarBrandOptions() {
+        if (!myCarBrandSelect) return;
+        if (!brandOptionsSnapshot.length) snapshotBrandOptions();
+        const previousValue = myCarBrandSelect.value;
+        const fragment = document.createDocumentFragment();
+
+        brandOptionsSnapshot.forEach(data => {
+            const opt = document.createElement('option');
+            opt.value = data.value;
+            opt.textContent = data.text;
+            if (data.disabled) opt.disabled = true;
+            fragment.appendChild(opt);
+        });
+
+        myCarBrandSelect.innerHTML = '';
+        myCarBrandSelect.appendChild(fragment);
+        if (Array.from(myCarBrandSelect.options).some(o => o.value === previousValue)) {
+            myCarBrandSelect.value = previousValue;
+        }
+    }
+
+    async function populateMyCarModelOptions(brandKey = '') {
+        if (!myCarModelSelect) return;
+        const previousValue = myCarModelSelect.value;
+        await ensureBrandModelsLoaded(brandKey);
+        if (!carOptionsSnapshot.length) snapshotCarOptionsStructure();
+
+        const showAll = !brandKey;
+        const fragment = document.createDocumentFragment();
+
+        carOptionsSnapshot.forEach(node => {
+            if (node.tagName === 'OPTION') {
+                const cloned = node.cloneNode(true);
+                const optBrand = (cloned.dataset.brand || 'other').toLowerCase();
+                const matchesBrand = showAll || optBrand === 'all' || optBrand === brandKey;
+                if (matchesBrand) fragment.appendChild(cloned);
+                return;
+            }
+            if (node.tagName === 'OPTGROUP') {
+                const clonedGroup = node.cloneNode(true);
+                const filtered = Array.from(clonedGroup.querySelectorAll('option')).filter(opt => {
+                    const optBrand = (opt.dataset.brand || 'other').toLowerCase();
+                    const isGeneric = optBrand === 'all';
+                    return showAll || isGeneric || optBrand === brandKey;
+                });
+                if (!filtered.length) return;
+                const newGroup = document.createElement('optgroup');
+                newGroup.label = clonedGroup.label;
+                if (clonedGroup.id) newGroup.id = clonedGroup.id;
+                filtered.forEach(opt => newGroup.appendChild(opt.cloneNode(true)));
+                fragment.appendChild(newGroup);
+            }
+        });
+
+        if (!fragment.children.length) {
+            const emptyOpt = document.createElement('option');
+            emptyOpt.value = '';
+            emptyOpt.disabled = true;
+            emptyOpt.textContent = 'Nessun modello trovato';
+            fragment.appendChild(emptyOpt);
+        }
+
+        myCarModelSelect.innerHTML = '';
+        myCarModelSelect.appendChild(fragment);
+        if (Array.from(myCarModelSelect.options).some(o => o.value === previousValue)) {
+            myCarModelSelect.value = previousValue;
+        } else {
+            myCarModelSelect.value = '';
+        }
+    }
+
+    function getPreferredCarSelection() {
+        if (myCarBrandSelect && myCarModelSelect && (myCarBrandSelect.value || myCarModelSelect.value)) {
+            return { brandSelect: myCarBrandSelect, modelSelect: myCarModelSelect };
+        }
+        return { brandSelect: carBrandSelect, modelSelect: carTypeSelect };
+    }
+
+function updateMyCarPreview() {
+        if (!myCarImage || !myCarTitle || !myCarMeta) return;
+    const { brandSelect, modelSelect } = getPreferredCarSelection();
+    const hasBrand = !!brandSelect?.value;
+    const hasModel = !!modelSelect?.value;
+    const brandLabel = normalizeOptionLabel(brandSelect?.options[brandSelect.selectedIndex]?.textContent || '');
+    const modelLabelRaw = modelSelect?.options[modelSelect.selectedIndex]?.textContent || '';
+        const modelLabel = normalizeOptionLabel(modelLabelRaw);
+
+        if (!hasBrand || !hasModel) {
+                myCarTitle.textContent = 'Nessun modello selezionato';
+                myCarMeta.textContent = 'Seleziona marca e modello nel calcolatore.';
+                if (myCarHint) myCarHint.textContent = '';
+                if (myCarUploadStatus) myCarUploadStatus.textContent = '';
+            myCarImage.src = buildCarPlaceholderSvg('La mia auto', 'Seleziona un modello');
+            updateMyCarStats('');
+                return;
+        }
+
+        myCarTitle.textContent = modelLabel || modelLabelRaw || 'Modello selezionato';
+        myCarMeta.textContent = brandLabel || 'Marca selezionata';
+        const savedPhoto = getSavedMyCarPhoto(modelSelect.value);
+        if (myCarHint) {
+            const authNote = authToken ? 'Verrà salvata sul tuo account.' : 'Accedi per salvarla sul tuo account.';
+            myCarHint.textContent = savedPhoto
+                ? `Foto personale attiva. Puoi sostituirla caricandone un'altra. ${authNote}`
+                : `Sagome automatiche attive. Puoi allegare una foto personale. ${authNote}`;
+        }
+        if (myCarUploadStatus) myCarUploadStatus.textContent = '';
+        myCarImage.src = savedPhoto || getCarImageSrc(modelSelect.value, modelLabel || modelLabelRaw, brandLabel || '');
+        updateMyCarStats(modelSelect.value);
+}
+
+    function updateMyCarStats(modelId) {
+        if (!myCarKm || !myCarTrips || !myCarTotalCost || !myCarAvgCost) return;
+        if (!modelId) {
+            myCarKm.textContent = '-';
+            myCarTrips.textContent = '-';
+            myCarTotalCost.textContent = '-';
+            myCarAvgCost.textContent = '-';
+            return;
+        }
+
+        const tripsForCar = completedTrips.filter(trip => trip.carType === modelId);
+        const totalTrips = tripsForCar.length;
+        const totalKm = tripsForCar.reduce((sum, trip) => sum + (parseFloat(trip.distance) || 0), 0);
+        const totalCost = tripsForCar.reduce((sum, trip) => sum + (parseFloat(trip.totalCost) || 0), 0);
+        const avgCost = totalKm > 0 ? totalCost / totalKm : 0;
+
+        myCarKm.textContent = totalKm ? `${totalKm.toFixed(0)} km` : '0 km';
+        myCarTrips.textContent = totalTrips.toString();
+        myCarTotalCost.textContent = `€${totalCost.toFixed(2)}`;
+        myCarAvgCost.textContent = totalKm > 0 ? `€${avgCost.toFixed(2)}` : '€0.00';
+    }
+
 // Aggiunge data-brand agli option dei modelli, in base al prefisso del value
 function tagModelOptionsByBrand() {
     const options = Array.from(carTypeSelect.querySelectorAll('option'));
@@ -1861,6 +2106,87 @@ function tagModelOptionsByBrand() {
         });
         opt.dataset.brand = detected || 'other';
     });
+}
+
+function getSavedMyCarPhoto(modelId) {
+    if (authToken && myCarPhotos) {
+        return myCarPhotos[modelId] || myCarPhotos.default || '';
+    }
+    if (myCarPhotos && myCarPhotos[modelId]) return myCarPhotos[modelId];
+    if (myCarPhotos && myCarPhotos.default) return myCarPhotos.default;
+    const key = buildMyCarPhotoKey(modelId);
+    return localStorage.getItem(key) || '';
+}
+
+function buildMyCarPhotoKey(modelId) {
+    const safeId = modelId || 'default';
+    return `drivecalc_mycar_photo_${safeId}`;
+}
+
+function openMyCarConsent() {
+    if (myCarConsentOverlay) myCarConsentOverlay.style.display = 'flex';
+}
+
+function closeMyCarConsent() {
+    if (myCarConsentOverlay) myCarConsentOverlay.style.display = 'none';
+}
+
+function handleMyCarPhotoSelected(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        const result = typeof reader.result === 'string' ? reader.result : '';
+        if (!result) return;
+        const { modelSelect } = getPreferredCarSelection();
+        const modelId = modelSelect?.value || '';
+        if (authToken) {
+            apiRequest('/mycar-photo', 'POST', { modelId, dataUrl: result })
+                .then(() => {
+                    myCarPhotos[modelId || 'default'] = result;
+                    if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto salvata sul tuo account.';
+                    updateMyCarPreview();
+                })
+                .catch(() => {
+                    myCarPhotos[modelId || 'default'] = result;
+                    localStorage.setItem(MYCAR_PHOTOS_KEY, JSON.stringify(myCarPhotos));
+                    if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto salvata in locale (offline).';
+                    updateMyCarPreview();
+                });
+        } else {
+            myCarPhotos[modelId || 'default'] = result;
+            localStorage.setItem(MYCAR_PHOTOS_KEY, JSON.stringify(myCarPhotos));
+            if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto salvata in locale.';
+            updateMyCarPreview();
+        }
+    };
+    reader.readAsDataURL(file);
+}
+
+function removeMyCarPhoto() {
+    const { modelSelect } = getPreferredCarSelection();
+    const modelId = modelSelect?.value || '';
+    if (!modelId) {
+        if (myCarUploadStatus) myCarUploadStatus.textContent = 'Seleziona un modello per rimuovere la foto.';
+        return;
+    }
+
+    delete myCarPhotos[modelId || 'default'];
+    localStorage.setItem(MYCAR_PHOTOS_KEY, JSON.stringify(myCarPhotos));
+
+    if (authToken) {
+        apiRequest(`/mycar-photo/${encodeURIComponent(modelId || 'default')}`, 'DELETE')
+            .then(() => {
+                if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto rimossa dal tuo account.';
+                updateMyCarPreview();
+            })
+            .catch(() => {
+                if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto rimossa in locale.';
+                updateMyCarPreview();
+            });
+    } else {
+        if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto rimossa in locale.';
+        updateMyCarPreview();
+    }
 }
 
 // Aggiunge una lista di modelli al select, con deduplica
@@ -2221,14 +2547,20 @@ function hideError() {
 const FAVORITES_KEY = 'drivecalc_favorites_v1';
 const COMPANIONS_KEY = 'drivecalc_companions_v1';
 const COMPLETED_KEY = 'drivecalc_completed_v1';
+const MYCAR_PHOTOS_KEY = 'drivecalc_mycar_photos_v1';
 const AUTH_TOKEN_KEY = 'drivecalc_token_v1';
-const API_BASE = 'https://drivercalc.onrender.com/api';
+const API_BASE = (() => {
+    if (typeof window === 'undefined') return 'https://drivercalc.onrender.com/api';
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    return isLocal ? 'http://localhost:3001/api' : 'https://drivercalc.onrender.com/api';
+})();
 
 let favorites = [];
 let lastCalculatedTrip = null;
 let companionTrips = [];
 let currentCompanions = [];
 let completedTrips = [];
+let myCarPhotos = {};
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || null;
 let currentUser = null;
 
@@ -2301,7 +2633,8 @@ async function loadAllRemoteData() {
     await Promise.all([
         loadFavorites(),
         loadCompanionTrips(),
-        loadCompletedTrips()
+        loadCompletedTrips(),
+        loadMyCarPhotos()
     ]);
     renderFavorites();
     renderCompanionHistory();
@@ -2368,6 +2701,22 @@ async function loadCompletedTrips() {
     } catch (e) {
         completedTrips = [];
     }
+    updateMyCarPreview();
+}
+
+async function loadMyCarPhotos() {
+    try {
+        if (authToken) {
+            const res = await apiRequest('/mycar-photo');
+            myCarPhotos = res.items || {};
+        } else {
+            const raw = localStorage.getItem(MYCAR_PHOTOS_KEY);
+            myCarPhotos = raw ? JSON.parse(raw) : {};
+        }
+    } catch (e) {
+        myCarPhotos = {};
+    }
+    updateMyCarPreview();
 }
 
 async function persistFavorites() {
@@ -2798,6 +3147,33 @@ function closeBudget() {
     setActiveMenu(homeBtn);
 }
 
+async function openMyCar() {
+    setActiveMenu(myCarBtn);
+    if (myCarOverlay) myCarOverlay.style.display = 'flex';
+    populateMyCarBrandOptions();
+
+    if (!Object.keys(myCarPhotos || {}).length) {
+        await loadMyCarPhotos();
+    }
+
+    if (myCarBrandSelect && !myCarBrandSelect.value) {
+        myCarBrandSelect.value = carBrandSelect?.value || '';
+    }
+    const brandKey = (myCarBrandSelect?.value || '').replace(/^brand-/, '').trim().toLowerCase();
+    await populateMyCarModelOptions(brandKey);
+
+    if (myCarModelSelect && !myCarModelSelect.value) {
+        myCarModelSelect.value = carTypeSelect?.value || '';
+    }
+
+    updateMyCarPreview();
+}
+
+function closeMyCar() {
+    if (myCarOverlay) myCarOverlay.style.display = 'none';
+    setActiveMenu(homeBtn);
+}
+
 // Gestione viste (calcolatore vs pagina info)
 function setActiveMenu(button) {
     settingsMenuButtons.forEach(btn => btn.classList.remove('active'));
@@ -2840,11 +3216,13 @@ function resetCalculator() {
     filterModelsByBrand();
     updateFuelPriceUI();
     hideError();
+    updateMyCarPreview();
 }
 
 function handleBrandChange() {
     filterModelsByBrand().then(() => {
         updateModelResults(carTypeSearchInput?.value || '');
+        updateMyCarPreview();
     });
 }
 
@@ -2852,7 +3230,10 @@ function handleBrandChange() {
 calculateBtn.addEventListener('click', calculateTrip);
 resetBtn.addEventListener('click', resetCalculator);
 fuelTypeSelect.addEventListener('change', updateFuelPriceUI);
-carTypeSelect.addEventListener('change', syncFuelWithCarType);
+carTypeSelect.addEventListener('change', () => {
+    syncFuelWithCarType();
+    updateMyCarPreview();
+});
 carBrandSelect.addEventListener('change', handleBrandChange);
 carBrandSearchInput?.addEventListener('input', (e) => {
     const query = e.target.value;
@@ -2883,6 +3264,35 @@ companionNameInput?.addEventListener('keypress', (e) => {
 });
 budgetBtn?.addEventListener('click', openBudget);
 closeBudgetBtn?.addEventListener('click', closeBudget);
+myCarBtn?.addEventListener('click', openMyCar);
+closeMyCarBtn?.addEventListener('click', closeMyCar);
+myCarBrandSelect?.addEventListener('change', async () => {
+    const brandKey = (myCarBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
+    await populateMyCarModelOptions(brandKey);
+    updateMyCarPreview();
+});
+myCarModelSelect?.addEventListener('change', updateMyCarPreview);
+myCarUploadBtn?.addEventListener('click', () => {
+    if (!myCarModelSelect?.value) {
+        if (myCarHint) myCarHint.textContent = 'Seleziona un modello prima di caricare la foto.';
+        if (myCarUploadStatus) myCarUploadStatus.textContent = '';
+        updateMyCarPreview();
+        return;
+    }
+    openMyCarConsent();
+});
+acceptMyCarConsentBtn?.addEventListener('click', () => {
+    closeMyCarConsent();
+    myCarUploadInput?.click();
+});
+cancelMyCarConsentBtn?.addEventListener('click', closeMyCarConsent);
+closeMyCarConsentBtn?.addEventListener('click', closeMyCarConsent);
+myCarUploadInput?.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    handleMyCarPhotoSelected(file);
+    e.target.value = '';
+});
+myCarRemoveBtn?.addEventListener('click', removeMyCarPhoto);
 accountBtn?.addEventListener('click', openAuth);
 closeAuthBtn?.addEventListener('click', closeAuth);
 loginBtn?.addEventListener('click', () => handleAuth(false));
@@ -2902,6 +3312,12 @@ document.addEventListener('keydown', (e) => {
         }
         if (budgetOverlay && budgetOverlay.style.display === 'flex') {
             closeBudget();
+        }
+        if (myCarOverlay && myCarOverlay.style.display === 'flex') {
+            closeMyCar();
+        }
+        if (myCarConsentOverlay && myCarConsentOverlay.style.display === 'flex') {
+            closeMyCarConsent();
         }
         if (authOverlay && authOverlay.style.display === 'flex') {
             closeAuth();
@@ -2931,6 +3347,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     snapshotCarOptionsStructure();
     snapshotBrandOptions();
     await filterModelsByBrand();
+    updateMyCarPreview();
     updateAuthUI();
     if (authToken) {
         try {
