@@ -276,6 +276,53 @@ main::after {
     font-size: 15px;
 }
 
+.filter-input {
+    margin-bottom: 8px;
+}
+
+.filter-results {
+    display: none;
+    margin-bottom: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(8, 12, 26, 0.9);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.filter-result-item {
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    color: #e9ecf5;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.filter-result-item:hover,
+.filter-result-item:focus {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fef3c7;
+    outline: none;
+}
+
+.filter-result-item mark {
+    background: rgba(250, 204, 21, 0.35);
+    color: inherit;
+    padding: 0 2px;
+    border-radius: 4px;
+}
+
+.filter-result-empty {
+    padding: 10px 12px;
+    color: rgba(233, 236, 245, 0.7);
+    font-size: 14px;
+}
+
 select, input {
     padding: 12px;
     border: 1px solid rgba(255, 255, 255, 0.12);

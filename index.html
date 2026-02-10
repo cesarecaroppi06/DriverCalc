@@ -46,6 +46,8 @@
 
                 <div class="form-group">
                     <label for="carBrand">🏷️ Marca di Macchina:</label>
+                    <input type="text" id="carBrandSearch" class="filter-input" placeholder="Scrivi per filtrare le marche">
+                    <div id="carBrandResults" class="filter-results" aria-live="polite"></div>
                     <select id="carBrand" required>
                         <option value="">Seleziona marca...</option>
                         <option value="brand-fiat">Fiat (medio) - 5.8 L/100 km</option>
@@ -92,6 +94,8 @@
 
                 <div class="form-group">
                     <label for="carType">🚙 Modello di Macchina:</label>
+                    <input type="text" id="carTypeSearch" class="filter-input" placeholder="Scrivi per filtrare i modelli">
+                    <div id="carTypeResults" class="filter-results" aria-live="polite"></div>
                     <select id="carType" required>
                         <option value="">Seleziona modello...</option>
                         <optgroup label="Categorie generali">

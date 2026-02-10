@@ -1530,11 +1530,212 @@ function snapshotCarOptionsStructure() {
     carOptionsSnapshot = Array.from(carTypeSelect.children).map(node => node.cloneNode(true));
 }
 
+let brandOptionsSnapshot = [];
+function snapshotBrandOptions() {
+    if (!carBrandSelect) return;
+    brandOptionsSnapshot = Array.from(carBrandSelect.options).map(opt => ({
+        value: opt.value,
+        text: opt.textContent,
+        disabled: opt.disabled
+    }));
+}
+
+function filterBrandOptionsByText(query = '') {
+    if (!carBrandSelect || !brandOptionsSnapshot.length) return;
+    const previousValue = carBrandSelect.value;
+    const q = query.trim().toLowerCase();
+    const fragment = document.createDocumentFragment();
+
+    brandOptionsSnapshot.forEach((data, idx) => {
+        const matches = !q || idx === 0 || data.text.toLowerCase().includes(q) || data.value.toLowerCase().includes(q);
+        if (!matches) return;
+        const opt = document.createElement('option');
+        opt.value = data.value;
+        opt.textContent = data.text;
+        if (data.disabled) opt.disabled = true;
+        fragment.appendChild(opt);
+    });
+
+    if (!fragment.children.length) {
+        const emptyOpt = document.createElement('option');
+        emptyOpt.value = '';
+        emptyOpt.disabled = true;
+        emptyOpt.textContent = 'Nessun risultato';
+        fragment.appendChild(emptyOpt);
+    }
+
+    carBrandSelect.innerHTML = '';
+    carBrandSelect.appendChild(fragment);
+
+    if (Array.from(carBrandSelect.options).some(o => o.value === previousValue)) {
+        carBrandSelect.value = previousValue;
+    } else {
+        carBrandSelect.value = '';
+    }
+}
+
+function clearResultsContainer(container) {
+    if (!container) return;
+    container.innerHTML = '';
+    container.style.display = 'none';
+}
+
+function buildHighlightedText(text, query) {
+    const fragment = document.createDocumentFragment();
+    const raw = text || '';
+    const needle = (query || '').trim();
+    if (!needle) {
+        fragment.appendChild(document.createTextNode(raw));
+        return fragment;
+    }
+
+    const lowerText = raw.toLowerCase();
+    const lowerNeedle = needle.toLowerCase();
+    let fromIndex = 0;
+    let matchIndex = lowerText.indexOf(lowerNeedle, fromIndex);
+
+    if (matchIndex === -1) {
+        fragment.appendChild(document.createTextNode(raw));
+        return fragment;
+    }
+
+    while (matchIndex !== -1) {
+        if (matchIndex > fromIndex) {
+            fragment.appendChild(document.createTextNode(raw.slice(fromIndex, matchIndex)));
+        }
+        const mark = document.createElement('mark');
+        mark.textContent = raw.slice(matchIndex, matchIndex + needle.length);
+        fragment.appendChild(mark);
+        fromIndex = matchIndex + needle.length;
+        matchIndex = lowerText.indexOf(lowerNeedle, fromIndex);
+    }
+
+    if (fromIndex < raw.length) {
+        fragment.appendChild(document.createTextNode(raw.slice(fromIndex)));
+    }
+
+    return fragment;
+}
+
+function renderResults(container, items, query, onPick) {
+    if (!container) return;
+    container.innerHTML = '';
+    if (!items.length) {
+        const empty = document.createElement('div');
+        empty.className = 'filter-result-empty';
+        empty.textContent = 'Nessun risultato';
+        container.appendChild(empty);
+        container.style.display = 'block';
+        return;
+    }
+
+    items.forEach(item => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'filter-result-item';
+        btn.appendChild(buildHighlightedText(item.label, query));
+        btn.addEventListener('click', () => onPick(item));
+        container.appendChild(btn);
+    });
+    container.style.display = 'block';
+}
+
+function updateBrandResults(query = '') {
+    if (!carBrandResults) return;
+    const q = query.trim().toLowerCase();
+    if (!q) {
+        clearResultsContainer(carBrandResults);
+        return;
+    }
+
+    if (!brandOptionsSnapshot.length) snapshotBrandOptions();
+    const matches = brandOptionsSnapshot
+        .filter((data, idx) => idx !== 0 && !data.disabled && (data.text.toLowerCase().includes(q) || data.value.toLowerCase().includes(q)))
+        .map(data => ({ value: data.value, label: data.text }));
+
+    renderResults(carBrandResults, matches, query, (item) => {
+        carBrandSelect.value = item.value;
+        carBrandSearchInput.value = '';
+        filterBrandOptionsByText('');
+        clearResultsContainer(carBrandResults);
+        carBrandSelect.dispatchEvent(new Event('change'));
+    });
+}
+
+function collectModelMatches(query = '', brandKey = '') {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const showAll = !brandKey;
+    const results = [];
+    const seen = new Set();
+
+    carOptionsSnapshot.forEach(node => {
+        if (node.tagName === 'OPTION') {
+            const opt = node;
+            if (!opt.value) return;
+            const optBrand = (opt.dataset.brand || 'other').toLowerCase();
+            const isGeneric = optBrand === 'all';
+            const matchesBrand = showAll || isGeneric || optBrand === brandKey;
+            const text = opt.textContent || '';
+            const value = opt.value || '';
+            const matchesSearch = text.toLowerCase().includes(q) || value.toLowerCase().includes(q);
+            if (matchesBrand && matchesSearch && !seen.has(value)) {
+                seen.add(value);
+                results.push({ value, label: text });
+            }
+            return;
+        }
+
+        if (node.tagName === 'OPTGROUP') {
+            const options = Array.from(node.querySelectorAll('option'));
+            options.forEach(opt => {
+                if (!opt.value) return;
+                const optBrand = (opt.dataset.brand || 'other').toLowerCase();
+                const isGeneric = optBrand === 'all';
+                const matchesBrand = showAll || isGeneric || optBrand === brandKey;
+                const text = opt.textContent || '';
+                const value = opt.value || '';
+                const matchesSearch = text.toLowerCase().includes(q) || value.toLowerCase().includes(q);
+                if (matchesBrand && matchesSearch && !seen.has(value)) {
+                    seen.add(value);
+                    results.push({ value, label: text });
+                }
+            });
+        }
+    });
+
+    return results;
+}
+
+function updateModelResults(query = '') {
+    if (!carTypeResults) return;
+    const q = query.trim().toLowerCase();
+    if (!q) {
+        clearResultsContainer(carTypeResults);
+        return;
+    }
+    if (!carOptionsSnapshot.length) snapshotCarOptionsStructure();
+
+    const brandKey = (carBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
+    const matches = collectModelMatches(query, brandKey);
+    renderResults(carTypeResults, matches, query, (item) => {
+        carTypeSelect.value = item.value;
+        carTypeSearchInput.value = '';
+        filterModelsByBrand({ searchTerm: '' });
+        clearResultsContainer(carTypeResults);
+        carTypeSelect.dispatchEvent(new Event('change'));
+    });
+}
+
 // Elementi DOM
 const departureSelect = document.getElementById('departure');
 const arrivalSelect = document.getElementById('arrival');
 const carBrandSelect = document.getElementById('carBrand');
 const carTypeSelect = document.getElementById('carType');
+const carBrandSearchInput = document.getElementById('carBrandSearch');
+const carTypeSearchInput = document.getElementById('carTypeSearch');
+const carBrandResults = document.getElementById('carBrandResults');
+const carTypeResults = document.getElementById('carTypeResults');
 const fuelTypeSelect = document.getElementById('fuelType');
 const fuelPriceInput = document.getElementById('fuelPrice');
 const fuelPriceLabel = document.getElementById('fuelPriceLabel');
@@ -1719,9 +1920,11 @@ async function ensureBrandModelsLoaded(brandKey) {
 }
 
 // Mostra solo i modelli della marca selezionata (se vuoto mostra tutto)
-async function filterModelsByBrand() {
+async function filterModelsByBrand(options = {}) {
     const brandKey = (carBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
     const showAll = !brandKey;
+    const searchTerm = (options.searchTerm ?? (carTypeSearchInput?.value || '')).trim().toLowerCase();
+    const previousValue = carTypeSelect.value;
 
     await ensureBrandModelsLoaded(brandKey);
 
@@ -1731,7 +1934,11 @@ async function filterModelsByBrand() {
     const fragment = document.createDocumentFragment();
     carOptionsSnapshot.forEach(node => {
         if (node.tagName === 'OPTION') {
-            fragment.appendChild(node.cloneNode(true));
+            const cloned = node.cloneNode(true);
+            const optBrand = (cloned.dataset.brand || 'other').toLowerCase();
+            const matchesBrand = showAll || optBrand === 'all' || optBrand === brandKey;
+            const matchesSearch = !searchTerm || cloned.textContent.toLowerCase().includes(searchTerm) || (cloned.value || '').toLowerCase().includes(searchTerm);
+            if (matchesBrand && matchesSearch) fragment.appendChild(cloned);
             return;
         }
         if (node.tagName === 'OPTGROUP') {
@@ -1739,7 +1946,9 @@ async function filterModelsByBrand() {
             const filtered = Array.from(clonedGroup.querySelectorAll('option')).filter(opt => {
                 const optBrand = (opt.dataset.brand || 'other').toLowerCase();
                 const isGeneric = optBrand === 'all';
-                return showAll || isGeneric || optBrand === brandKey;
+                const matchesBrand = showAll || isGeneric || optBrand === brandKey;
+                const matchesSearch = !searchTerm || opt.textContent.toLowerCase().includes(searchTerm) || (opt.value || '').toLowerCase().includes(searchTerm);
+                return matchesBrand && matchesSearch;
             });
             if (!filtered.length) return;
             const newGroup = document.createElement('optgroup');
@@ -1750,9 +1959,21 @@ async function filterModelsByBrand() {
         }
     });
 
+    if (!fragment.children.length) {
+        const emptyOpt = document.createElement('option');
+        emptyOpt.value = '';
+        emptyOpt.disabled = true;
+        emptyOpt.textContent = 'Nessun modello trovato';
+        fragment.appendChild(emptyOpt);
+    }
+
     carTypeSelect.innerHTML = '';
     carTypeSelect.appendChild(fragment);
-    carTypeSelect.value = '';
+    if (Array.from(carTypeSelect.options).some(o => o.value === previousValue)) {
+        carTypeSelect.value = previousValue;
+    } else {
+        carTypeSelect.value = '';
+    }
     syncFuelWithCarType();
 }
 
@@ -2606,6 +2827,11 @@ function resetCalculator() {
     arrivalSelect.value = '';
     carTypeSelect.value = '';
     carBrandSelect.value = '';
+    if (carBrandSearchInput) carBrandSearchInput.value = '';
+    if (carTypeSearchInput) carTypeSearchInput.value = '';
+    clearResultsContainer(carBrandResults);
+    clearResultsContainer(carTypeResults);
+    filterBrandOptionsByText('');
     fuelTypeSelect.value = 'benzina';
     fuelPriceInput.value = '1.65';
     arrivalSelect.disabled = true;
@@ -2616,12 +2842,28 @@ function resetCalculator() {
     hideError();
 }
 
+function handleBrandChange() {
+    filterModelsByBrand().then(() => {
+        updateModelResults(carTypeSearchInput?.value || '');
+    });
+}
+
 // Event listeners
 calculateBtn.addEventListener('click', calculateTrip);
 resetBtn.addEventListener('click', resetCalculator);
 fuelTypeSelect.addEventListener('change', updateFuelPriceUI);
 carTypeSelect.addEventListener('change', syncFuelWithCarType);
-carBrandSelect.addEventListener('change', filterModelsByBrand);
+carBrandSelect.addEventListener('change', handleBrandChange);
+carBrandSearchInput?.addEventListener('input', (e) => {
+    const query = e.target.value;
+    filterBrandOptionsByText(query);
+    updateBrandResults(query);
+});
+carTypeSearchInput?.addEventListener('input', async (e) => {
+    const query = e.target.value;
+    await filterModelsByBrand({ searchTerm: query });
+    updateModelResults(query);
+});
 infoBtn?.addEventListener('click', showInfoView);
 homeBtn?.addEventListener('click', showCalculatorView);
 backToCalculatorBtn?.addEventListener('click', showCalculatorView);
@@ -2667,6 +2909,15 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+document.addEventListener('click', (e) => {
+    if (carBrandResults && carBrandSearchInput && !carBrandResults.contains(e.target) && e.target !== carBrandSearchInput) {
+        clearResultsContainer(carBrandResults);
+    }
+    if (carTypeResults && carTypeSearchInput && !carTypeResults.contains(e.target) && e.target !== carTypeSearchInput) {
+        clearResultsContainer(carTypeResults);
+    }
+});
+
 // Enter per calcolare
 document.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') calculateTrip();
@@ -2678,6 +2929,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadCarModelsFromJson();
     tagModelOptionsByBrand();
     snapshotCarOptionsStructure();
+    snapshotBrandOptions();
     await filterModelsByBrand();
     updateAuthUI();
     if (authToken) {
