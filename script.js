@@ -2038,11 +2038,14 @@ function updateMyCarPreview() {
         const modelLabel = normalizeOptionLabel(modelLabelRaw);
 
         if (!hasBrand || !hasModel) {
+            const savedPhoto = getSavedMyCarPhoto('');
                 myCarTitle.textContent = 'Nessun modello selezionato';
                 myCarMeta.textContent = 'Seleziona marca e modello nel calcolatore.';
                 if (myCarHint) myCarHint.textContent = '';
                 if (myCarUploadStatus) myCarUploadStatus.textContent = '';
-            myCarImage.src = buildCarPlaceholderSvg('La mia auto', 'Seleziona un modello');
+            if (myCarUploadBtn) myCarUploadBtn.style.display = savedPhoto ? 'none' : 'block';
+            if (myCarRemoveBtn) myCarRemoveBtn.style.display = savedPhoto ? 'inline-flex' : 'none';
+            myCarImage.src = savedPhoto || buildCarPlaceholderSvg('La mia auto', 'Seleziona un modello');
             updateMyCarStats('');
                 return;
         }
@@ -2050,12 +2053,20 @@ function updateMyCarPreview() {
         myCarTitle.textContent = modelLabel || modelLabelRaw || 'Modello selezionato';
         myCarMeta.textContent = brandLabel || 'Marca selezionata';
         const savedPhoto = getSavedMyCarPhoto(modelSelect.value);
+        if (!savedPhoto) {
+            const defaultPhoto = getSavedMyCarPhoto('');
+            if (defaultPhoto) {
+                persistDefaultPhotoForModel(modelSelect.value, defaultPhoto);
+            }
+        }
         if (myCarHint) {
             const authNote = authToken ? 'Verrà salvata sul tuo account.' : 'Accedi per salvarla sul tuo account.';
             myCarHint.textContent = savedPhoto
                 ? `Foto personale attiva. Puoi sostituirla caricandone un'altra. ${authNote}`
                 : `Sagome automatiche attive. Puoi allegare una foto personale. ${authNote}`;
         }
+        if (myCarUploadBtn) myCarUploadBtn.style.display = savedPhoto ? 'none' : 'block';
+        if (myCarRemoveBtn) myCarRemoveBtn.style.display = savedPhoto ? 'inline-flex' : 'none';
         if (myCarUploadStatus) myCarUploadStatus.textContent = '';
         myCarImage.src = savedPhoto || getCarImageSrc(modelSelect.value, modelLabel || modelLabelRaw, brandLabel || '');
         updateMyCarStats(modelSelect.value);
@@ -2131,44 +2142,93 @@ function closeMyCarConsent() {
     if (myCarConsentOverlay) myCarConsentOverlay.style.display = 'none';
 }
 
-function handleMyCarPhotoSelected(file) {
+async function handleMyCarPhotoSelected(file) {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-        const result = typeof reader.result === 'string' ? reader.result : '';
-        if (!result) return;
-        const { modelSelect } = getPreferredCarSelection();
-        const modelId = modelSelect?.value || '';
-        if (authToken) {
-            apiRequest('/mycar-photo', 'POST', { modelId, dataUrl: result })
-                .then(() => {
-                    myCarPhotos[modelId || 'default'] = result;
-                    if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto salvata sul tuo account.';
-                    updateMyCarPreview();
-                })
-                .catch(() => {
-                    myCarPhotos[modelId || 'default'] = result;
-                    localStorage.setItem(MYCAR_PHOTOS_KEY, JSON.stringify(myCarPhotos));
-                    if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto salvata in locale (offline).';
-                    updateMyCarPreview();
-                });
-        } else {
-            myCarPhotos[modelId || 'default'] = result;
-            localStorage.setItem(MYCAR_PHOTOS_KEY, JSON.stringify(myCarPhotos));
-            if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto salvata in locale.';
-            updateMyCarPreview();
+    if (myCarUploadStatus) myCarUploadStatus.textContent = 'Elaborazione foto...';
+
+    const processed = await processMyCarPhotoFile(file);
+    if (!processed) {
+        if (myCarUploadStatus) {
+            myCarUploadStatus.textContent = 'Formato non supportato. Usa JPG o PNG.';
         }
-    };
-    reader.readAsDataURL(file);
+        return;
+    }
+
+    const { modelSelect } = getPreferredCarSelection();
+    const modelId = modelSelect?.value || '';
+    const result = processed;
+
+    if (authToken) {
+        apiRequest('/mycar-photo', 'POST', { modelId, dataUrl: result })
+            .then(() => {
+                myCarPhotos[modelId || 'default'] = result;
+                if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto salvata sul tuo account.';
+                updateMyCarPreview();
+            })
+            .catch(() => {
+                myCarPhotos[modelId || 'default'] = result;
+                localStorage.setItem(MYCAR_PHOTOS_KEY, JSON.stringify(myCarPhotos));
+                if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto salvata in locale (offline).';
+                updateMyCarPreview();
+            });
+    } else {
+        myCarPhotos[modelId || 'default'] = result;
+        localStorage.setItem(MYCAR_PHOTOS_KEY, JSON.stringify(myCarPhotos));
+        if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto salvata in locale.';
+        updateMyCarPreview();
+    }
+}
+
+async function processMyCarPhotoFile(file) {
+    const type = (file.type || '').toLowerCase();
+    if (!type.startsWith('image/')) return null;
+
+    const objectUrl = URL.createObjectURL(file);
+    try {
+        const bitmap = await loadImageBitmap(objectUrl);
+        if (!bitmap) return null;
+
+        const maxSize = 1280;
+        const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+        const width = Math.round(bitmap.width * scale);
+        const height = Math.round(bitmap.height * scale);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        bitmap.close && bitmap.close();
+        return dataUrl;
+    } catch (e) {
+        return null;
+    } finally {
+        URL.revokeObjectURL(objectUrl);
+    }
+}
+
+async function loadImageBitmap(objectUrl) {
+    if ('createImageBitmap' in window) {
+        try {
+            return await createImageBitmap(await fetch(objectUrl).then(r => r.blob()), { imageOrientation: 'from-image' });
+        } catch (e) {
+            // fallback below
+        }
+    }
+
+    return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = objectUrl;
+    });
 }
 
 function removeMyCarPhoto() {
     const { modelSelect } = getPreferredCarSelection();
     const modelId = modelSelect?.value || '';
-    if (!modelId) {
-        if (myCarUploadStatus) myCarUploadStatus.textContent = 'Seleziona un modello per rimuovere la foto.';
-        return;
-    }
 
     delete myCarPhotos[modelId || 'default'];
     localStorage.setItem(MYCAR_PHOTOS_KEY, JSON.stringify(myCarPhotos));
@@ -2186,6 +2246,25 @@ function removeMyCarPhoto() {
     } else {
         if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto rimossa in locale.';
         updateMyCarPreview();
+    }
+}
+
+function persistDefaultPhotoForModel(modelId, dataUrl) {
+    if (!modelId || !dataUrl) return;
+    if (myCarPhotos[modelId]) return;
+    myCarPhotos[modelId] = dataUrl;
+    localStorage.setItem(MYCAR_PHOTOS_KEY, JSON.stringify(myCarPhotos));
+
+    if (authToken) {
+        apiRequest('/mycar-photo', 'POST', { modelId, dataUrl })
+            .then(() => {
+                if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto predefinita applicata al modello.';
+            })
+            .catch(() => {
+                if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto predefinita applicata in locale.';
+            });
+    } else {
+        if (myCarUploadStatus) myCarUploadStatus.textContent = 'Foto predefinita applicata in locale.';
     }
 }
 
@@ -3273,12 +3352,6 @@ myCarBrandSelect?.addEventListener('change', async () => {
 });
 myCarModelSelect?.addEventListener('change', updateMyCarPreview);
 myCarUploadBtn?.addEventListener('click', () => {
-    if (!myCarModelSelect?.value) {
-        if (myCarHint) myCarHint.textContent = 'Seleziona un modello prima di caricare la foto.';
-        if (myCarUploadStatus) myCarUploadStatus.textContent = '';
-        updateMyCarPreview();
-        return;
-    }
     openMyCarConsent();
 });
 acceptMyCarConsentBtn?.addEventListener('click', () => {
@@ -3287,9 +3360,9 @@ acceptMyCarConsentBtn?.addEventListener('click', () => {
 });
 cancelMyCarConsentBtn?.addEventListener('click', closeMyCarConsent);
 closeMyCarConsentBtn?.addEventListener('click', closeMyCarConsent);
-myCarUploadInput?.addEventListener('change', (e) => {
+myCarUploadInput?.addEventListener('change', async (e) => {
     const file = e.target.files && e.target.files[0];
-    handleMyCarPhotoSelected(file);
+    await handleMyCarPhotoSelected(file);
     e.target.value = '';
 });
 myCarRemoveBtn?.addEventListener('click', removeMyCarPhoto);
