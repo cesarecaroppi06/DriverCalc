@@ -38,6 +38,10 @@
                         <option value="">Seleziona città...</option>
                     </select>
                     <button id="useLocationBtn" class="pill-btn" type="button">📡 Usa la mia posizione</button>
+                    <label for="departureAddress" class="sub-label">Oppure indirizzo completo</label>
+                    <input type="text" id="departureAddress" class="filter-input" placeholder="Via, numero civico, città">
+                    <div id="departureAddressResults" class="filter-results" aria-live="polite"></div>
+                    <p class="helper-text">Se inserisci un indirizzo, la città selezionata viene ignorata.</p>
                 </div>
 
                 <div class="form-group">
@@ -45,6 +49,9 @@
                     <select id="arrival" required>
                         <option value="">Seleziona città...</option>
                     </select>
+                    <label for="arrivalAddress" class="sub-label">Oppure indirizzo completo</label>
+                    <input type="text" id="arrivalAddress" class="filter-input" placeholder="Via, numero civico, città">
+                    <div id="arrivalAddressResults" class="filter-results" aria-live="polite"></div>
                 </div>
 
                 <div class="form-group">
@@ -646,6 +653,6 @@
 
     <script src="config.public.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="script.js?v=4"></script>
+    <script src="script.js?v=9"></script>
 </body>
 </html>

@@ -270,6 +270,7 @@ main::after {
 .form-group {
     display: flex;
     flex-direction: column;
+    position: relative;
 }
 
 .form-group label {
@@ -300,6 +301,8 @@ main::after {
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(8, 12, 26, 0.9);
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    position: relative;
+    z-index: 30;
 }
 
 .filter-result-item {
@@ -531,6 +534,13 @@ select:focus, input:focus {
     display: flex;
     gap: 10px;
     margin-top: 16px;
+}
+
+.sub-label {
+    display: block;
+    margin-top: 10px;
+    font-size: 13px;
+    color: rgba(226, 232, 240, 0.9);
 }
 
 .map-section {

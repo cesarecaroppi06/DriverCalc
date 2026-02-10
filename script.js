@@ -127,6 +127,8 @@ const HERE_API_KEY = 'YOUR_HERE_API_KEY';
 const GOOGLE_MAPS_API_KEY = typeof window !== 'undefined' ? (window.GOOGLE_MAPS_API_KEY || '') : '';
 // Forza OpenStreetMap/Leaflet (disabilita Google Maps UI)
 const USE_GOOGLE_MAPS = false;
+// Disabilita Photon (fallback su Nominatim)
+const USE_PHOTON = false;
 
 // Database rotte: distanza totale e pedaggi (i segmenti arrivano dall'API)
 const routeInfo = {
@@ -229,10 +231,12 @@ async function geocodeCity(cityName) {
     } catch (e) {
         // fallback below
     }
-    try {
-        return await geocodeCityPhoton(cityName);
-    } catch (e) {
-        // fallback below
+    if (USE_PHOTON) {
+        try {
+            return await geocodeCityPhoton(cityName);
+        } catch (e) {
+            // fallback below
+        }
     }
     return geocodeCityNominatim(cityName);
 }
@@ -588,7 +592,7 @@ async function renderLeafletRouteOnMap(geometryCoords, startLatLng, endLatLng) {
     leafletMapInstance.invalidateSize();
 }
 
-async function renderRouteOnMap(route, from, to) {
+async function renderRouteOnMap(route, from, to, fromLoc, toLoc) {
     const mapSection = document.getElementById('mapSection');
     const mapStatus = document.getElementById('mapStatus');
     if (!mapSection) return;
@@ -610,16 +614,30 @@ async function renderRouteOnMap(route, from, to) {
     }
 
     let geometryRoute = route;
-    if (!geometryRoute?.orsGeometry && from && to) {
+    if (!geometryRoute?.orsGeometry) {
         try {
-            geometryRoute = await fetchRouteFromORS(from, to);
+            if (fromLoc && toLoc) {
+                geometryRoute = await fetchRouteFromORSCoords(
+                    { lat: fromLoc.lat, lng: fromLoc.lng },
+                    { lat: toLoc.lat, lng: toLoc.lng }
+                );
+            } else if (from && to) {
+                geometryRoute = await fetchRouteFromORS(from, to);
+            }
         } catch (e) {
             geometryRoute = null;
         }
     }
-    if (!geometryRoute?.orsGeometry && from && to) {
+    if (!geometryRoute?.orsGeometry) {
         try {
-            geometryRoute = await fetchRouteFromOSRM(from, to);
+            if (fromLoc && toLoc) {
+                geometryRoute = await fetchRouteFromOSRMCoords(
+                    { lat: fromLoc.lat, lng: fromLoc.lng },
+                    { lat: toLoc.lat, lng: toLoc.lng }
+                );
+            } else if (from && to) {
+                geometryRoute = await fetchRouteFromOSRM(from, to);
+            }
         } catch (e) {
             geometryRoute = null;
         }
@@ -720,10 +738,14 @@ async function fetchRouteFromGoogle(from, to) {
 async function fetchRouteFromORS(from, to) {
     const [startLon, startLat] = await geocodeCity(from);
     const [endLon, endLat] = await geocodeCity(to);
+    return fetchRouteFromORSCoords({ lat: startLat, lng: startLon }, { lat: endLat, lng: endLon });
+}
+
+async function fetchRouteFromORSCoords(start, end) {
     const body = {
         coordinates: [
-            [startLon, startLat],
-            [endLon, endLat]
+            [start.lng, start.lat],
+            [end.lng, end.lat]
         ],
         geometry_format: 'geojson'
     };
@@ -751,15 +773,19 @@ async function fetchRouteFromORS(from, to) {
         tollCost: 0,
         segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 },
         orsGeometry: geometryCoords,
-        orsStart: { lat: startLat, lng: startLon },
-        orsEnd: { lat: endLat, lng: endLon }
+        orsStart: { lat: start.lat, lng: start.lng },
+        orsEnd: { lat: end.lat, lng: end.lng }
     };
 }
 
 async function fetchRouteFromOSRM(from, to) {
     const [startLon, startLat] = await geocodeCity(from);
     const [endLon, endLat] = await geocodeCity(to);
-    const url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`;
+    return fetchRouteFromOSRMCoords({ lat: startLat, lng: startLon }, { lat: endLat, lng: endLon });
+}
+
+async function fetchRouteFromOSRMCoords(start, end) {
+    const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('OSRM route failed');
     const data = await res.json();
@@ -773,8 +799,8 @@ async function fetchRouteFromOSRM(from, to) {
         tollCost: 0,
         segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 },
         orsGeometry: route.geometry.coordinates,
-        orsStart: { lat: startLat, lng: startLon },
-        orsEnd: { lat: endLat, lng: endLon }
+        orsStart: { lat: start.lat, lng: start.lng },
+        orsEnd: { lat: end.lat, lng: end.lng }
     };
 }
 
@@ -828,10 +854,106 @@ function normalizeCityName(name) {
         .trim();
 }
 
+async function resolveLocation(roleLabel, addressInput, citySelect) {
+    const addressValue = (addressInput?.value || '').trim();
+    if (addressValue) {
+        const lat = parseFloat(addressInput?.dataset?.lat || '');
+        const lng = parseFloat(addressInput?.dataset?.lng || '');
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            return { label: addressValue, lat, lng, kind: 'address', address: addressValue };
+        }
+        try {
+            const cityBias = citySelect?.value || '';
+            const suggestions = await fetchAddressSuggestions(addressValue, cityBias);
+            if (suggestions.length) {
+                const best = suggestions[0];
+                addressInput.value = best.label;
+                addressInput.dataset.lat = String(best.lat);
+                addressInput.dataset.lng = String(best.lng);
+                return { label: best.label, lat: best.lat, lng: best.lng, kind: 'address', address: best.label };
+            }
+        } catch (e) {
+            // fallback below
+        }
+        try {
+            const coords = await geocodeAddress(addressValue, citySelect?.value || '');
+            addressInput.dataset.lat = String(coords.lat);
+            addressInput.dataset.lng = String(coords.lng);
+            return { label: addressValue, lat: coords.lat, lng: coords.lng, kind: 'address', address: addressValue };
+        } catch (e) {
+            throw new Error(`Indirizzo ${roleLabel} non trovato.`);
+        }
+    }
+
+    const cityValue = (citySelect?.value || '').trim();
+    if (!cityValue) {
+        throw new Error(`Seleziona ${roleLabel}.`);
+    }
+    const [lon, lat] = await geocodeCity(cityValue);
+    return { label: cityValue, lat, lng: lon, kind: 'city', city: cityValue };
+}
+
+async function geocodeAddress(addressValue, cityBias = '') {
+    const query = cityBias && !addressValue.toLowerCase().includes(cityBias.toLowerCase())
+        ? `${addressValue}, ${cityBias}`
+        : addressValue;
+    if (USE_PHOTON) {
+        try {
+            const coords = await geocodeCityPhoton(query);
+            return { lat: coords[1], lng: coords[0] };
+        } catch (e) {
+            // fallback below
+        }
+    }
+    const coords = await geocodeCityNominatim(query);
+    return { lat: coords[1], lng: coords[0] };
+}
+
 function findCityOptionByName(cityName) {
     if (!cityName) return null;
     const normalized = normalizeCityName(cityName);
     return Array.from(departureSelect.options).find(opt => normalizeCityName(opt.value) === normalized) || null;
+}
+
+function applyLocationToForm(entry) {
+    if (!entry) return;
+    const depIsAddr = !!entry.departureIsAddress;
+    const arrIsAddr = !!entry.arrivalIsAddress;
+
+    if (depIsAddr) {
+        if (departureAddressInput) {
+            departureAddressInput.value = entry.departureAddress || entry.departure || '';
+            departureAddressInput.dataset.lat = entry.departureLat ? String(entry.departureLat) : '';
+            departureAddressInput.dataset.lng = entry.departureLng ? String(entry.departureLng) : '';
+        }
+        if (departureSelect) departureSelect.value = '';
+    } else {
+        if (departureSelect) departureSelect.value = entry.departureCity || entry.departure || '';
+        if (departureAddressInput) {
+            departureAddressInput.value = '';
+            departureAddressInput.dataset.lat = '';
+            departureAddressInput.dataset.lng = '';
+        }
+    }
+
+    if (arrIsAddr) {
+        if (arrivalAddressInput) {
+            arrivalAddressInput.value = entry.arrivalAddress || entry.arrival || '';
+            arrivalAddressInput.dataset.lat = entry.arrivalLat ? String(entry.arrivalLat) : '';
+            arrivalAddressInput.dataset.lng = entry.arrivalLng ? String(entry.arrivalLng) : '';
+        }
+        if (arrivalSelect) arrivalSelect.value = '';
+    } else {
+        if (arrivalSelect) arrivalSelect.value = entry.arrivalCity || entry.arrival || '';
+        if (arrivalAddressInput) {
+            arrivalAddressInput.value = '';
+            arrivalAddressInput.dataset.lat = '';
+            arrivalAddressInput.dataset.lng = '';
+        }
+    }
+
+    clearResultsContainer(departureAddressResults);
+    clearResultsContainer(arrivalAddressResults);
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -2207,6 +2329,161 @@ function renderResults(container, items, query, onPick) {
     container.style.display = 'block';
 }
 
+function formatPhotonLabel(props = {}) {
+    const parts = [];
+    if (props.street) {
+        const street = props.housenumber ? `${props.street} ${props.housenumber}` : props.street;
+        parts.push(street);
+    } else if (props.name) {
+        parts.push(props.name);
+    }
+    if (props.city || props.town || props.village) {
+        parts.push(props.city || props.town || props.village);
+    }
+    if (props.postcode) parts.push(props.postcode);
+    return parts.filter(Boolean).join(', ');
+}
+
+function isStreetLike(props = {}) {
+    if (props.street || props.housenumber) return true;
+    if (props.type && String(props.type).toLowerCase().includes('street')) return true;
+    if (props.osm_key === 'highway') return true;
+    return false;
+}
+
+function isStreetLikeNominatim(item = {}) {
+    const type = String(item.type || '').toLowerCase();
+    const klass = String(item.class || '').toLowerCase();
+    if (klass === 'highway') return true;
+    if (klass === 'building' && type === 'house') return true;
+    const streetTypes = new Set([
+        'road', 'residential', 'tertiary', 'secondary', 'primary',
+        'service', 'living_street', 'unclassified', 'trunk', 'motorway',
+        'path', 'footway', 'cycleway', 'track'
+    ]);
+    return streetTypes.has(type);
+}
+
+function formatNominatimLabel(item = {}) {
+    const address = item.address || {};
+    const street = address.road || address.pedestrian || address.footway || address.cycleway || address.path;
+    const house = address.house_number || address.housenumber;
+    const locality = address.city || address.town || address.village || address.county;
+    const parts = [];
+    if (street) {
+        parts.push(house ? `${street} ${house}` : street);
+    } else if (item.display_name) {
+        parts.push(item.display_name.split(',')[0]);
+    }
+    if (locality) parts.push(locality);
+    if (address.postcode) parts.push(address.postcode);
+    return parts.filter(Boolean).join(', ') || item.display_name || '';
+}
+
+function scoreNominatimItem(item = {}) {
+    let score = 0;
+    const address = item.address || {};
+    if (address.house_number || address.housenumber) score += 3;
+    if (String(item.type || '').toLowerCase() === 'house') score += 2;
+    if (String(item.class || '').toLowerCase() === 'building') score += 1;
+    if (isStreetLikeNominatim(item)) score += 1;
+    return score;
+}
+
+async function fetchAddressSuggestionsPhoton(query, cityBias = '', signal) {
+    const q = cityBias && !query.toLowerCase().includes(cityBias.toLowerCase())
+        ? `${query}, ${cityBias}`
+        : query;
+    const url = `https://photon.komoot.io/api/?limit=6&lang=it&q=${encodeURIComponent(q)}`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const features = data.features || [];
+    const streetFirst = features.filter(f => isStreetLike(f.properties || {}));
+    const picked = streetFirst.length ? streetFirst : features;
+    return picked.map(f => {
+        const coords = f.geometry && f.geometry.coordinates;
+        const props = f.properties || {};
+        const label = formatPhotonLabel(props) || props.name || query;
+        return {
+            label,
+            lat: coords ? coords[1] : null,
+            lng: coords ? coords[0] : null
+        };
+    }).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng));
+}
+
+async function fetchAddressSuggestionsNominatim(query, cityBias = '', signal) {
+    const q = cityBias && !query.toLowerCase().includes(cityBias.toLowerCase())
+        ? `${query}, ${cityBias}`
+        : query;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=it&accept-language=it&q=${encodeURIComponent(q)}`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const sorted = data.slice().sort((a, b) => scoreNominatimItem(b) - scoreNominatimItem(a));
+    const streetFirst = sorted.filter(isStreetLikeNominatim);
+    const picked = streetFirst.length ? streetFirst : sorted;
+    return picked.map(item => ({
+        label: formatNominatimLabel(item) || item.display_name || query,
+        lat: parseFloat(item.lat),
+        lng: parseFloat(item.lon)
+    })).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng));
+}
+
+async function fetchAddressSuggestions(query, cityBias = '', signal) {
+    const q = cityBias && !query.toLowerCase().includes(cityBias.toLowerCase())
+        ? `${query}, ${cityBias}`
+        : query;
+    if (USE_PHOTON) {
+        const photonItems = await fetchAddressSuggestionsPhoton(q, '', signal).catch(() => []);
+        if (photonItems.length) return photonItems;
+    }
+    const nominatimItems = await fetchAddressSuggestionsNominatim(q, '', signal).catch(() => []);
+    return nominatimItems;
+}
+
+function debounce(fn, delay = 250) {
+    let timer = null;
+    return (...args) => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), delay);
+    };
+}
+
+function setupAddressAutocomplete(input, resultsEl, citySelect) {
+    if (!input || !resultsEl) return;
+    let controller = null;
+    const runSearch = async (value) => {
+        if (controller) controller.abort();
+        controller = new AbortController();
+        const cityBias = citySelect?.value || '';
+        const items = await fetchAddressSuggestions(value, cityBias, controller.signal).catch(() => []);
+        if (input.value.trim() !== value) return;
+        renderResults(resultsEl, items, value, (item) => {
+            input.value = item.label;
+            input.dataset.lat = String(item.lat);
+            input.dataset.lng = String(item.lng);
+            clearResultsContainer(resultsEl);
+        });
+    };
+    const debouncedSearch = debounce(runSearch, 250);
+
+    input.addEventListener('input', (e) => {
+        const value = e.target.value.trim();
+        input.dataset.lat = '';
+        input.dataset.lng = '';
+        if (!value || value.length < 2) {
+            clearResultsContainer(resultsEl);
+            return;
+        }
+        debouncedSearch(value);
+    });
+    input.addEventListener('blur', () => {
+        setTimeout(() => clearResultsContainer(resultsEl), 150);
+    });
+}
+
 function updateBrandResults(query = '') {
     if (!carBrandResults) return;
     const q = query.trim().toLowerCase();
@@ -2297,6 +2574,10 @@ function updateModelResults(query = '') {
 // Elementi DOM
 const departureSelect = document.getElementById('departure');
 const arrivalSelect = document.getElementById('arrival');
+const departureAddressInput = document.getElementById('departureAddress');
+const arrivalAddressInput = document.getElementById('arrivalAddress');
+const departureAddressResults = document.getElementById('departureAddressResults');
+const arrivalAddressResults = document.getElementById('arrivalAddressResults');
 const carBrandSelect = document.getElementById('carBrand');
 const carTypeSelect = document.getElementById('carType');
 const carBrandSearchInput = document.getElementById('carBrandSearch');
@@ -2951,62 +3232,69 @@ function syncFuelWithCarType() {
 }
 
 // Ottiene le info complete della rotta: prima database locale, poi ORS se mancante
-async function getRouteInfo(from, to) {
-    const key1 = `${from}-${to}`;
-    const key2 = `${to}-${from}`;
-    
-    let googleRoute = null;
-    if (USE_GOOGLE_MAPS && hasGoogleKey()) {
+async function getRouteInfo(fromLoc, toLoc) {
+    const fromLabel = fromLoc?.label || '';
+    const toLabel = toLoc?.label || '';
+    const useLocalDb = fromLoc?.kind === 'city' && toLoc?.kind === 'city';
+    const key1 = useLocalDb ? `${fromLabel}-${toLabel}` : null;
+    const key2 = useLocalDb ? `${toLabel}-${fromLabel}` : null;
+
+    if (USE_GOOGLE_MAPS && hasGoogleKey() && useLocalDb) {
+        let googleRoute = null;
         try {
-            googleRoute = await fetchRouteFromGoogle(from, to);
+            googleRoute = await fetchRouteFromGoogle(fromLabel, toLabel);
         } catch (e) {
             googleRoute = null;
         }
-    }
-    if (googleRoute) return googleRoute;
-
-    if (routeInfo[key1]) return routeInfo[key1];
-    if (routeInfo[key2]) return routeInfo[key2];
-    
-    // Tentativo con HERE (include pedaggi se key presente)
-    let hereRoute = null;
-    try {
-        hereRoute = await fetchRouteFromHereAPI(from, to);
-    } catch (e) {
-        hereRoute = null;
-    }
-    if (hereRoute) {
-        routeInfo[key1] = hereRoute; // cache in runtime
-        return hereRoute;
+        if (googleRoute) return googleRoute;
     }
 
-    // Fallback dinamico via ORS
+    if (useLocalDb && key1 && routeInfo[key1]) return routeInfo[key1];
+    if (useLocalDb && key2 && routeInfo[key2]) return routeInfo[key2];
+
+    if (useLocalDb) {
+        // Tentativo con HERE (include pedaggi se key presente)
+        let hereRoute = null;
+        try {
+            hereRoute = await fetchRouteFromHereAPI(fromLabel, toLabel);
+        } catch (e) {
+            hereRoute = null;
+        }
+        if (hereRoute) {
+            routeInfo[key1] = hereRoute; // cache in runtime
+            return hereRoute;
+        }
+    }
+
+    // Routing con coordinate
+    const start = { lat: fromLoc.lat, lng: fromLoc.lng };
+    const end = { lat: toLoc.lat, lng: toLoc.lng };
+
     let route = null;
     try {
-        route = await fetchRouteFromORS(from, to);
+        route = await fetchRouteFromORSCoords(start, end);
     } catch (e) {
         route = null;
     }
     if (route) {
-        routeInfo[key1] = route; // cache in runtime
+        if (useLocalDb && key1) routeInfo[key1] = route;
         return route;
     }
-    // Ultimo fallback: OSRM (solo distanza + geometria)
+
     let osrmRoute = null;
     try {
-        osrmRoute = await fetchRouteFromOSRM(from, to);
+        osrmRoute = await fetchRouteFromOSRMCoords(start, end);
     } catch (e) {
         osrmRoute = null;
     }
     if (osrmRoute) {
-        routeInfo[key1] = osrmRoute;
+        if (useLocalDb && key1) routeInfo[key1] = osrmRoute;
         return osrmRoute;
     }
+
     // Ultima risorsa: distanza stimata con linea retta
     try {
-        const [startLon, startLat] = await geocodeCity(from);
-        const [endLon, endLat] = await geocodeCity(to);
-        const airKm = haversineKm(startLat, startLon, endLat, endLon);
+        const airKm = haversineKm(start.lat, start.lng, end.lat, end.lng);
         const totalDistanceKm = airKm * 1.25; // stima strada
         const estimatedHighway = totalDistanceKm * ESTIMATED_HIGHWAY_FRACTION;
         const estimatedExtra = Math.max(totalDistanceKm - estimatedHighway, 0);
@@ -3014,12 +3302,12 @@ async function getRouteInfo(from, to) {
             totalDistance: totalDistanceKm,
             tollCost: 0,
             segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 },
-            orsGeometry: [[startLon, startLat], [endLon, endLat]],
-            orsStart: { lat: startLat, lng: startLon },
-            orsEnd: { lat: endLat, lng: endLon },
+            orsGeometry: [[start.lng, start.lat], [end.lng, end.lat]],
+            orsStart: { lat: start.lat, lng: start.lng },
+            orsEnd: { lat: end.lat, lng: end.lng },
             isApproximate: true
         };
-        routeInfo[key1] = fallbackRoute;
+        if (useLocalDb && key1) routeInfo[key1] = fallbackRoute;
         return fallbackRoute;
     } catch (e) {
         // no-op
@@ -3076,20 +3364,33 @@ function getSegmentDistances(route) {
 // Calcola il costo del viaggio
 async function calculateTrip() {
     // Validazione
-    if (!departureSelect.value || !arrivalSelect.value || !carBrandSelect.value || !carTypeSelect.value || !fuelTypeSelect.value) {
+    if ((!departureSelect.value && !(departureAddressInput?.value || '').trim()) ||
+        (!arrivalSelect.value && !(arrivalAddressInput?.value || '').trim()) ||
+        !carBrandSelect.value || !carTypeSelect.value || !fuelTypeSelect.value) {
         showError('⚠️ Per favore, seleziona partenza, arrivo, marca, modello e carburante!');
-        return;
-    }
-    
-    if (departureSelect.value === arrivalSelect.value) {
-        showError('❌ Il punto di partenza e arrivo non possono essere uguali!');
         return;
     }
 
     if (completedTripCheckbox) completedTripCheckbox.checked = false;
-    
-    const departure = departureSelect.value;
-    const arrival = arrivalSelect.value;
+
+    let fromLocation = null;
+    let toLocation = null;
+    try {
+        fromLocation = await resolveLocation('la partenza', departureAddressInput, departureSelect);
+        toLocation = await resolveLocation('l’arrivo', arrivalAddressInput, arrivalSelect);
+    } catch (e) {
+        showError(e.message || '❌ Errore nel recupero degli indirizzi.');
+        return;
+    }
+
+    const samePoint = haversineKm(fromLocation.lat, fromLocation.lng, toLocation.lat, toLocation.lng) < 0.2;
+    if (samePoint) {
+        showError('❌ Il punto di partenza e arrivo non possono essere uguali!');
+        return;
+    }
+
+    const departure = fromLocation.label;
+    const arrival = toLocation.label;
     const carBrand = carBrandSelect.value;
     const carType = carTypeSelect.value;
     const fuelType = fuelTypeSelect.value;
@@ -3109,7 +3410,7 @@ async function calculateTrip() {
     // Ottiene info rotta
     let route = null;
     try {
-        route = await getRouteInfo(departure, arrival);
+        route = await getRouteInfo(fromLocation, toLocation);
     } catch (e) {
         route = null;
     }
@@ -3119,7 +3420,7 @@ async function calculateTrip() {
     }
 
     try {
-        await renderRouteOnMap(route, departure, arrival);
+        await renderRouteOnMap(route, departure, arrival, fromLocation, toLocation);
     } catch (e) {
         console.warn('Errore render mappa', e);
     }
@@ -3135,12 +3436,16 @@ async function calculateTrip() {
     const roadDistance = totalDistance - highwayDistance;
     // Se è presente un pedaggio ufficiale nella rotta, usa quello; altrimenti stima al km
     const hasOfficialToll = route.tollCost !== undefined && route.tollCost !== null && route.tollCost > 0;
+    const directKm = haversineKm(fromLocation.lat, fromLocation.lng, toLocation.lat, toLocation.lng);
+    const isShortTrip = totalDistance < 30;
+    const isLikelyUrban = directKm < 18 && totalDistance < 45;
+    const tollEligible = !hasOfficialToll && !isShortTrip && !isLikelyUrban && highwayDistance >= 10;
     const tollCost = hasOfficialToll
         ? route.tollCost
-        : (highwayDistance > 0 ? highwayDistance * TOLL_RATE_EUR_PER_KM : 0);
+        : (tollEligible ? highwayDistance * TOLL_RATE_EUR_PER_KM : 0);
     
     // Calcola numero caselli (solo quando stimiamo i pedaggi)
-    const tollBooths = calculateTollBooths(highwayDistance);
+    const tollBooths = tollEligible ? calculateTollBooths(highwayDistance) : 0;
     const tollBoothsCost = hasOfficialToll ? 0 : (tollBooths * TOLL_BOOTH_COST);
 
     // Consumo totale semplice: (distanza * consumo_per_100km) / 100
@@ -3164,6 +3469,16 @@ async function calculateTrip() {
     lastCalculatedTrip = {
         departure,
         arrival,
+        departureIsAddress: fromLocation.kind === 'address',
+        arrivalIsAddress: toLocation.kind === 'address',
+        departureAddress: fromLocation.kind === 'address' ? fromLocation.label : '',
+        arrivalAddress: toLocation.kind === 'address' ? toLocation.label : '',
+        departureCity: fromLocation.kind === 'city' ? fromLocation.label : '',
+        arrivalCity: toLocation.kind === 'city' ? toLocation.label : '',
+        departureLat: fromLocation.lat,
+        departureLng: fromLocation.lng,
+        arrivalLat: toLocation.lat,
+        arrivalLng: toLocation.lng,
         carBrand,
         carType,
         fuelType,
@@ -3194,6 +3509,7 @@ async function calculateTrip() {
         tollBooths: tollBooths,
         tollBoothsCost: tollBoothsCost.toFixed(2),
         hasOfficialToll: hasOfficialToll,
+        isTollEligible: tollEligible,
         totalCost: totalCost.toFixed(2),
         costPerKm: costPerKm,
         departure: departure,
@@ -3234,7 +3550,9 @@ function displayResults(data) {
     const totalToll = (parseFloat(data.tollCost) + parseFloat(data.tollBoothsCost)).toFixed(2);
     document.getElementById('tollDetail').textContent = data.hasOfficialToll
         ? `Pedaggi ufficiali: €${data.tollCost} (caselli inclusi)`
-        : `Pedaggi stimati: €${data.tollCost} + Caselli (${data.tollBooths} caselli × €${TOLL_BOOTH_COST} = €${data.tollBoothsCost}) = €${totalToll} totali`;
+        : (data.isTollEligible
+            ? `Pedaggi stimati: €${data.tollCost} + Caselli (${data.tollBooths} caselli × €${TOLL_BOOTH_COST} = €${data.tollBoothsCost}) = €${totalToll} totali`
+            : 'Pedaggi: non previsti (tratta urbana/locale)');
     
     document.getElementById('timeDetail').textContent = 
         `${Math.floor(data.estimatedTime / 60)}h ${data.estimatedTime % 60}min (velocità usate: autostrada ${SPEEDS.highway} km/h, superstrada ${SPEEDS.expressway} km/h, extraurbane ${SPEEDS.extra} km/h, urbano ${SPEEDS.urban} km/h)`;
@@ -3566,8 +3884,7 @@ async function saveCurrentToFavorites() {
 }
 
 function loadFavorite(fav) {
-    departureSelect.value = fav.departure;
-    arrivalSelect.value = fav.arrival;
+    applyLocationToForm(fav);
     carBrandSelect.value = fav.carBrand;
     filterModelsByBrand();
     carTypeSelect.value = fav.carType;
@@ -3753,8 +4070,7 @@ function saveCompanionTrip() {
 }
 
 function loadCompanionTrip(trip) {
-    departureSelect.value = trip.departure;
-    arrivalSelect.value = trip.arrival;
+    applyLocationToForm(trip);
     carBrandSelect.value = trip.carBrand;
     filterModelsByBrand();
     carTypeSelect.value = trip.carType;
@@ -3916,10 +4232,22 @@ function resetCalculator() {
     arrivalSelect.value = '';
     carTypeSelect.value = '';
     carBrandSelect.value = '';
+    if (departureAddressInput) {
+        departureAddressInput.value = '';
+        departureAddressInput.dataset.lat = '';
+        departureAddressInput.dataset.lng = '';
+    }
+    if (arrivalAddressInput) {
+        arrivalAddressInput.value = '';
+        arrivalAddressInput.dataset.lat = '';
+        arrivalAddressInput.dataset.lng = '';
+    }
     if (carBrandSearchInput) carBrandSearchInput.value = '';
     if (carTypeSearchInput) carTypeSearchInput.value = '';
     clearResultsContainer(carBrandResults);
     clearResultsContainer(carTypeResults);
+    clearResultsContainer(departureAddressResults);
+    clearResultsContainer(arrivalAddressResults);
     filterBrandOptionsByText('');
     fuelTypeSelect.value = 'benzina';
     fuelPriceInput.value = '1.65';
@@ -4034,7 +4362,7 @@ useLocationBtn?.addEventListener('click', async () => {
             city = null;
         }
     }
-    if (!city) {
+    if (!city && USE_PHOTON) {
         try {
             city = await reverseGeocodePhoton(lat, lng);
         } catch (e) {
@@ -4052,11 +4380,26 @@ useLocationBtn?.addEventListener('click', async () => {
             const match = findCityOptionByName(city);
             if (match) {
                 departureSelect.value = match.value;
+                if (departureAddressInput) {
+                    departureAddressInput.value = '';
+                    departureAddressInput.dataset.lat = '';
+                    departureAddressInput.dataset.lng = '';
+                }
             } else {
-                showError(`⚠️ Posizione trovata: ${city}. Seleziona manualmente la città.`);
+                if (departureAddressInput) {
+                    departureAddressInput.value = city;
+                    departureAddressInput.dataset.lat = String(lat);
+                    departureAddressInput.dataset.lng = String(lng);
+                }
+                showError(`⚠️ Posizione trovata: ${city}. Uso l'indirizzo in partenza.`);
             }
         } else {
-            showError('⚠️ Impossibile determinare la città dalla posizione.');
+            if (departureAddressInput) {
+                departureAddressInput.value = 'Posizione attuale';
+                departureAddressInput.dataset.lat = String(lat);
+                departureAddressInput.dataset.lng = String(lng);
+            }
+            showError('⚠️ Impossibile determinare la città dalla posizione. Uso coordinate GPS.');
         }
         useLocationBtn.disabled = false;
         useLocationBtn.textContent = '📡 Usa la mia posizione';
@@ -4113,6 +4456,12 @@ document.addEventListener('click', (e) => {
     if (carTypeResults && carTypeSearchInput && !carTypeResults.contains(e.target) && e.target !== carTypeSearchInput) {
         clearResultsContainer(carTypeResults);
     }
+    if (departureAddressResults && departureAddressInput && !departureAddressResults.contains(e.target) && e.target !== departureAddressInput) {
+        clearResultsContainer(departureAddressResults);
+    }
+    if (arrivalAddressResults && arrivalAddressInput && !arrivalAddressResults.contains(e.target) && e.target !== arrivalAddressInput) {
+        clearResultsContainer(arrivalAddressResults);
+    }
 });
 
 // Enter per calcolare
@@ -4130,6 +4479,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeCities();
     const mapSection = document.getElementById('mapSection');
     if (mapSection) mapSection.style.display = 'none';
+    setupAddressAutocomplete(departureAddressInput, departureAddressResults, departureSelect);
+    setupAddressAutocomplete(arrivalAddressInput, arrivalAddressResults, arrivalSelect);
     await loadCarModelsFromJson();
     tagModelOptionsByBrand();
     snapshotCarOptionsStructure();
