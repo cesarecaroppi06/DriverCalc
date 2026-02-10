@@ -125,6 +125,8 @@ const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImE0MDI
 const HERE_API_KEY = 'YOUR_HERE_API_KEY';
 // API key Google Maps (imposta la tua chiave in config.js)
 const GOOGLE_MAPS_API_KEY = typeof window !== 'undefined' ? (window.GOOGLE_MAPS_API_KEY || '') : '';
+// Forza OpenStreetMap/Leaflet (disabilita Google Maps UI)
+const USE_GOOGLE_MAPS = false;
 
 // Database rotte: distanza totale e pedaggi (i segmenti arrivano dall'API)
 const routeInfo = {
@@ -212,11 +214,43 @@ function buildRouteGraph() {
 
 const routeGraph = buildRouteGraph();
 
-// Geocoding città -> coordinate (lon/lat) via ORS
+// Geocoding città -> coordinate (lon/lat) via ORS con fallback Nominatim
 async function geocodeCity(cityName) {
-    const url = `https://api.openrouteservice.org/geocode/search?api_key=${ORS_API_KEY}&text=${encodeURIComponent(cityName)}&boundary.country=ITA&size=1`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Geocoding failed');
+    try {
+        const url = `https://api.openrouteservice.org/geocode/search?api_key=${ORS_API_KEY}&text=${encodeURIComponent(cityName)}&boundary.country=ITA&size=1`;
+        const res = await fetch(url);
+        if (res.ok) {
+            const data = await res.json();
+            const feat = data.features && data.features[0];
+            if (feat && feat.geometry && feat.geometry.coordinates) {
+                return feat.geometry.coordinates; // [lon, lat]
+            }
+        }
+    } catch (e) {
+        // fallback below
+    }
+    try {
+        return await geocodeCityPhoton(cityName);
+    } catch (e) {
+        // fallback below
+    }
+    return geocodeCityNominatim(cityName);
+}
+
+async function geocodeCityNominatim(cityName) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=it&q=${encodeURIComponent(cityName)}`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error('Nominatim geocoding failed');
+    const data = await res.json();
+    const item = data && data[0];
+    if (!item || !item.lon || !item.lat) throw new Error('No coordinates found');
+    return [parseFloat(item.lon), parseFloat(item.lat)];
+}
+
+async function geocodeCityPhoton(cityName) {
+    const url = `https://photon.komoot.io/api/?limit=1&lang=it&q=${encodeURIComponent(cityName)}`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error('Photon geocoding failed');
     const data = await res.json();
     const feat = data.features && data.features[0];
     if (!feat || !feat.geometry || !feat.geometry.coordinates) throw new Error('No coordinates found');
@@ -228,6 +262,7 @@ function hasHereKey() {
 }
 
 function hasGoogleKey() {
+    if (!USE_GOOGLE_MAPS) return false;
     return GOOGLE_MAPS_API_KEY && GOOGLE_MAPS_API_KEY !== 'YOUR_GOOGLE_MAPS_API_KEY';
 }
 
@@ -271,18 +306,89 @@ let googleMapInstance = null;
 let googleRoutePolyline = null;
 let googleRouteMarkers = [];
 let googleMapsLoaded = false;
+let googleMapsAuthFailed = false;
+let googleMapsErrorCheckTimer = null;
 let leafletMapInstance = null;
 let leafletRouteLayer = null;
 let leafletRouteMarkers = [];
+let userLocationMarkerGoogle = null;
+let userLocationMarkerLeaflet = null;
+let lastUserLocation = null;
 let activeMapProvider = null;
 
 function hasLeaflet() {
     return typeof window !== 'undefined' && typeof window.L !== 'undefined';
 }
 
+function registerGoogleAuthFailureHandler() {
+    if (typeof window === 'undefined') return;
+    if (window.gm_authFailure) return;
+    window.gm_authFailure = () => {
+        googleMapsAuthFailed = true;
+        googleMapsLoaded = false;
+        activeMapProvider = null;
+        const mapEl = document.getElementById('map');
+        if (mapEl) destroyGoogleMap(mapEl);
+        const mapStatus = document.getElementById('mapStatus');
+        if (mapStatus) {
+            mapStatus.textContent = 'Google Maps non disponibile. Uso OpenStreetMap.';
+        }
+        ensureMapReady('leaflet');
+    };
+}
+
+function scheduleGoogleErrorCheck(mapEl) {
+    if (!mapEl) return;
+    if (googleMapsErrorCheckTimer) clearTimeout(googleMapsErrorCheckTimer);
+    googleMapsErrorCheckTimer = setTimeout(() => {
+        const hasErrorOverlay = mapEl.querySelector('.gm-err-container, .gm-err-title, .gm-err-icon');
+        if (hasErrorOverlay) {
+            googleMapsAuthFailed = true;
+            googleMapsLoaded = false;
+            activeMapProvider = null;
+            const mapStatus = document.getElementById('mapStatus');
+            if (mapStatus) {
+                mapStatus.textContent = 'Google Maps non disponibile. Uso OpenStreetMap.';
+            }
+            destroyGoogleMap(mapEl);
+            ensureMapReady('leaflet');
+        }
+    }, 1500);
+}
+
+function clearMapContainer(mapEl) {
+    if (!mapEl) return;
+    mapEl.innerHTML = '';
+}
+
+function destroyGoogleMap(mapEl) {
+    clearGoogleRoute();
+    if (userLocationMarkerGoogle) {
+        userLocationMarkerGoogle.setMap(null);
+        userLocationMarkerGoogle = null;
+    }
+    googleMapInstance = null;
+    clearMapContainer(mapEl);
+}
+
+function destroyLeafletMap(mapEl) {
+    clearLeafletRoute();
+    if (userLocationMarkerLeaflet) {
+        userLocationMarkerLeaflet.remove();
+        userLocationMarkerLeaflet = null;
+    }
+    if (leafletMapInstance) {
+        leafletMapInstance.remove();
+        leafletMapInstance = null;
+    }
+    clearMapContainer(mapEl);
+}
+
 function loadGoogleMapsScript() {
+    if (googleMapsAuthFailed) return Promise.reject(new Error('Google Maps auth failed'));
     if (googleMapsLoaded || !hasGoogleKey()) return Promise.resolve();
     return new Promise((resolve, reject) => {
+        registerGoogleAuthFailureHandler();
         const script = document.createElement('script');
         script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=geometry&region=IT&language=it`;
         script.async = true;
@@ -301,20 +407,16 @@ async function ensureMapReady(preferredProvider) {
     if (!mapEl) return null;
 
     if (activeMapProvider && preferredProvider && activeMapProvider !== preferredProvider) {
-        if (activeMapProvider === 'leaflet' && leafletMapInstance) {
-            leafletMapInstance.remove();
-            leafletMapInstance = null;
-            clearLeafletRoute();
-        }
-        if (activeMapProvider === 'google') {
-            clearGoogleRoute();
-            googleMapInstance = null;
-            mapEl.innerHTML = '';
+        if (activeMapProvider === 'leaflet') {
+            destroyLeafletMap(mapEl);
+        } else if (activeMapProvider === 'google') {
+            destroyGoogleMap(mapEl);
         }
         activeMapProvider = null;
     }
 
     const tryGoogle = async () => {
+        if (googleMapsAuthFailed) return false;
         if (!hasGoogleKey()) return false;
         try {
             await loadGoogleMapsScript();
@@ -323,59 +425,56 @@ async function ensureMapReady(preferredProvider) {
         }
         if (!window.google || !google.maps) return false;
         if (!googleMapInstance) {
+            if (leafletMapInstance) {
+                destroyLeafletMap(mapEl);
+            }
             googleMapInstance = new google.maps.Map(mapEl, {
                 center: { lat: 41.9028, lng: 12.4964 },
                 zoom: 6,
                 mapTypeControl: false,
                 streetViewControl: false
             });
+            scheduleGoogleErrorCheck(mapEl);
         }
+        activeMapProvider = 'google';
         return true;
     };
 
     const tryLeaflet = async () => {
         if (!hasLeaflet()) return false;
         if (!leafletMapInstance) {
+            if (googleMapInstance) {
+                destroyGoogleMap(mapEl);
+            }
             leafletMapInstance = L.map(mapEl, { zoomControl: true }).setView([41.9028, 12.4964], 6);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; OpenStreetMap contributors'
             }).addTo(leafletMapInstance);
         }
+        activeMapProvider = 'leaflet';
         return true;
     };
 
     if (preferredProvider === 'google') {
-        if (await tryGoogle()) {
-            activeMapProvider = 'google';
-            return 'google';
-        }
-        if (await tryLeaflet()) {
-            activeMapProvider = 'leaflet';
-            return 'leaflet';
-        }
+        if (await tryGoogle()) return 'google';
+        if (await tryLeaflet()) return 'leaflet';
         return null;
     }
 
     if (preferredProvider === 'leaflet') {
-        if (await tryLeaflet()) {
-            activeMapProvider = 'leaflet';
-            return 'leaflet';
-        }
-        if (await tryGoogle()) {
-            activeMapProvider = 'google';
-            return 'google';
-        }
+        if (await tryLeaflet()) return 'leaflet';
+        if (await tryGoogle()) return 'google';
         return null;
     }
 
-    if (await tryGoogle()) {
-        activeMapProvider = 'google';
-        return 'google';
+    if (activeMapProvider === 'google') {
+        if (await tryGoogle()) return 'google';
     }
-    if (await tryLeaflet()) {
-        activeMapProvider = 'leaflet';
-        return 'leaflet';
+    if (activeMapProvider === 'leaflet') {
+        if (await tryLeaflet()) return 'leaflet';
     }
+    if (await tryGoogle()) return 'google';
+    if (await tryLeaflet()) return 'leaflet';
     return null;
 }
 
@@ -399,7 +498,7 @@ async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
     }
 
     mapSection.style.display = 'block';
-    if (mapStatus) mapStatus.textContent = '';
+    if (mapStatus) mapStatus.textContent = route?.isApproximate ? 'Percorso stimato (linea d’aria)' : '';
     clearGoogleRoute();
 
     if (!polyline || !window.google || !google.maps?.geometry?.encoding) return;
@@ -418,10 +517,25 @@ async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
     if (endLatLng) {
         googleRouteMarkers.push(new google.maps.Marker({ position: endLatLng, map: googleMapInstance }));
     }
+    if (lastUserLocation) {
+        if (!userLocationMarkerGoogle) {
+            userLocationMarkerGoogle = new google.maps.Marker({
+                position: lastUserLocation,
+                map: googleMapInstance,
+                title: 'La tua posizione'
+            });
+        } else {
+            userLocationMarkerGoogle.setPosition(lastUserLocation);
+            userLocationMarkerGoogle.setMap(googleMapInstance);
+        }
+    }
 
     const bounds = new google.maps.LatLngBounds();
     path.forEach(p => bounds.extend(p));
+    if (lastUserLocation) bounds.extend(lastUserLocation);
     googleMapInstance.fitBounds(bounds);
+    if (google.maps?.event) google.maps.event.trigger(googleMapInstance, 'resize');
+    scheduleGoogleErrorCheck(document.getElementById('map'));
 }
 
 function clearLeafletRoute() {
@@ -460,17 +574,27 @@ async function renderLeafletRouteOnMap(geometryCoords, startLatLng, endLatLng) {
 
     if (start) leafletRouteMarkers.push(L.marker([start.lat, start.lng]).addTo(leafletMapInstance));
     if (end) leafletRouteMarkers.push(L.marker([end.lat, end.lng]).addTo(leafletMapInstance));
+    if (lastUserLocation) {
+        if (!userLocationMarkerLeaflet) {
+            userLocationMarkerLeaflet = L.marker([lastUserLocation.lat, lastUserLocation.lng], {
+                title: 'La tua posizione'
+            }).addTo(leafletMapInstance);
+        } else {
+            userLocationMarkerLeaflet.setLatLng([lastUserLocation.lat, lastUserLocation.lng]);
+        }
+    }
 
     leafletMapInstance.fitBounds(leafletRouteLayer.getBounds(), { padding: [20, 20] });
+    leafletMapInstance.invalidateSize();
 }
 
-async function renderRouteOnMap(route) {
+async function renderRouteOnMap(route, from, to) {
     const mapSection = document.getElementById('mapSection');
     const mapStatus = document.getElementById('mapStatus');
     if (!mapSection) return;
 
-    const preferred = route?.googlePolyline ? 'google' : (route?.orsGeometry ? 'leaflet' : null);
-    const provider = await ensureMapReady(preferred);
+    const preferred = 'leaflet';
+    let provider = await ensureMapReady(preferred);
 
     if (!provider) {
         mapSection.style.display = 'none';
@@ -485,12 +609,71 @@ async function renderRouteOnMap(route) {
         return;
     }
 
-    if (provider === 'leaflet' && route?.orsGeometry) {
-        await renderLeafletRouteOnMap(route.orsGeometry, route.orsStart, route.orsEnd);
-        return;
+    let geometryRoute = route;
+    if (!geometryRoute?.orsGeometry && from && to) {
+        try {
+            geometryRoute = await fetchRouteFromORS(from, to);
+        } catch (e) {
+            geometryRoute = null;
+        }
+    }
+    if (!geometryRoute?.orsGeometry && from && to) {
+        try {
+            geometryRoute = await fetchRouteFromOSRM(from, to);
+        } catch (e) {
+            geometryRoute = null;
+        }
+    }
+
+    if (geometryRoute?.orsGeometry) {
+        if (provider !== 'leaflet') {
+            provider = await ensureMapReady('leaflet');
+        }
+        if (provider === 'leaflet') {
+            await renderLeafletRouteOnMap(geometryRoute.orsGeometry, geometryRoute.orsStart, geometryRoute.orsEnd);
+            return;
+        }
     }
 
     if (mapStatus) mapStatus.textContent = 'Percorso non disponibile su mappa.';
+}
+
+async function renderUserLocationOnMap() {
+    if (!lastUserLocation) return;
+    const preferred = activeMapProvider || (hasGoogleKey() ? 'google' : 'leaflet');
+    const provider = await ensureMapReady(preferred);
+    const mapSection = document.getElementById('mapSection');
+    const mapStatus = document.getElementById('mapStatus');
+    if (!mapSection || !provider) return;
+    mapSection.style.display = 'block';
+    if (mapStatus) mapStatus.textContent = '';
+
+    if (provider === 'google' && googleMapInstance) {
+        if (!userLocationMarkerGoogle) {
+            userLocationMarkerGoogle = new google.maps.Marker({
+                position: lastUserLocation,
+                map: googleMapInstance,
+                title: 'La tua posizione'
+            });
+        } else {
+            userLocationMarkerGoogle.setPosition(lastUserLocation);
+        }
+        googleMapInstance.setCenter(lastUserLocation);
+        googleMapInstance.setZoom(12);
+        if (google.maps?.event) google.maps.event.trigger(googleMapInstance, 'resize');
+    }
+
+    if (provider === 'leaflet' && leafletMapInstance) {
+        if (!userLocationMarkerLeaflet) {
+            userLocationMarkerLeaflet = L.marker([lastUserLocation.lat, lastUserLocation.lng], {
+                title: 'La tua posizione'
+            }).addTo(leafletMapInstance);
+        } else {
+            userLocationMarkerLeaflet.setLatLng([lastUserLocation.lat, lastUserLocation.lng]);
+        }
+        leafletMapInstance.setView([lastUserLocation.lat, lastUserLocation.lng], 12);
+        leafletMapInstance.invalidateSize();
+    }
 }
 
 async function fetchRouteFromGoogle(from, to) {
@@ -573,6 +756,28 @@ async function fetchRouteFromORS(from, to) {
     };
 }
 
+async function fetchRouteFromOSRM(from, to) {
+    const [startLon, startLat] = await geocodeCity(from);
+    const [endLon, endLat] = await geocodeCity(to);
+    const url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('OSRM route failed');
+    const data = await res.json();
+    const route = data.routes && data.routes[0];
+    if (!route || !route.geometry || !route.geometry.coordinates) throw new Error('OSRM route geometry missing');
+    const totalDistanceKm = (route.distance || 0) / 1000;
+    const estimatedHighway = totalDistanceKm * ESTIMATED_HIGHWAY_FRACTION;
+    const estimatedExtra = Math.max(totalDistanceKm - estimatedHighway, 0);
+    return {
+        totalDistance: totalDistanceKm,
+        tollCost: 0,
+        segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 },
+        orsGeometry: route.geometry.coordinates,
+        orsStart: { lat: startLat, lng: startLon },
+        orsEnd: { lat: endLat, lng: endLon }
+    };
+}
+
 async function reverseGeocodeGoogle(lat, lng) {
     const res = await fetch(`${API_BASE}/google/reverse-geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
     if (!res.ok) return null;
@@ -595,6 +800,25 @@ async function reverseGeocodeORS(lat, lng) {
     return feat.properties.locality || feat.properties.name || null;
 }
 
+async function reverseGeocodeNominatim(lat, lng) {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=10&addressdetails=1`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const address = data && data.address;
+    return (address && (address.city || address.town || address.village || address.county)) || null;
+}
+
+async function reverseGeocodePhoton(lat, lng) {
+    const url = `https://photon.komoot.io/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&lang=it`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const feat = data.features && data.features[0];
+    const props = feat && feat.properties;
+    return (props && (props.city || props.town || props.village || props.county || props.name)) || null;
+}
+
 function normalizeCityName(name) {
     if (!name) return '';
     return name
@@ -608,6 +832,19 @@ function findCityOptionByName(cityName) {
     if (!cityName) return null;
     const normalized = normalizeCityName(cityName);
     return Array.from(departureSelect.options).find(opt => normalizeCityName(opt.value) === normalized) || null;
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+    const toRad = (v) => (v * Math.PI) / 180;
+    const R = 6371;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
 }
 
 // Costante costo casello medio in Italia (€ per casello)
@@ -2718,24 +2955,74 @@ async function getRouteInfo(from, to) {
     const key1 = `${from}-${to}`;
     const key2 = `${to}-${from}`;
     
-    const googleRoute = await fetchRouteFromGoogle(from, to);
+    let googleRoute = null;
+    if (USE_GOOGLE_MAPS && hasGoogleKey()) {
+        try {
+            googleRoute = await fetchRouteFromGoogle(from, to);
+        } catch (e) {
+            googleRoute = null;
+        }
+    }
     if (googleRoute) return googleRoute;
 
     if (routeInfo[key1]) return routeInfo[key1];
     if (routeInfo[key2]) return routeInfo[key2];
     
     // Tentativo con HERE (include pedaggi se key presente)
-    const hereRoute = await fetchRouteFromHereAPI(from, to);
+    let hereRoute = null;
+    try {
+        hereRoute = await fetchRouteFromHereAPI(from, to);
+    } catch (e) {
+        hereRoute = null;
+    }
     if (hereRoute) {
         routeInfo[key1] = hereRoute; // cache in runtime
         return hereRoute;
     }
 
     // Fallback dinamico via ORS
-    const route = await fetchRouteFromORS(from, to);
+    let route = null;
+    try {
+        route = await fetchRouteFromORS(from, to);
+    } catch (e) {
+        route = null;
+    }
     if (route) {
         routeInfo[key1] = route; // cache in runtime
         return route;
+    }
+    // Ultimo fallback: OSRM (solo distanza + geometria)
+    let osrmRoute = null;
+    try {
+        osrmRoute = await fetchRouteFromOSRM(from, to);
+    } catch (e) {
+        osrmRoute = null;
+    }
+    if (osrmRoute) {
+        routeInfo[key1] = osrmRoute;
+        return osrmRoute;
+    }
+    // Ultima risorsa: distanza stimata con linea retta
+    try {
+        const [startLon, startLat] = await geocodeCity(from);
+        const [endLon, endLat] = await geocodeCity(to);
+        const airKm = haversineKm(startLat, startLon, endLat, endLon);
+        const totalDistanceKm = airKm * 1.25; // stima strada
+        const estimatedHighway = totalDistanceKm * ESTIMATED_HIGHWAY_FRACTION;
+        const estimatedExtra = Math.max(totalDistanceKm - estimatedHighway, 0);
+        const fallbackRoute = {
+            totalDistance: totalDistanceKm,
+            tollCost: 0,
+            segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 },
+            orsGeometry: [[startLon, startLat], [endLon, endLat]],
+            orsStart: { lat: startLat, lng: startLon },
+            orsEnd: { lat: endLat, lng: endLon },
+            isApproximate: true
+        };
+        routeInfo[key1] = fallbackRoute;
+        return fallbackRoute;
+    } catch (e) {
+        // no-op
     }
     return null;
 }
@@ -2756,10 +3043,23 @@ function getSegmentDistances(route) {
         const totalFromSegments = highway + expressway + extra + urban;
         // Se i segmenti sommano meno del totale, aggiungi il residuo a extra
         const residual = Math.max(route.totalDistance - totalFromSegments, 0);
+        const normalizedExtra = extra + residual;
+        const onlyExtra = highway === 0 && expressway === 0 && urban === 0 && normalizedExtra > 0;
+        const shouldEstimateHighway = onlyExtra && route.totalDistance >= 80 && (!route.tollCost || route.tollCost === 0);
+        if (shouldEstimateHighway) {
+            const estimatedHighway = route.totalDistance * ESTIMATED_HIGHWAY_FRACTION;
+            const estimatedExtra = Math.max(route.totalDistance - estimatedHighway, 0);
+            return {
+                highway: estimatedHighway,
+                expressway: 0,
+                extra: estimatedExtra,
+                urban: 0
+            };
+        }
         return {
             highway,
             expressway,
-            extra: extra + residual,
+            extra: normalizedExtra,
             urban
         };
     }
@@ -2807,13 +3107,22 @@ async function calculateTrip() {
     }
     
     // Ottiene info rotta
-    const route = await getRouteInfo(departure, arrival);
+    let route = null;
+    try {
+        route = await getRouteInfo(departure, arrival);
+    } catch (e) {
+        route = null;
+    }
     if (!route) {
-        showError('❌ Percorso non disponibile nel database. Aggiungi la tratta con distanza e pedaggi corretti.');
+        showError('❌ Errore nel calcolo della rotta. Riprova oppure scegli una tratta diversa.');
         return;
     }
 
-    await renderRouteOnMap(route);
+    try {
+        await renderRouteOnMap(route, departure, arrival);
+    } catch (e) {
+        console.warn('Errore render mappa', e);
+    }
 
     // Normalizza distanze e pedaggi
     const totalDistance = Math.max(route.totalDistance, 0);
@@ -2830,9 +3139,9 @@ async function calculateTrip() {
         ? route.tollCost
         : (highwayDistance > 0 ? highwayDistance * TOLL_RATE_EUR_PER_KM : 0);
     
-    // Calcola numero caselli
+    // Calcola numero caselli (solo quando stimiamo i pedaggi)
     const tollBooths = calculateTollBooths(highwayDistance);
-    const tollBoothsCost = tollBooths * TOLL_BOOTH_COST;
+    const tollBoothsCost = hasOfficialToll ? 0 : (tollBooths * TOLL_BOOTH_COST);
 
     // Consumo totale semplice: (distanza * consumo_per_100km) / 100
     const fuelUnit = getFuelUnit(fuelType);
@@ -2884,6 +3193,7 @@ async function calculateTrip() {
         tollCost: tollCost.toFixed(2),
         tollBooths: tollBooths,
         tollBoothsCost: tollBoothsCost.toFixed(2),
+        hasOfficialToll: hasOfficialToll,
         totalCost: totalCost.toFixed(2),
         costPerKm: costPerKm,
         departure: departure,
@@ -2921,8 +3231,10 @@ function displayResults(data) {
     document.getElementById('routeDetail').textContent = 
         `${data.departure} → ${data.arrival} (${data.totalDistance} km: ${data.highwayDistance} km autostrada, ${data.expresswayDistance} km superstrada, ${data.extraDistance} km extraurbane, ${data.urbanDistance} km urbano)`;
     
-    document.getElementById('tollDetail').textContent = 
-        `Pedaggi: €${data.tollCost} + Caselli (${data.tollBooths} caselli × €${TOLL_BOOTH_COST} = €${data.tollBoothsCost}) = €${(parseFloat(data.tollCost) + parseFloat(data.tollBoothsCost)).toFixed(2)} totali`;
+    const totalToll = (parseFloat(data.tollCost) + parseFloat(data.tollBoothsCost)).toFixed(2);
+    document.getElementById('tollDetail').textContent = data.hasOfficialToll
+        ? `Pedaggi ufficiali: €${data.tollCost} (caselli inclusi)`
+        : `Pedaggi stimati: €${data.tollCost} + Caselli (${data.tollBooths} caselli × €${TOLL_BOOTH_COST} = €${data.tollBoothsCost}) = €${totalToll} totali`;
     
     document.getElementById('timeDetail').textContent = 
         `${Math.floor(data.estimatedTime / 60)}h ${data.estimatedTime % 60}min (velocità usate: autostrada ${SPEEDS.highway} km/h, superstrada ${SPEEDS.expressway} km/h, extraurbane ${SPEEDS.extra} km/h, urbano ${SPEEDS.urban} km/h)`;
@@ -3628,7 +3940,12 @@ function handleBrandChange() {
 }
 
 // Event listeners
-calculateBtn.addEventListener('click', calculateTrip);
+calculateBtn.addEventListener('click', () => {
+    calculateTrip().catch(err => {
+        console.error(err);
+        showError('❌ Si è verificato un errore durante il calcolo. Riprova.');
+    });
+});
 resetBtn.addEventListener('click', resetCalculator);
 fuelTypeSelect.addEventListener('change', updateFuelPriceUI);
 carTypeSelect.addEventListener('change', () => {
@@ -3700,21 +4017,37 @@ useLocationBtn?.addEventListener('click', async () => {
     navigator.geolocation.getCurrentPosition(async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        let city = null;
+        lastUserLocation = { lat, lng };
+        await renderUserLocationOnMap();
+    let city = null;
+    try {
+        if (hasGoogleKey()) {
+            city = await reverseGeocodeGoogle(lat, lng);
+        }
+    } catch (e) {
+            city = null;
+        }
+    if (!city) {
         try {
-            if (hasGoogleKey()) {
-                city = await reverseGeocodeGoogle(lat, lng);
-            }
+            city = await reverseGeocodeORS(lat, lng);
         } catch (e) {
             city = null;
         }
-        if (!city) {
-            try {
-                city = await reverseGeocodeORS(lat, lng);
-            } catch (e) {
-                city = null;
-            }
+    }
+    if (!city) {
+        try {
+            city = await reverseGeocodePhoton(lat, lng);
+        } catch (e) {
+            city = null;
         }
+    }
+    if (!city) {
+        try {
+            city = await reverseGeocodeNominatim(lat, lng);
+        } catch (e) {
+            city = null;
+        }
+    }
         if (city) {
             const match = findCityOptionByName(city);
             if (match) {
@@ -3784,7 +4117,12 @@ document.addEventListener('click', (e) => {
 
 // Enter per calcolare
 document.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') calculateTrip();
+    if (e.key === 'Enter') {
+        calculateTrip().catch(err => {
+            console.error(err);
+            showError('❌ Si è verificato un errore durante il calcolo. Riprova.');
+        });
+    }
 });
 
 // Inizializza al caricamento
