@@ -123,6 +123,8 @@ const cities = [
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImE0MDIxYTVkMjA4NzRhODY4MjAwMDg1YzhhMTRjMWQ2IiwiaCI6Im11cm11cjY0In0=';
 // API key HERE Routing v8 (imposta la tua chiave)
 const HERE_API_KEY = 'YOUR_HERE_API_KEY';
+// API key Google Maps (imposta la tua chiave in config.js)
+const GOOGLE_MAPS_API_KEY = typeof window !== 'undefined' ? (window.GOOGLE_MAPS_API_KEY || '') : '';
 
 // Database rotte: distanza totale e pedaggi (i segmenti arrivano dall'API)
 const routeInfo = {
@@ -225,6 +227,10 @@ function hasHereKey() {
     return HERE_API_KEY && HERE_API_KEY !== 'YOUR_HERE_API_KEY';
 }
 
+function hasGoogleKey() {
+    return GOOGLE_MAPS_API_KEY && GOOGLE_MAPS_API_KEY !== 'YOUR_GOOGLE_MAPS_API_KEY';
+}
+
 // Richiede distanza e pedaggi via HERE Routing v8 (se disponibile)
 async function fetchRouteFromHereAPI(from, to) {
     if (!hasHereKey()) return null;
@@ -261,6 +267,147 @@ async function fetchRouteFromHereAPI(from, to) {
     };
 }
 
+let googleMapInstance = null;
+let googleRoutePolyline = null;
+let googleRouteMarkers = [];
+let googleMapsLoaded = false;
+
+function loadGoogleMapsScript() {
+    if (googleMapsLoaded || !hasGoogleKey()) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=geometry&region=IT&language=it`;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => {
+            googleMapsLoaded = true;
+            resolve();
+        };
+        script.onerror = () => reject(new Error('Google Maps JS non disponibile'));
+        document.head.appendChild(script);
+    });
+}
+
+async function ensureMapReady() {
+    if (!hasGoogleKey()) return false;
+    try {
+        await loadGoogleMapsScript();
+    } catch (e) {
+        return false;
+    }
+    if (googleMapInstance) return true;
+    const mapEl = document.getElementById('map');
+    if (!mapEl || !window.google || !google.maps) return false;
+
+    googleMapInstance = new google.maps.Map(mapEl, {
+        center: { lat: 41.9028, lng: 12.4964 },
+        zoom: 6,
+        mapTypeControl: false,
+        streetViewControl: false
+    });
+    return true;
+}
+
+function clearGoogleRoute() {
+    if (googleRoutePolyline) {
+        googleRoutePolyline.setMap(null);
+        googleRoutePolyline = null;
+    }
+    googleRouteMarkers.forEach(m => m.setMap(null));
+    googleRouteMarkers = [];
+}
+
+async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
+    const ok = await ensureMapReady();
+    const mapSection = document.getElementById('mapSection');
+    const mapStatus = document.getElementById('mapStatus');
+    if (!mapSection) return;
+    if (!ok) {
+        mapSection.style.display = 'none';
+        return;
+    }
+
+    mapSection.style.display = 'block';
+    if (mapStatus) mapStatus.textContent = '';
+    clearGoogleRoute();
+
+    if (!polyline || !window.google || !google.maps?.geometry?.encoding) return;
+    const path = google.maps.geometry.encoding.decodePath(polyline);
+    googleRoutePolyline = new google.maps.Polyline({
+        path,
+        strokeColor: '#f59e0b',
+        strokeOpacity: 0.9,
+        strokeWeight: 4
+    });
+    googleRoutePolyline.setMap(googleMapInstance);
+
+    if (startLatLng) {
+        googleRouteMarkers.push(new google.maps.Marker({ position: startLatLng, map: googleMapInstance }));
+    }
+    if (endLatLng) {
+        googleRouteMarkers.push(new google.maps.Marker({ position: endLatLng, map: googleMapInstance }));
+    }
+
+    const bounds = new google.maps.LatLngBounds();
+    path.forEach(p => bounds.extend(p));
+    googleMapInstance.fitBounds(bounds);
+}
+
+async function fetchRouteFromGoogle(from, to) {
+    if (!hasGoogleKey()) return null;
+    const url = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+    const body = {
+        origin: { address: from, regionCode: 'IT' },
+        destination: { address: to, regionCode: 'IT' },
+        travelMode: 'DRIVE',
+        routingPreference: 'TRAFFIC_UNAWARE',
+        computeAlternativeRoutes: false,
+        units: 'METRIC'
+    };
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+            'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.tollInfo,routes.polyline.encodedPolyline,routes.legs.startLocation,routes.legs.endLocation'
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    const route = data.routes && data.routes[0];
+    if (!route) return null;
+
+    const totalDistanceKm = (route.distanceMeters || 0) / 1000;
+    const tolls = route.tollInfo && route.tollInfo.estimatedPrice ? route.tollInfo.estimatedPrice : [];
+    let tollCost = 0;
+    tolls.forEach(price => {
+        if (price.currencyCode === 'EUR') {
+            tollCost += Number(price.units || 0) + Number(price.nanos || 0) / 1e9;
+        }
+    });
+
+    const encodedPolyline = route.polyline && route.polyline.encodedPolyline;
+    const start = route.legs && route.legs[0] && route.legs[0].startLocation && route.legs[0].startLocation.latLng;
+    const end = route.legs && route.legs[0] && route.legs[0].endLocation && route.legs[0].endLocation.latLng;
+
+    return {
+        totalDistance: totalDistanceKm,
+        tollCost: tollCost,
+        segments: {
+            highway: totalDistanceKm * ESTIMATED_HIGHWAY_FRACTION,
+            expressway: 0,
+            extra: Math.max(totalDistanceKm - totalDistanceKm * ESTIMATED_HIGHWAY_FRACTION, 0),
+            urban: 0
+        },
+        googlePolyline: encodedPolyline,
+        googleStart: start || null,
+        googleEnd: end || null
+    };
+}
+
 // Richiede distanza e segmenti via ORS Directions
 async function fetchRouteFromORS(from, to) {
     const [startLon, startLat] = await geocodeCity(from);
@@ -292,6 +439,20 @@ async function fetchRouteFromORS(from, to) {
         tollCost: 0,
         segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 }
     };
+}
+
+async function reverseGeocodeGoogle(lat, lng) {
+    if (!hasGoogleKey()) return null;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=it&region=IT&key=${GOOGLE_MAPS_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const result = data.results && data.results[0];
+    if (!result) return null;
+
+    const locality = (result.address_components || []).find(c => c.types.includes('locality'));
+    const fallback = (result.address_components || []).find(c => c.types.includes('administrative_area_level_2'));
+    return (locality && locality.long_name) || (fallback && fallback.long_name) || null;
 }
 
 // Costante costo casello medio in Italia (€ per casello)
@@ -1821,6 +1982,7 @@ const myCarUploadInput = document.getElementById('myCarUploadInput');
 const myCarRemoveBtn = document.getElementById('myCarRemoveBtn');
 const myCarUploadStatus = document.getElementById('myCarUploadStatus');
 const myCarConsentOverlay = document.getElementById('myCarConsentOverlay');
+const useLocationBtn = document.getElementById('useLocationBtn');
 const closeMyCarConsentBtn = document.getElementById('closeMyCarConsent');
 const cancelMyCarConsentBtn = document.getElementById('cancelMyCarConsent');
 const acceptMyCarConsentBtn = document.getElementById('acceptMyCarConsent');
@@ -2401,6 +2563,11 @@ async function getRouteInfo(from, to) {
     const key1 = `${from}-${to}`;
     const key2 = `${to}-${from}`;
     
+    if (hasGoogleKey()) {
+        const googleRoute = await fetchRouteFromGoogle(from, to);
+        if (googleRoute) return googleRoute;
+    }
+
     if (routeInfo[key1]) return routeInfo[key1];
     if (routeInfo[key2]) return routeInfo[key2];
     
@@ -2491,6 +2658,10 @@ async function calculateTrip() {
     if (!route) {
         showError('❌ Percorso non disponibile nel database. Aggiungi la tratta con distanza e pedaggi corretti.');
         return;
+    }
+
+    if (route.googlePolyline) {
+        await renderGoogleRouteOnMap(route.googlePolyline, route.googleStart, route.googleEnd);
     }
 
     // Normalizza distanze e pedaggi
@@ -3366,6 +3537,37 @@ myCarUploadInput?.addEventListener('change', async (e) => {
     e.target.value = '';
 });
 myCarRemoveBtn?.addEventListener('click', removeMyCarPhoto);
+useLocationBtn?.addEventListener('click', async () => {
+    if (!navigator.geolocation) {
+        if (myCarUploadStatus) myCarUploadStatus.textContent = '';
+        showError('❌ Geolocalizzazione non supportata dal browser.');
+        return;
+    }
+    hideError();
+    useLocationBtn.disabled = true;
+    useLocationBtn.textContent = '📡 Posizione in corso...';
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const city = await reverseGeocodeGoogle(lat, lng);
+        if (city) {
+            const match = Array.from(departureSelect.options).find(opt => opt.value.toLowerCase() === city.toLowerCase());
+            if (match) {
+                departureSelect.value = match.value;
+            } else {
+                showError(`⚠️ Posizione trovata: ${city}. Seleziona manualmente la città.`);
+            }
+        } else {
+            showError('⚠️ Impossibile determinare la città dalla posizione.');
+        }
+        useLocationBtn.disabled = false;
+        useLocationBtn.textContent = '📡 Usa la mia posizione';
+    }, () => {
+        showError('❌ Permesso geolocalizzazione negato.');
+        useLocationBtn.disabled = false;
+        useLocationBtn.textContent = '📡 Usa la mia posizione';
+    }, { enableHighAccuracy: true, timeout: 10000 });
+});
 accountBtn?.addEventListener('click', openAuth);
 closeAuthBtn?.addEventListener('click', closeAuth);
 loginBtn?.addEventListener('click', () => handleAuth(false));
@@ -3415,6 +3617,11 @@ document.addEventListener('keypress', (e) => {
 // Inizializza al caricamento
 document.addEventListener('DOMContentLoaded', async () => {
     initializeCities();
+    if (hasGoogleKey()) {
+        await ensureMapReady();
+        const mapSection = document.getElementById('mapSection');
+        if (mapSection) mapSection.style.display = 'block';
+    }
     await loadCarModelsFromJson();
     tagModelOptionsByBrand();
     snapshotCarOptionsStructure();

@@ -36,6 +36,7 @@
                     <select id="departure" required>
                         <option value="">Seleziona città...</option>
                     </select>
+                    <button id="useLocationBtn" class="pill-btn" type="button">📡 Usa la mia posizione</button>
                 </div>
 
                 <div class="form-group">
@@ -409,6 +410,14 @@
                 </div>
             </div>
 
+            <section id="mapSection" class="map-section" style="display: none;">
+                <div class="map-header">
+                    <h3>🗺️ Percorso su mappa</h3>
+                    <span id="mapStatus" class="helper-text"></span>
+                </div>
+                <div id="map" class="map-canvas"></div>
+            </section>
+
             <div id="error" class="error-message" style="display: none;"></div>
             </main>
 
@@ -634,6 +643,7 @@
         </footer>
     </div>
 
+    <script src="config.js"></script>
     <script src="script.js?v=4"></script>
 </body>
 </html>
