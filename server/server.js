@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
@@ -9,6 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-prod';
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 const DB_PATH = path.join(__dirname, 'data', 'db.json');
 
 app.use(cors());
@@ -144,6 +146,60 @@ app.delete('/api/mycar-photo/:modelId', authMiddleware, (req, res) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+app.post('/api/google/routes', async (req, res) => {
+    if (!GOOGLE_MAPS_API_KEY) return res.status(500).json({ error: 'Google API key mancante' });
+    const { origin, destination } = req.body || {};
+    if (!origin || !destination) return res.status(400).json({ error: 'Origin e destination obbligatori' });
+
+    try {
+        const url = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+        const body = {
+            origin: { address: origin, regionCode: 'IT' },
+            destination: { address: destination, regionCode: 'IT' },
+            travelMode: 'DRIVE',
+            routingPreference: 'TRAFFIC_UNAWARE',
+            computeAlternativeRoutes: false,
+            units: 'METRIC'
+        };
+        const apiRes = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+                'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.tollInfo,routes.polyline.encodedPolyline,routes.legs.startLocation,routes.legs.endLocation'
+            },
+            body: JSON.stringify(body)
+        });
+        if (!apiRes.ok) {
+            const errText = await apiRes.text();
+            return res.status(502).json({ error: 'Errore Routes API', detail: errText });
+        }
+        const data = await apiRes.json();
+        return res.json(data);
+    } catch (err) {
+        return res.status(502).json({ error: 'Errore Routes API' });
+    }
+});
+
+app.get('/api/google/reverse-geocode', async (req, res) => {
+    if (!GOOGLE_MAPS_API_KEY) return res.status(500).json({ error: 'Google API key mancante' });
+    const { lat, lng } = req.query || {};
+    if (!lat || !lng) return res.status(400).json({ error: 'lat e lng obbligatori' });
+
+    try {
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${encodeURIComponent(lat)},${encodeURIComponent(lng)}&language=it&region=IT&key=${GOOGLE_MAPS_API_KEY}`;
+        const apiRes = await fetch(url);
+        if (!apiRes.ok) {
+            const errText = await apiRes.text();
+            return res.status(502).json({ error: 'Errore Geocoding API', detail: errText });
+        }
+        const data = await apiRes.json();
+        return res.json(data);
+    } catch (err) {
+        return res.status(502).json({ error: 'Errore Geocoding API' });
+    }
+});
 
 app.listen(PORT, () => {
     console.log(`DriveCalc API in ascolto su http://localhost:${PORT}`);

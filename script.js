@@ -354,25 +354,10 @@ async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
 }
 
 async function fetchRouteFromGoogle(from, to) {
-    if (!hasGoogleKey()) return null;
-    const url = 'https://routes.googleapis.com/directions/v2:computeRoutes';
-    const body = {
-        origin: { address: from, regionCode: 'IT' },
-        destination: { address: to, regionCode: 'IT' },
-        travelMode: 'DRIVE',
-        routingPreference: 'TRAFFIC_UNAWARE',
-        computeAlternativeRoutes: false,
-        units: 'METRIC'
-    };
-
-    const res = await fetch(url, {
+    const res = await fetch(`${API_BASE}/google/routes`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
-            'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.tollInfo,routes.polyline.encodedPolyline,routes.legs.startLocation,routes.legs.endLocation'
-        },
-        body: JSON.stringify(body)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origin: from, destination: to })
     });
 
     if (!res.ok) return null;
@@ -442,9 +427,7 @@ async function fetchRouteFromORS(from, to) {
 }
 
 async function reverseGeocodeGoogle(lat, lng) {
-    if (!hasGoogleKey()) return null;
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=it&region=IT&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url);
+    const res = await fetch(`${API_BASE}/google/reverse-geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
     if (!res.ok) return null;
     const data = await res.json();
     const result = data.results && data.results[0];
@@ -2563,10 +2546,8 @@ async function getRouteInfo(from, to) {
     const key1 = `${from}-${to}`;
     const key2 = `${to}-${from}`;
     
-    if (hasGoogleKey()) {
-        const googleRoute = await fetchRouteFromGoogle(from, to);
-        if (googleRoute) return googleRoute;
-    }
+    const googleRoute = await fetchRouteFromGoogle(from, to);
+    if (googleRoute) return googleRoute;
 
     if (routeInfo[key1]) return routeInfo[key1];
     if (routeInfo[key2]) return routeInfo[key2];
