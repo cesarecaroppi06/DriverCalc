@@ -271,6 +271,14 @@ let googleMapInstance = null;
 let googleRoutePolyline = null;
 let googleRouteMarkers = [];
 let googleMapsLoaded = false;
+let leafletMapInstance = null;
+let leafletRouteLayer = null;
+let leafletRouteMarkers = [];
+let activeMapProvider = null;
+
+function hasLeaflet() {
+    return typeof window !== 'undefined' && typeof window.L !== 'undefined';
+}
 
 function loadGoogleMapsScript() {
     if (googleMapsLoaded || !hasGoogleKey()) return Promise.resolve();
@@ -288,24 +296,87 @@ function loadGoogleMapsScript() {
     });
 }
 
-async function ensureMapReady() {
-    if (!hasGoogleKey()) return false;
-    try {
-        await loadGoogleMapsScript();
-    } catch (e) {
-        return false;
-    }
-    if (googleMapInstance) return true;
+async function ensureMapReady(preferredProvider) {
     const mapEl = document.getElementById('map');
-    if (!mapEl || !window.google || !google.maps) return false;
+    if (!mapEl) return null;
 
-    googleMapInstance = new google.maps.Map(mapEl, {
-        center: { lat: 41.9028, lng: 12.4964 },
-        zoom: 6,
-        mapTypeControl: false,
-        streetViewControl: false
-    });
-    return true;
+    if (activeMapProvider && preferredProvider && activeMapProvider !== preferredProvider) {
+        if (activeMapProvider === 'leaflet' && leafletMapInstance) {
+            leafletMapInstance.remove();
+            leafletMapInstance = null;
+            clearLeafletRoute();
+        }
+        if (activeMapProvider === 'google') {
+            clearGoogleRoute();
+            googleMapInstance = null;
+            mapEl.innerHTML = '';
+        }
+        activeMapProvider = null;
+    }
+
+    const tryGoogle = async () => {
+        if (!hasGoogleKey()) return false;
+        try {
+            await loadGoogleMapsScript();
+        } catch (e) {
+            return false;
+        }
+        if (!window.google || !google.maps) return false;
+        if (!googleMapInstance) {
+            googleMapInstance = new google.maps.Map(mapEl, {
+                center: { lat: 41.9028, lng: 12.4964 },
+                zoom: 6,
+                mapTypeControl: false,
+                streetViewControl: false
+            });
+        }
+        return true;
+    };
+
+    const tryLeaflet = async () => {
+        if (!hasLeaflet()) return false;
+        if (!leafletMapInstance) {
+            leafletMapInstance = L.map(mapEl, { zoomControl: true }).setView([41.9028, 12.4964], 6);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(leafletMapInstance);
+        }
+        return true;
+    };
+
+    if (preferredProvider === 'google') {
+        if (await tryGoogle()) {
+            activeMapProvider = 'google';
+            return 'google';
+        }
+        if (await tryLeaflet()) {
+            activeMapProvider = 'leaflet';
+            return 'leaflet';
+        }
+        return null;
+    }
+
+    if (preferredProvider === 'leaflet') {
+        if (await tryLeaflet()) {
+            activeMapProvider = 'leaflet';
+            return 'leaflet';
+        }
+        if (await tryGoogle()) {
+            activeMapProvider = 'google';
+            return 'google';
+        }
+        return null;
+    }
+
+    if (await tryGoogle()) {
+        activeMapProvider = 'google';
+        return 'google';
+    }
+    if (await tryLeaflet()) {
+        activeMapProvider = 'leaflet';
+        return 'leaflet';
+    }
+    return null;
 }
 
 function clearGoogleRoute() {
@@ -318,11 +389,11 @@ function clearGoogleRoute() {
 }
 
 async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
-    const ok = await ensureMapReady();
+    const ok = await ensureMapReady('google');
     const mapSection = document.getElementById('mapSection');
     const mapStatus = document.getElementById('mapStatus');
     if (!mapSection) return;
-    if (!ok) {
+    if (ok !== 'google') {
         mapSection.style.display = 'none';
         return;
     }
@@ -351,6 +422,75 @@ async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
     const bounds = new google.maps.LatLngBounds();
     path.forEach(p => bounds.extend(p));
     googleMapInstance.fitBounds(bounds);
+}
+
+function clearLeafletRoute() {
+    if (leafletRouteLayer) {
+        leafletRouteLayer.remove();
+        leafletRouteLayer = null;
+    }
+    leafletRouteMarkers.forEach(m => m.remove());
+    leafletRouteMarkers = [];
+}
+
+async function renderLeafletRouteOnMap(geometryCoords, startLatLng, endLatLng) {
+    const ok = await ensureMapReady('leaflet');
+    const mapSection = document.getElementById('mapSection');
+    const mapStatus = document.getElementById('mapStatus');
+    if (!mapSection) return;
+    if (ok !== 'leaflet') {
+        mapSection.style.display = 'none';
+        return;
+    }
+
+    mapSection.style.display = 'block';
+    if (mapStatus) mapStatus.textContent = 'Mappa OpenStreetMap (fallback)';
+    clearLeafletRoute();
+
+    if (!Array.isArray(geometryCoords) || !geometryCoords.length) return;
+    const latLngs = geometryCoords.map(coord => [coord[1], coord[0]]);
+    leafletRouteLayer = L.polyline(latLngs, {
+        color: '#f59e0b',
+        weight: 4,
+        opacity: 0.9
+    }).addTo(leafletMapInstance);
+
+    const start = startLatLng || { lat: latLngs[0][0], lng: latLngs[0][1] };
+    const end = endLatLng || { lat: latLngs[latLngs.length - 1][0], lng: latLngs[latLngs.length - 1][1] };
+
+    if (start) leafletRouteMarkers.push(L.marker([start.lat, start.lng]).addTo(leafletMapInstance));
+    if (end) leafletRouteMarkers.push(L.marker([end.lat, end.lng]).addTo(leafletMapInstance));
+
+    leafletMapInstance.fitBounds(leafletRouteLayer.getBounds(), { padding: [20, 20] });
+}
+
+async function renderRouteOnMap(route) {
+    const mapSection = document.getElementById('mapSection');
+    const mapStatus = document.getElementById('mapStatus');
+    if (!mapSection) return;
+
+    const preferred = route?.googlePolyline ? 'google' : (route?.orsGeometry ? 'leaflet' : null);
+    const provider = await ensureMapReady(preferred);
+
+    if (!provider) {
+        mapSection.style.display = 'none';
+        return;
+    }
+
+    mapSection.style.display = 'block';
+    if (mapStatus) mapStatus.textContent = '';
+
+    if (provider === 'google' && route?.googlePolyline) {
+        await renderGoogleRouteOnMap(route.googlePolyline, route.googleStart, route.googleEnd);
+        return;
+    }
+
+    if (provider === 'leaflet' && route?.orsGeometry) {
+        await renderLeafletRouteOnMap(route.orsGeometry, route.orsStart, route.orsEnd);
+        return;
+    }
+
+    if (mapStatus) mapStatus.textContent = 'Percorso non disponibile su mappa.';
 }
 
 async function fetchRouteFromGoogle(from, to) {
@@ -401,7 +541,8 @@ async function fetchRouteFromORS(from, to) {
         coordinates: [
             [startLon, startLat],
             [endLon, endLat]
-        ]
+        ],
+        geometry_format: 'geojson'
     };
     const res = await fetch('https://api.openrouteservice.org/v2/directions/driving-car', {
         method: 'POST',
@@ -416,13 +557,19 @@ async function fetchRouteFromORS(from, to) {
     const summary = data.routes && data.routes[0] && data.routes[0].summary;
     if (!summary) throw new Error('No route summary');
     const totalDistanceKm = summary.distance / 1000; // meters -> km
+    const geometryCoords = data.routes && data.routes[0] && data.routes[0].geometry && data.routes[0].geometry.coordinates
+        ? data.routes[0].geometry.coordinates
+        : null;
     // ORS non separa i segmenti per tipo strada; stimiamo la quota autostrada
     const estimatedHighway = totalDistanceKm * ESTIMATED_HIGHWAY_FRACTION;
     const estimatedExtra = Math.max(totalDistanceKm - estimatedHighway, 0);
     return {
         totalDistance: totalDistanceKm,
         tollCost: 0,
-        segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 }
+        segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 },
+        orsGeometry: geometryCoords,
+        orsStart: { lat: startLat, lng: startLon },
+        orsEnd: { lat: endLat, lng: endLon }
     };
 }
 
@@ -436,6 +583,31 @@ async function reverseGeocodeGoogle(lat, lng) {
     const locality = (result.address_components || []).find(c => c.types.includes('locality'));
     const fallback = (result.address_components || []).find(c => c.types.includes('administrative_area_level_2'));
     return (locality && locality.long_name) || (fallback && fallback.long_name) || null;
+}
+
+async function reverseGeocodeORS(lat, lng) {
+    const url = `https://api.openrouteservice.org/geocode/reverse?api_key=${ORS_API_KEY}&point.lat=${encodeURIComponent(lat)}&point.lon=${encodeURIComponent(lng)}&size=1&layers=locality`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const feat = data.features && data.features[0];
+    if (!feat || !feat.properties) return null;
+    return feat.properties.locality || feat.properties.name || null;
+}
+
+function normalizeCityName(name) {
+    if (!name) return '';
+    return name
+        .toLowerCase()
+        .replace(/^citt[aà]\s+di\s+/i, '')
+        .replace(/^comune\s+di\s+/i, '')
+        .trim();
+}
+
+function findCityOptionByName(cityName) {
+    if (!cityName) return null;
+    const normalized = normalizeCityName(cityName);
+    return Array.from(departureSelect.options).find(opt => normalizeCityName(opt.value) === normalized) || null;
 }
 
 // Costante costo casello medio in Italia (€ per casello)
@@ -2641,9 +2813,7 @@ async function calculateTrip() {
         return;
     }
 
-    if (route.googlePolyline) {
-        await renderGoogleRouteOnMap(route.googlePolyline, route.googleStart, route.googleEnd);
-    }
+    await renderRouteOnMap(route);
 
     // Normalizza distanze e pedaggi
     const totalDistance = Math.max(route.totalDistance, 0);
@@ -3530,9 +3700,23 @@ useLocationBtn?.addEventListener('click', async () => {
     navigator.geolocation.getCurrentPosition(async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        const city = await reverseGeocodeGoogle(lat, lng);
+        let city = null;
+        try {
+            if (hasGoogleKey()) {
+                city = await reverseGeocodeGoogle(lat, lng);
+            }
+        } catch (e) {
+            city = null;
+        }
+        if (!city) {
+            try {
+                city = await reverseGeocodeORS(lat, lng);
+            } catch (e) {
+                city = null;
+            }
+        }
         if (city) {
-            const match = Array.from(departureSelect.options).find(opt => opt.value.toLowerCase() === city.toLowerCase());
+            const match = findCityOptionByName(city);
             if (match) {
                 departureSelect.value = match.value;
             } else {
@@ -3543,8 +3727,16 @@ useLocationBtn?.addEventListener('click', async () => {
         }
         useLocationBtn.disabled = false;
         useLocationBtn.textContent = '📡 Usa la mia posizione';
-    }, () => {
-        showError('❌ Permesso geolocalizzazione negato.');
+    }, (err) => {
+        if (err && err.code === 1) {
+            showError('❌ Permesso geolocalizzazione negato.');
+        } else if (err && err.code === 2) {
+            showError('❌ Posizione non disponibile. Attiva GPS o rete.');
+        } else if (err && err.code === 3) {
+            showError('❌ Timeout nel recupero posizione. Riprova.');
+        } else {
+            showError('❌ Errore geolocalizzazione.');
+        }
         useLocationBtn.disabled = false;
         useLocationBtn.textContent = '📡 Usa la mia posizione';
     }, { enableHighAccuracy: true, timeout: 10000 });
@@ -3598,11 +3790,8 @@ document.addEventListener('keypress', (e) => {
 // Inizializza al caricamento
 document.addEventListener('DOMContentLoaded', async () => {
     initializeCities();
-    if (hasGoogleKey()) {
-        await ensureMapReady();
-        const mapSection = document.getElementById('mapSection');
-        if (mapSection) mapSection.style.display = 'block';
-    }
+    const mapSection = document.getElementById('mapSection');
+    if (mapSection) mapSection.style.display = 'none';
     await loadCarModelsFromJson();
     tagModelOptionsByBrand();
     snapshotCarOptionsStructure();
