@@ -3432,7 +3432,6 @@ async function calculateTrip() {
     const expresswayDistance = Math.min(segments.expressway, totalDistance - highwayDistance);
     const extraDistance = Math.min(segments.extra, totalDistance - highwayDistance - expresswayDistance);
     const urbanDistance = Math.min(segments.urban, totalDistance - highwayDistance - expresswayDistance - extraDistance);
-    const normalizedTotal = highwayDistance + expresswayDistance + extraDistance + urbanDistance;
     const roadDistance = totalDistance - highwayDistance;
     // Se è presente un pedaggio ufficiale nella rotta, usa quello; altrimenti stima al km
     const hasOfficialToll = route.tollCost !== undefined && route.tollCost !== null && route.tollCost > 0;
@@ -3543,7 +3542,6 @@ function displayResults(data) {
     document.getElementById('carDetail').textContent = `${data.carBrandLabel} • ${data.carTypeLabel} • ${fuelLabel} (${roundedConsumption} ${data.fuelUnit}/100 km)`;
 
     // Dettagli
-    const highwayPercentage = ((data.highwayDistance / data.totalDistance) * 100).toFixed(1);
     document.getElementById('routeDetail').textContent = 
         `${data.departure} → ${data.arrival} (${data.totalDistance} km: ${data.highwayDistance} km autostrada, ${data.expresswayDistance} km superstrada, ${data.extraDistance} km extraurbane, ${data.urbanDistance} km urbano)`;
     
@@ -4251,7 +4249,7 @@ function resetCalculator() {
     filterBrandOptionsByText('');
     fuelTypeSelect.value = 'benzina';
     fuelPriceInput.value = '1.65';
-    arrivalSelect.disabled = true;
+    arrivalSelect.disabled = false;
     resultsSection.style.display = 'none';
     if (completedTripCheckbox) completedTripCheckbox.checked = false;
     filterModelsByBrand();
