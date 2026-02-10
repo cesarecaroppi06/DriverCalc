@@ -1,0 +1,7 @@
+[
+  {"id":"lancia-ypsilon-2015","label":"Lancia Ypsilon 1.2 (2015)","brand":"lancia","year":2015,"fuels":{"benzina":5.7}},
+  {"id":"lancia-ypsilon-2020","label":"Lancia Ypsilon Hybrid (2020)","brand":"lancia","year":2020,"fuels":{"benzina":5.1}},
+  {"id":"lancia-ypsilon-2023","label":"Lancia Ypsilon 1.2 (2023)","brand":"lancia","year":2023,"fuels":{"benzina":5.4}},
+  {"id":"lancia-delta-2012","label":"Lancia Delta 1.6 Multijet (2012)","brand":"lancia","year":2012,"fuels":{"diesel":5.9}},
+  {"id":"lancia-musa-2010","label":"Lancia Musa 1.3 Multijet (2010)","brand":"lancia","year":2010,"fuels":{"diesel":5.8}}
+]

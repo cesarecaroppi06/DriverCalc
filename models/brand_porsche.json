@@ -1,0 +1,10 @@
+[
+  {"id":"porsche-macan-2019","label":"Porsche Macan 2.0 (2019)","brand":"porsche","year":2019,"fuels":{"benzina":9.6}},
+  {"id":"porsche-macan-2023","label":"Porsche Macan T (2023)","brand":"porsche","year":2023,"fuels":{"benzina":9.1}},
+  {"id":"porsche-cayenne-2018","label":"Porsche Cayenne 3.0 (2018)","brand":"porsche","year":2018,"fuels":{"benzina":11.0}},
+  {"id":"porsche-cayenne-2023","label":"Porsche Cayenne E-Hybrid (2023)","brand":"porsche","year":2023,"fuels":{"benzina":8.5}},
+  {"id":"porsche-911-2020","label":"Porsche 911 Carrera (2020)","brand":"porsche","year":2020,"fuels":{"benzina":10.2}},
+  {"id":"porsche-taycan-2022","label":"Porsche Taycan 4S (2022)","brand":"porsche","year":2022,"fuels":{"elettrico":23.5}},
+  {"id":"porsche-panamera-2021","label":"Porsche Panamera 4 (2021)","brand":"porsche","year":2021,"fuels":{"benzina":9.4}},
+  {"id":"porsche-panamera-2023","label":"Porsche Panamera 4 E-Hybrid (2023)","brand":"porsche","year":2023,"fuels":{"benzina":8.1}}
+]

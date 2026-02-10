@@ -1,0 +1,15 @@
+[
+  {"id":"audi-a1-2015","label":"Audi A1 1.6 TDI (2015)","brand":"audi","year":2015,"fuels":{"diesel":4.8}},
+  {"id":"audi-a3-2008","label":"Audi A3 2.0 TDI (2008)","brand":"audi","year":2008,"fuels":{"diesel":5.6}},
+  {"id":"audi-a3-2021","label":"Audi A3 35 TFSI (2021)","brand":"audi","year":2021,"fuels":{"benzina":5.7}},
+  {"id":"audi-a4-2012","label":"Audi A4 2.0 TDI (2012)","brand":"audi","year":2012,"fuels":{"diesel":5.4}},
+  {"id":"audi-a4-2022","label":"Audi A4 35 TDI (2022)","brand":"audi","year":2022,"fuels":{"diesel":4.8}},
+  {"id":"audi-a6-2016","label":"Audi A6 2.0 TDI (2016)","brand":"audi","year":2016,"fuels":{"diesel":5.6}},
+  {"id":"audi-a6-2023","label":"Audi A6 40 TDI (2023)","brand":"audi","year":2023,"fuels":{"diesel":5.0}},
+  {"id":"audi-q2-2018","label":"Audi Q2 30 TDI (2018)","brand":"audi","year":2018,"fuels":{"diesel":5.0}},
+  {"id":"audi-q3-2020","label":"Audi Q3 35 TDI (2020)","brand":"audi","year":2020,"fuels":{"diesel":5.3}},
+  {"id":"audi-q5-2014","label":"Audi Q5 2.0 TDI (2014)","brand":"audi","year":2014,"fuels":{"diesel":6.2}},
+  {"id":"audi-q5-2022","label":"Audi Q5 40 TDI (2022)","brand":"audi","year":2022,"fuels":{"diesel":5.6}},
+  {"id":"audi-e-tron-2021","label":"Audi e-tron 55 quattro (2021)","brand":"audi","year":2021,"fuels":{"elettrico":21.3}},
+  {"id":"audi-q4-e-tron-2023","label":"Audi Q4 e-tron 40 (2023)","brand":"audi","year":2023,"fuels":{"elettrico":18.4}}
+]

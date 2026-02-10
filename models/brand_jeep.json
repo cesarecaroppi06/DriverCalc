@@ -1,0 +1,10 @@
+[
+  {"id":"jeep-renegade-2018","label":"Jeep Renegade 1.6 MJD (2018)","brand":"jeep","year":2018,"fuels":{"diesel":6.2}},
+  {"id":"jeep-renegade-2022","label":"Jeep Renegade 4xe (2022)","brand":"jeep","year":2022,"fuels":{"benzina":6.5}},
+  {"id":"jeep-compass-2017","label":"Jeep Compass 2.0 MJD (2017)","brand":"jeep","year":2017,"fuels":{"diesel":6.4}},
+  {"id":"jeep-compass-2023","label":"Jeep Compass 4xe (2023)","brand":"jeep","year":2023,"fuels":{"benzina":6.7}},
+  {"id":"jeep-wrangler-2020","label":"Jeep Wrangler 2.0T (2020)","brand":"jeep","year":2020,"fuels":{"benzina":10.5}},
+  {"id":"jeep-cherokee-2016","label":"Jeep Cherokee 2.2 MJD (2016)","brand":"jeep","year":2016,"fuels":{"diesel":7.2}},
+  {"id":"jeep-grand-cherokee-2022","label":"Jeep Grand Cherokee 4xe (2022)","brand":"jeep","year":2022,"fuels":{"benzina":7.6}},
+  {"id":"jeep-avenger-2023","label":"Jeep Avenger EV (2023)","brand":"jeep","year":2023,"fuels":{"elettrico":16.8}}
+]

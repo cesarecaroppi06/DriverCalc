@@ -1,0 +1,10 @@
+[
+  {"id":"mercedes-a180d-2018","label":"Mercedes A 180 d (2018)","brand":"mercedes","year":2018,"fuels":{"diesel":4.6}},
+  {"id":"mercedes-a200-2021","label":"Mercedes A 200 (2021)","brand":"mercedes","year":2021,"fuels":{"benzina":6.1}},
+  {"id":"mercedes-c220d-2017","label":"Mercedes C 220 d (2017)","brand":"mercedes","year":2017,"fuels":{"diesel":5.0}},
+  {"id":"mercedes-c300e-2023","label":"Mercedes C 300 e (2023)","brand":"mercedes","year":2023,"fuels":{"benzina":5.5}},
+  {"id":"mercedes-e220d-2020","label":"Mercedes E 220 d (2020)","brand":"mercedes","year":2020,"fuels":{"diesel":5.3}},
+  {"id":"mercedes-gla200d-2019","label":"Mercedes GLA 200 d (2019)","brand":"mercedes","year":2019,"fuels":{"diesel":5.2}},
+  {"id":"mercedes-glc300e-2022","label":"Mercedes GLC 300 e (2022)","brand":"mercedes","year":2022,"fuels":{"benzina":6.8}},
+  {"id":"mercedes-eqc-2021","label":"Mercedes EQC 400 (2021)","brand":"mercedes","year":2021,"fuels":{"elettrico":21.5}}
+]

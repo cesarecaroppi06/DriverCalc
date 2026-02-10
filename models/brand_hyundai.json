@@ -1,0 +1,10 @@
+[
+  {"id":"hyundai-i10-2016","label":"Hyundai i10 1.0 (2016)","brand":"hyundai","year":2016,"fuels":{"benzina":5.4}},
+  {"id":"hyundai-i20-2021","label":"Hyundai i20 1.2 (2021)","brand":"hyundai","year":2021,"fuels":{"benzina":5.1}},
+  {"id":"hyundai-i30-2018","label":"Hyundai i30 1.6 CRDi (2018)","brand":"hyundai","year":2018,"fuels":{"diesel":4.9}},
+  {"id":"hyundai-kona-2019","label":"Hyundai Kona Electric 64kWh (2019)","brand":"hyundai","year":2019,"fuels":{"elettrico":15.4}},
+  {"id":"hyundai-kona-2023","label":"Hyundai Kona Hybrid (2023)","brand":"hyundai","year":2023,"fuels":{"benzina":4.6}},
+  {"id":"hyundai-tucson-2017","label":"Hyundai Tucson 1.7 CRDi (2017)","brand":"hyundai","year":2017,"fuels":{"diesel":5.6}},
+  {"id":"hyundai-tucson-2022","label":"Hyundai Tucson Hybrid (2022)","brand":"hyundai","year":2022,"fuels":{"benzina":5.5}},
+  {"id":"hyundai-santa-fe-2021","label":"Hyundai Santa Fe 2.2 CRDi (2021)","brand":"hyundai","year":2021,"fuels":{"diesel":6.8}}
+]

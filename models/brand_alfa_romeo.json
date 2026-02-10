@@ -1,0 +1,10 @@
+[
+  {"id":"alfa-romeo-giulia-2017","label":"Alfa Romeo Giulia 2.2 Diesel (2017)","brand":"alfa-romeo","year":2017,"fuels":{"diesel":5.2}},
+  {"id":"alfa-romeo-giulia-2023","label":"Alfa Romeo Giulia 2.0 Turbo (2023)","brand":"alfa-romeo","year":2023,"fuels":{"benzina":7.1}},
+  {"id":"alfa-romeo-stelvio-2019","label":"Alfa Romeo Stelvio 2.2 Diesel (2019)","brand":"alfa-romeo","year":2019,"fuels":{"diesel":6.4}},
+  {"id":"alfa-romeo-stelvio-2023","label":"Alfa Romeo Stelvio 2.0 Turbo (2023)","brand":"alfa-romeo","year":2023,"fuels":{"benzina":7.6}},
+  {"id":"alfa-romeo-tonale-2022","label":"Alfa Romeo Tonale Plug-in (2022)","brand":"alfa-romeo","year":2022,"fuels":{"benzina":6.1}},
+  {"id":"alfa-romeo-mito-2016","label":"Alfa Romeo MiTo 0.9 TwinAir (2016)","brand":"alfa-romeo","year":2016,"fuels":{"benzina":6.0}},
+  {"id":"alfa-romeo-giulietta-2018","label":"Alfa Romeo Giulietta 1.6 JTDM (2018)","brand":"alfa-romeo","year":2018,"fuels":{"diesel":5.5}},
+  {"id":"alfa-romeo-4c-2015","label":"Alfa Romeo 4C 1.75 TBi (2015)","brand":"alfa-romeo","year":2015,"fuels":{"benzina":8.5}}
+]

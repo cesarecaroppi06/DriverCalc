@@ -1,0 +1,8 @@
+[
+  {"id":"tesla-model3-2019","label":"Tesla Model 3 SR+ (2019)","brand":"tesla","year":2019,"fuels":{"elettrico":15.0}},
+  {"id":"tesla-model3-2023","label":"Tesla Model 3 RWD (2023)","brand":"tesla","year":2023,"fuels":{"elettrico":14.4}},
+  {"id":"tesla-modely-2022","label":"Tesla Model Y LR (2022)","brand":"tesla","year":2022,"fuels":{"elettrico":15.7}},
+  {"id":"tesla-modely-2024","label":"Tesla Model Y (2024)","brand":"tesla","year":2024,"fuels":{"elettrico":15.2}},
+  {"id":"tesla-models-2020","label":"Tesla Model S LR (2020)","brand":"tesla","year":2020,"fuels":{"elettrico":20.0}},
+  {"id":"tesla-modelx-2021","label":"Tesla Model X LR (2021)","brand":"tesla","year":2021,"fuels":{"elettrico":22.0}}
+]

@@ -1,0 +1,14 @@
+[
+  {"id":"vw-polo-2004","label":"Volkswagen Polo 1.4 (2004)","brand":"volkswagen","year":2004,"fuels":{"benzina":6.4}},
+  {"id":"vw-polo-2012","label":"Volkswagen Polo 1.2 TSI (2012)","brand":"volkswagen","year":2012,"fuels":{"benzina":5.4}},
+  {"id":"vw-polo-2021","label":"Volkswagen Polo 1.0 TSI (2021)","brand":"volkswagen","year":2021,"fuels":{"benzina":5.1}},
+  {"id":"vw-golf-2008","label":"Volkswagen Golf 1.9 TDI (2008)","brand":"volkswagen","year":2008,"fuels":{"diesel":5.8}},
+  {"id":"vw-golf-2016","label":"Volkswagen Golf 1.6 TDI (2016)","brand":"volkswagen","year":2016,"fuels":{"diesel":4.8}},
+  {"id":"vw-golf-2024","label":"Volkswagen Golf 1.5 eTSI (2024)","brand":"volkswagen","year":2024,"fuels":{"benzina":5.4}},
+  {"id":"vw-passat-2010","label":"Volkswagen Passat 2.0 TDI (2010)","brand":"volkswagen","year":2010,"fuels":{"diesel":5.7}},
+  {"id":"vw-passat-2020","label":"Volkswagen Passat 2.0 TDI (2020)","brand":"volkswagen","year":2020,"fuels":{"diesel":5.0}},
+  {"id":"vw-id3-2021","label":"Volkswagen ID.3 Pro (2021)","brand":"volkswagen","year":2021,"fuels":{"elettrico":16.0}},
+  {"id":"vw-id4-2023","label":"Volkswagen ID.4 77 kWh (2023)","brand":"volkswagen","year":2023,"fuels":{"elettrico":18.4}},
+  {"id":"vw-tiguan-2012","label":"Volkswagen Tiguan 2.0 TDI (2012)","brand":"volkswagen","year":2012,"fuels":{"diesel":6.2}},
+  {"id":"vw-t-roc-2022","label":"Volkswagen T-Roc 1.5 TSI (2022)","brand":"volkswagen","year":2022,"fuels":{"benzina":6.0}}
+]

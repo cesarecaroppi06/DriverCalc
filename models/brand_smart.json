@@ -1,0 +1,8 @@
+[
+  {"id":"smart-fortwo-2016","label":"Smart Fortwo 1.0 (2016)","brand":"smart","year":2016,"fuels":{"benzina":4.7}},
+  {"id":"smart-fortwo-2020","label":"Smart Fortwo EQ (2020)","brand":"smart","year":2020,"fuels":{"elettrico":16.0}},
+  {"id":"smart-forfour-2017","label":"Smart Forfour 1.0 (2017)","brand":"smart","year":2017,"fuels":{"benzina":5.0}},
+  {"id":"smart-forfour-2021","label":"Smart Forfour EQ (2021)","brand":"smart","year":2021,"fuels":{"elettrico":16.5}},
+  {"id":"smart-1-2023","label":"Smart #1 (2023)","brand":"smart","year":2023,"fuels":{"elettrico":17.6}},
+  {"id":"smart-3-2024","label":"Smart #3 (2024)","brand":"smart","year":2024,"fuels":{"elettrico":18.2}}
+]

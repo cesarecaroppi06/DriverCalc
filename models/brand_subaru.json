@@ -1,0 +1,10 @@
+[
+  {"id":"subaru-impreza-2018","label":"Subaru Impreza 1.6i (2018)","brand":"subaru","year":2018,"fuels":{"benzina":6.8}},
+  {"id":"subaru-impreza-2023","label":"Subaru Impreza e-BOXER (2023)","brand":"subaru","year":2023,"fuels":{"benzina":6.1}},
+  {"id":"subaru-xv-2019","label":"Subaru XV 1.6i (2019)","brand":"subaru","year":2019,"fuels":{"benzina":6.9}},
+  {"id":"subaru-forester-2021","label":"Subaru Forester e-BOXER (2021)","brand":"subaru","year":2021,"fuels":{"benzina":7.2}},
+  {"id":"subaru-outback-2017","label":"Subaru Outback 2.5i (2017)","brand":"subaru","year":2017,"fuels":{"benzina":7.6}},
+  {"id":"subaru-outback-2023","label":"Subaru Outback 2.5i (2023)","brand":"subaru","year":2023,"fuels":{"benzina":7.4}},
+  {"id":"subaru-brz-2022","label":"Subaru BRZ 2.4 (2022)","brand":"subaru","year":2022,"fuels":{"benzina":8.7}},
+  {"id":"subaru-solterra-2023","label":"Subaru Solterra (2023)","brand":"subaru","year":2023,"fuels":{"elettrico":18.6}}
+]

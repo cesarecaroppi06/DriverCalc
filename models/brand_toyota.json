@@ -1,0 +1,14 @@
+[
+  {"id":"toyota-yaris-2005","label":"Toyota Yaris 1.3 (2005)","brand":"toyota","year":2005,"fuels":{"benzina":6.1}},
+  {"id":"toyota-yaris-2015","label":"Toyota Yaris 1.5 Hybrid (2015)","brand":"toyota","year":2015,"fuels":{"benzina":4.7}},
+  {"id":"toyota-yaris-2024","label":"Toyota Yaris 1.5 Hybrid (2024)","brand":"toyota","year":2024,"fuels":{"benzina":4.0}},
+  {"id":"toyota-corolla-2008","label":"Toyota Corolla 1.4 D-4D (2008)","brand":"toyota","year":2008,"fuels":{"diesel":5.4}},
+  {"id":"toyota-corolla-2018","label":"Toyota Corolla 1.8 Hybrid (2018)","brand":"toyota","year":2018,"fuels":{"benzina":4.3}},
+  {"id":"toyota-corolla-2023","label":"Toyota Corolla 2.0 Hybrid (2023)","brand":"toyota","year":2023,"fuels":{"benzina":4.5}},
+  {"id":"toyota-rav4-2012","label":"Toyota RAV4 2.2 D-4D (2012)","brand":"toyota","year":2012,"fuels":{"diesel":6.8}},
+  {"id":"toyota-rav4-2021","label":"Toyota RAV4 2.5 Hybrid AWD (2021)","brand":"toyota","year":2021,"fuels":{"benzina":5.9}},
+  {"id":"toyota-prius-2010","label":"Toyota Prius 1.8 Hybrid (2010)","brand":"toyota","year":2010,"fuels":{"benzina":4.4}},
+  {"id":"toyota-prius-2024","label":"Toyota Prius Plug-in (2024)","brand":"toyota","year":2024,"fuels":{"benzina":4.2}},
+  {"id":"toyota-landcruiser-2020","label":"Toyota Land Cruiser 2.8 D (2020)","brand":"toyota","year":2020,"fuels":{"diesel":8.8}},
+  {"id":"toyota-bz4x-2023","label":"Toyota bZ4X AWD (2023)","brand":"toyota","year":2023,"fuels":{"elettrico":17.9}}
+]

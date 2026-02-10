@@ -1,0 +1,9 @@
+[
+  {"id":"ds3-2019","label":"DS 3 1.5 BlueHDi (2019)","brand":"ds","year":2019,"fuels":{"diesel":4.8}},
+  {"id":"ds3-2022","label":"DS 3 Crossback E-Tense (2022)","brand":"ds","year":2022,"fuels":{"elettrico":16.4}},
+  {"id":"ds4-2021","label":"DS 4 PureTech (2021)","brand":"ds","year":2021,"fuels":{"benzina":6.0}},
+  {"id":"ds4-2023","label":"DS 4 E-Tense (2023)","brand":"ds","year":2023,"fuels":{"benzina":5.6}},
+  {"id":"ds7-2018","label":"DS 7 Crossback BlueHDi (2018)","brand":"ds","year":2018,"fuels":{"diesel":5.4}},
+  {"id":"ds7-2023","label":"DS 7 E-Tense (2023)","brand":"ds","year":2023,"fuels":{"benzina":5.8}},
+  {"id":"ds9-2022","label":"DS 9 E-Tense (2022)","brand":"ds","year":2022,"fuels":{"benzina":6.1}}
+]

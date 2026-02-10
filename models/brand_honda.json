@@ -1,0 +1,10 @@
+[
+  {"id":"honda-jazz-2018","label":"Honda Jazz 1.3 i-VTEC (2018)","brand":"honda","year":2018,"fuels":{"benzina":5.4}},
+  {"id":"honda-jazz-2023","label":"Honda Jazz e:HEV (2023)","brand":"honda","year":2023,"fuels":{"benzina":4.2}},
+  {"id":"honda-civic-2017","label":"Honda Civic 1.6 i-DTEC (2017)","brand":"honda","year":2017,"fuels":{"diesel":4.8}},
+  {"id":"honda-civic-2023","label":"Honda Civic e:HEV (2023)","brand":"honda","year":2023,"fuels":{"benzina":5.5}},
+  {"id":"honda-crv-2016","label":"Honda CR-V 1.6 i-DTEC (2016)","brand":"honda","year":2016,"fuels":{"diesel":6.1}},
+  {"id":"honda-crv-2019","label":"Honda CR-V Hybrid (2019)","brand":"honda","year":2019,"fuels":{"benzina":5.9}},
+  {"id":"honda-hrv-2022","label":"Honda HR-V e:HEV (2022)","brand":"honda","year":2022,"fuels":{"benzina":4.9}},
+  {"id":"honda-e-2021","label":"Honda e (2021)","brand":"honda","year":2021,"fuels":{"elettrico":17.2}}
+]

@@ -1,0 +1,10 @@
+[
+  {"id":"peugeot-208-2019","label":"Peugeot 208 PureTech (2019)","brand":"peugeot","year":2019,"fuels":{"benzina":5.0}},
+  {"id":"peugeot-208-2022","label":"Peugeot e-208 (2022)","brand":"peugeot","year":2022,"fuels":{"elettrico":15.5}},
+  {"id":"peugeot-308-2017","label":"Peugeot 308 1.5 BlueHDi (2017)","brand":"peugeot","year":2017,"fuels":{"diesel":4.7}},
+  {"id":"peugeot-308-2023","label":"Peugeot 308 PureTech (2023)","brand":"peugeot","year":2023,"fuels":{"benzina":5.3}},
+  {"id":"peugeot-3008-2016","label":"Peugeot 3008 1.6 BlueHDi (2016)","brand":"peugeot","year":2016,"fuels":{"diesel":5.3}},
+  {"id":"peugeot-3008-2023","label":"Peugeot 3008 Hybrid4 (2023)","brand":"peugeot","year":2023,"fuels":{"benzina":5.1}},
+  {"id":"peugeot-2008-2021","label":"Peugeot 2008 BlueHDi (2021)","brand":"peugeot","year":2021,"fuels":{"diesel":4.8}},
+  {"id":"peugeot-508-2015","label":"Peugeot 508 2.0 BlueHDi (2015)","brand":"peugeot","year":2015,"fuels":{"diesel":5.2}}
+]

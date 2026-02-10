@@ -1,0 +1,10 @@
+[
+  {"id":"mini-cooper-2016","label":"Mini Cooper 1.5 (2016)","brand":"mini","year":2016,"fuels":{"benzina":5.8}},
+  {"id":"mini-cooper-s-2020","label":"Mini Cooper S 2.0 (2020)","brand":"mini","year":2020,"fuels":{"benzina":6.4}},
+  {"id":"mini-countryman-2018","label":"Mini Countryman Cooper D (2018)","brand":"mini","year":2018,"fuels":{"diesel":5.6}},
+  {"id":"mini-countryman-2022","label":"Mini Countryman Plug-in (2022)","brand":"mini","year":2022,"fuels":{"benzina":6.0}},
+  {"id":"mini-clubman-2017","label":"Mini Clubman Cooper (2017)","brand":"mini","year":2017,"fuels":{"benzina":6.1}},
+  {"id":"mini-electric-2021","label":"Mini Cooper SE (2021)","brand":"mini","year":2021,"fuels":{"elettrico":17.0}},
+  {"id":"mini-electric-2024","label":"Mini Cooper SE (2024)","brand":"mini","year":2024,"fuels":{"elettrico":15.5}},
+  {"id":"mini-jcw-2023","label":"Mini John Cooper Works (2023)","brand":"mini","year":2023,"fuels":{"benzina":7.8}}
+]

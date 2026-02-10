@@ -1,0 +1,10 @@
+[
+  {"id":"mitsubishi-space-star-2018","label":"Mitsubishi Space Star 1.2 (2018)","brand":"mitsubishi","year":2018,"fuels":{"benzina":5.3}},
+  {"id":"mitsubishi-asx-2017","label":"Mitsubishi ASX 1.6 DI-D (2017)","brand":"mitsubishi","year":2017,"fuels":{"diesel":5.5}},
+  {"id":"mitsubishi-eclipse-cross-2022","label":"Mitsubishi Eclipse Cross PHEV (2022)","brand":"mitsubishi","year":2022,"fuels":{"benzina":6.3}},
+  {"id":"mitsubishi-outlander-2019","label":"Mitsubishi Outlander PHEV (2019)","brand":"mitsubishi","year":2019,"fuels":{"benzina":6.8}},
+  {"id":"mitsubishi-l200-2020","label":"Mitsubishi L200 2.3 DI-D (2020)","brand":"mitsubishi","year":2020,"fuels":{"diesel":7.9}},
+  {"id":"mitsubishi-colt-2016","label":"Mitsubishi Colt 1.3 (2016)","brand":"mitsubishi","year":2016,"fuels":{"benzina":6.0}},
+  {"id":"mitsubishi-pajero-2015","label":"Mitsubishi Pajero 3.2 DI-D (2015)","brand":"mitsubishi","year":2015,"fuels":{"diesel":8.5}},
+  {"id":"mitsubishi-mirage-2021","label":"Mitsubishi Mirage 1.2 (2021)","brand":"mitsubishi","year":2021,"fuels":{"benzina":5.4}}
+]

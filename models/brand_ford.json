@@ -1,0 +1,14 @@
+[
+  {"id":"ford-fiesta-2006","label":"Ford Fiesta 1.4 (2006)","brand":"ford","year":2006,"fuels":{"benzina":6.5}},
+  {"id":"ford-fiesta-2017","label":"Ford Fiesta 1.0 EcoBoost (2017)","brand":"ford","year":2017,"fuels":{"benzina":5.1}},
+  {"id":"ford-focus-2009","label":"Ford Focus 1.6 TDCi (2009)","brand":"ford","year":2009,"fuels":{"diesel":5.1}},
+  {"id":"ford-focus-2018","label":"Ford Focus 1.0 EcoBoost (2018)","brand":"ford","year":2018,"fuels":{"benzina":5.6}},
+  {"id":"ford-kuga-2016","label":"Ford Kuga 2.0 TDCi (2016)","brand":"ford","year":2016,"fuels":{"diesel":6.6}},
+  {"id":"ford-kuga-2023","label":"Ford Kuga 2.5 PHEV (2023)","brand":"ford","year":2023,"fuels":{"benzina":6.1}},
+  {"id":"ford-mondeo-2012","label":"Ford Mondeo 2.0 TDCi (2012)","brand":"ford","year":2012,"fuels":{"diesel":5.8}},
+  {"id":"ford-mondeo-2019","label":"Ford Mondeo Hybrid (2019)","brand":"ford","year":2019,"fuels":{"benzina":5.2}},
+  {"id":"ford-puma-2020","label":"Ford Puma 1.0 MHEV (2020)","brand":"ford","year":2020,"fuels":{"benzina":5.4}},
+  {"id":"ford-ranger-2022","label":"Ford Ranger 2.0 EcoBlue (2022)","brand":"ford","year":2022,"fuels":{"diesel":8.1}},
+  {"id":"ford-mustang-gt-2020","label":"Ford Mustang 5.0 GT (2020)","brand":"ford","year":2020,"fuels":{"benzina":12.5}},
+  {"id":"ford-mach-e-2023","label":"Ford Mustang Mach-E ER (2023)","brand":"ford","year":2023,"fuels":{"elettrico":19.5}}
+]

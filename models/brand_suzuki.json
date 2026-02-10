@@ -1,0 +1,10 @@
+[
+  {"id":"suzuki-swift-2018","label":"Suzuki Swift 1.2 (2018)","brand":"suzuki","year":2018,"fuels":{"benzina":5.1}},
+  {"id":"suzuki-swift-2022","label":"Suzuki Swift Hybrid (2022)","brand":"suzuki","year":2022,"fuels":{"benzina":4.7}},
+  {"id":"suzuki-ignis-2021","label":"Suzuki Ignis Hybrid (2021)","brand":"suzuki","year":2021,"fuels":{"benzina":4.9}},
+  {"id":"suzuki-vitara-2017","label":"Suzuki Vitara 1.6 DDiS (2017)","brand":"suzuki","year":2017,"fuels":{"diesel":5.2}},
+  {"id":"suzuki-vitara-2023","label":"Suzuki Vitara Hybrid (2023)","brand":"suzuki","year":2023,"fuels":{"benzina":5.6}},
+  {"id":"suzuki-sx4-2019","label":"Suzuki SX4 S-Cross 1.6 DDiS (2019)","brand":"suzuki","year":2019,"fuels":{"diesel":5.4}},
+  {"id":"suzuki-jimny-2020","label":"Suzuki Jimny 1.5 (2020)","brand":"suzuki","year":2020,"fuels":{"benzina":7.2}},
+  {"id":"suzuki-across-2022","label":"Suzuki Across Plug-in (2022)","brand":"suzuki","year":2022,"fuels":{"benzina":6.2}}
+]

@@ -1,0 +1,10 @@
+[
+  {"id":"citroen-c1-2015","label":"Citroën C1 1.0 VTi (2015)","brand":"citroen","year":2015,"fuels":{"benzina":4.8}},
+  {"id":"citroen-c3-2019","label":"Citroën C3 PureTech (2019)","brand":"citroen","year":2019,"fuels":{"benzina":5.1}},
+  {"id":"citroen-c3-aircross-2021","label":"Citroën C3 Aircross BlueHDi (2021)","brand":"citroen","year":2021,"fuels":{"diesel":5.0}},
+  {"id":"citroen-c4-cactus-2017","label":"Citroën C4 Cactus BlueHDi (2017)","brand":"citroen","year":2017,"fuels":{"diesel":4.7}},
+  {"id":"citroen-c4-2023","label":"Citroën ë-C4 (2023)","brand":"citroen","year":2023,"fuels":{"elettrico":16.3}},
+  {"id":"citroen-c5-aircross-2020","label":"Citroën C5 Aircross BlueHDi (2020)","brand":"citroen","year":2020,"fuels":{"diesel":5.6}},
+  {"id":"citroen-c5-x-2023","label":"Citroën C5 X Plug-in (2023)","brand":"citroen","year":2023,"fuels":{"benzina":5.4}},
+  {"id":"citroen-berlingo-2018","label":"Citroën Berlingo BlueHDi (2018)","brand":"citroen","year":2018,"fuels":{"diesel":5.8}}
+]

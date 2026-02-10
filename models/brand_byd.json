@@ -1,0 +1,8 @@
+[
+  {"id":"byd-atto3-2023","label":"BYD Atto 3 (2023)","brand":"byd","year":2023,"fuels":{"elettrico":16.9}},
+  {"id":"byd-han-2022","label":"BYD Han (2022)","brand":"byd","year":2022,"fuels":{"elettrico":18.5}},
+  {"id":"byd-tang-2021","label":"BYD Tang (2021)","brand":"byd","year":2021,"fuels":{"elettrico":21.0}},
+  {"id":"byd-dolphin-2024","label":"BYD Dolphin (2024)","brand":"byd","year":2024,"fuels":{"elettrico":15.2}},
+  {"id":"byd-seal-2023","label":"BYD Seal (2023)","brand":"byd","year":2023,"fuels":{"elettrico":16.5}},
+  {"id":"byd-yuan-plus-2022","label":"BYD Yuan Plus (2022)","brand":"byd","year":2022,"fuels":{"elettrico":17.8}}
+]

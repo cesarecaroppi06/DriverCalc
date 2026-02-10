@@ -1408,50 +1408,60 @@ Object.keys(carConsumption).forEach(key => {
 
 // Carica modelli estesi da JSON esterno per non appesantire il bundle
 const DYNAMIC_MODELS_GROUP_ID = 'dynamic-models-group';
+const BRAND_DATA_VERSION = '4';
+const brandDataFiles = {
+    fiat: 'models/brand_fiat.json',
+    toyota: 'models/brand_toyota.json',
+    volkswagen: 'models/brand_volkswagen.json',
+    renault: 'models/brand_renault.json',
+    peugeot: 'models/brand_peugeot.json',
+    ford: 'models/brand_ford.json',
+    opel: 'models/brand_opel.json',
+    bmw: 'models/brand_bmw.json',
+    mercedes: 'models/brand_mercedes.json',
+    audi: 'models/brand_audi.json',
+    kia: 'models/brand_kia.json',
+    hyundai: 'models/brand_hyundai.json',
+    nissan: 'models/brand_nissan.json',
+    dacia: 'models/brand_dacia.json',
+    jeep: 'models/brand_jeep.json',
+    'alfa-romeo': 'models/brand_alfa_romeo.json',
+    volvo: 'models/brand_volvo.json',
+    skoda: 'models/brand_skoda.json',
+    seat: 'models/brand_seat.json',
+    citroen: 'models/brand_citroen.json',
+    tesla: 'models/brand_tesla.json',
+    mazda: 'models/brand_mazda.json',
+    honda: 'models/brand_honda.json',
+    suzuki: 'models/brand_suzuki.json',
+    'land-rover': 'models/brand_land_rover.json',
+    lexus: 'models/brand_lexus.json',
+    mitsubishi: 'models/brand_mitsubishi.json',
+    subaru: 'models/brand_subaru.json',
+    porsche: 'models/brand_porsche.json',
+    mini: 'models/brand_mini.json',
+    smart: 'models/brand_smart.json',
+    byd: 'models/brand_byd.json',
+    mg: 'models/brand_mg.json',
+    dr: 'models/brand_dr.json',
+    ds: 'models/brand_ds.json',
+    maserati: 'models/brand_maserati.json',
+    jaguar: 'models/brand_jaguar.json',
+    cupra: 'models/brand_cupra.json',
+    lancia: 'models/brand_lancia.json'
+};
+const loadedBrandData = new Set();
 async function loadCarModelsFromJson() {
     if (!carTypeSelect) return;
     if (carTypeSelect.dataset.dynamicLoaded === 'yes') return;
     try {
-        // no-store per evitare cache vecchie quando aggiorniamo il dataset
-        const res = await fetch('car_models.json?v=3', { cache: 'no-store' });
+        const res = await fetch(`car_models.json?v=${BRAND_DATA_VERSION}`, { cache: 'no-store' });
         if (!res.ok) throw new Error('Impossibile caricare car_models.json');
         const models = await res.json();
-
-        let group = carTypeSelect.querySelector(`#${DYNAMIC_MODELS_GROUP_ID}`);
-        if (!group) {
-            group = document.createElement('optgroup');
-            group.id = DYNAMIC_MODELS_GROUP_ID;
-            group.label = 'Modelli estesi 2010-2025';
-            carTypeSelect.appendChild(group);
-        }
-
-        // pulisce il gruppo per mostrare la versione aggiornata
-        group.innerHTML = '';
-
-        models.forEach(model => {
-            if (!model || !model.id || !model.label || !model.fuels) return;
-            const enrichedFuels = enrichDualFuel(model.label, model.fuels);
-            // estende la mappa consumi runtime
-            carConsumption[model.id] = { label: model.label, fuels: enrichedFuels };
-
-            const fuels = Object.keys(enrichedFuels);
-            const firstFuel = fuels[0];
-            const unit = getFuelUnit(firstFuel);
-            const value = typeof enrichedFuels[firstFuel] === 'number' ? enrichedFuels[firstFuel] : null;
-            const consumptionText = value !== null ? `${value} ${unit}/100 km` : 'consumo n/d';
-
-            const opt = document.createElement('option');
-            opt.value = model.id;
-            opt.textContent = `${model.label} (${model.year || 'n/d'}) - ${consumptionText}`;
-            const brand = (model.brand || '').toLowerCase();
-            if (brand) opt.dataset.brand = brand;
-            group.appendChild(opt);
-        });
-
+        appendModelsToSelect(models, { replaceGroup: true });
         carTypeSelect.dataset.dynamicLoaded = 'yes';
     } catch (err) {
         console.error('Errore caricamento modelli estesi:', err);
-        // piccolo fallback visibile per avvisare l'utente
         const errorOpt = document.createElement('option');
         errorOpt.value = '';
         errorOpt.textContent = '⚠️ Modelli estesi non disponibili (controlla connessione/server)';
@@ -1652,15 +1662,72 @@ function tagModelOptionsByBrand() {
     });
 }
 
+// Aggiunge una lista di modelli al select, con deduplica
+function appendModelsToSelect(models, { replaceGroup = false } = {}) {
+    if (!carTypeSelect || !Array.isArray(models)) return;
+
+    let group = carTypeSelect.querySelector(`#${DYNAMIC_MODELS_GROUP_ID}`);
+    if (!group) {
+        group = document.createElement('optgroup');
+        group.id = DYNAMIC_MODELS_GROUP_ID;
+        group.label = 'Modelli estesi 2000-2025';
+        carTypeSelect.appendChild(group);
+    }
+    if (replaceGroup) group.innerHTML = '';
+
+    const existingIds = new Set(Array.from(carTypeSelect.querySelectorAll('option')).map(o => o.value));
+
+    models.forEach(model => {
+        if (!model || !model.id || !model.label || !model.fuels) return;
+        if (existingIds.has(model.id)) return;
+
+        const enrichedFuels = enrichDualFuel(model.label, model.fuels);
+        carConsumption[model.id] = { label: model.label, fuels: enrichedFuels };
+
+        const fuels = Object.keys(enrichedFuels);
+        const firstFuel = fuels[0];
+        const unit = getFuelUnit(firstFuel);
+        const value = typeof enrichedFuels[firstFuel] === 'number' ? enrichedFuels[firstFuel] : null;
+        const consumptionText = value !== null ? `${value} ${unit}/100 km` : 'consumo n/d';
+
+        const opt = document.createElement('option');
+        opt.value = model.id;
+        opt.textContent = `${model.label} (${model.year || 'n/d'}) - ${consumptionText}`;
+        const brand = (model.brand || '').toLowerCase();
+        if (brand) opt.dataset.brand = brand;
+        group.appendChild(opt);
+        existingIds.add(model.id);
+    });
+
+    tagModelOptionsByBrand();
+    snapshotCarOptionsStructure();
+}
+
+async function ensureBrandModelsLoaded(brandKey) {
+    if (!brandKey) return;
+    const file = brandDataFiles[brandKey];
+    if (!file || loadedBrandData.has(brandKey)) return;
+    try {
+        const res = await fetch(`${file}?v=${BRAND_DATA_VERSION}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`Impossibile caricare ${file}`);
+        const models = await res.json();
+        appendModelsToSelect(models);
+        loadedBrandData.add(brandKey);
+    } catch (err) {
+        console.error('Errore caricamento modelli brand', brandKey, err);
+    }
+}
+
 // Mostra solo i modelli della marca selezionata (se vuoto mostra tutto)
-function filterModelsByBrand() {
+async function filterModelsByBrand() {
     const brandKey = (carBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
     const showAll = !brandKey;
+
+    await ensureBrandModelsLoaded(brandKey);
 
     if (!carOptionsSnapshot.length) snapshotCarOptionsStructure();
     if (!carTypeSelect) return;
 
-    // Ricostruisce il select con solo le option compatibili (evita option grigie su mobile)
     const fragment = document.createDocumentFragment();
     carOptionsSnapshot.forEach(node => {
         if (node.tagName === 'OPTION') {
@@ -2611,7 +2678,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadCarModelsFromJson();
     tagModelOptionsByBrand();
     snapshotCarOptionsStructure();
-    filterModelsByBrand();
+    await filterModelsByBrand();
     updateAuthUI();
     if (authToken) {
         try {

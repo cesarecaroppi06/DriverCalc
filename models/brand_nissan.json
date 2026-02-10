@@ -1,0 +1,10 @@
+[
+  {"id":"nissan-micra-2018","label":"Nissan Micra IG-T (2018)","brand":"nissan","year":2018,"fuels":{"benzina":5.3}},
+  {"id":"nissan-qashqai-2016","label":"Nissan Qashqai 1.5 dCi (2016)","brand":"nissan","year":2016,"fuels":{"diesel":5.3}},
+  {"id":"nissan-qashqai-2023","label":"Nissan Qashqai e-Power (2023)","brand":"nissan","year":2023,"fuels":{"benzina":5.1}},
+  {"id":"nissan-juke-2020","label":"Nissan Juke 1.0 DIG-T (2020)","brand":"nissan","year":2020,"fuels":{"benzina":5.8}},
+  {"id":"nissan-leaf-2019","label":"Nissan Leaf 40 kWh (2019)","brand":"nissan","year":2019,"fuels":{"elettrico":17.0}},
+  {"id":"nissan-leaf-2023","label":"Nissan Leaf 62 kWh (2023)","brand":"nissan","year":2023,"fuels":{"elettrico":15.8}},
+  {"id":"nissan-xtrail-2018","label":"Nissan X-Trail 1.6 dCi (2018)","brand":"nissan","year":2018,"fuels":{"diesel":6.2}},
+  {"id":"nissan-ariya-2023","label":"Nissan Ariya 87 kWh (2023)","brand":"nissan","year":2023,"fuels":{"elettrico":19.5}}
+]

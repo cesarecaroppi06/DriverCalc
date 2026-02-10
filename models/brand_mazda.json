@@ -1,0 +1,10 @@
+[
+  {"id":"mazda-2-2018","label":"Mazda2 1.5 Skyactiv-G (2018)","brand":"mazda","year":2018,"fuels":{"benzina":5.3}},
+  {"id":"mazda-3-2016","label":"Mazda3 2.2 Skyactiv-D (2016)","brand":"mazda","year":2016,"fuels":{"diesel":5.0}},
+  {"id":"mazda-3-2020","label":"Mazda3 2.0 Skyactiv-G (2020)","brand":"mazda","year":2020,"fuels":{"benzina":5.8}},
+  {"id":"mazda-cx3-2017","label":"Mazda CX-3 2.0 (2017)","brand":"mazda","year":2017,"fuels":{"benzina":6.0}},
+  {"id":"mazda-cx5-2019","label":"Mazda CX-5 2.2 Skyactiv-D (2019)","brand":"mazda","year":2019,"fuels":{"diesel":6.2}},
+  {"id":"mazda-cx5-2023","label":"Mazda CX-5 2.5 (2023)","brand":"mazda","year":2023,"fuels":{"benzina":6.6}},
+  {"id":"mazda-mx30-2021","label":"Mazda MX-30 (2021)","brand":"mazda","year":2021,"fuels":{"elettrico":19.0}},
+  {"id":"mazda-cx60-2023","label":"Mazda CX-60 Plug-in (2023)","brand":"mazda","year":2023,"fuels":{"benzina":6.5}}
+]

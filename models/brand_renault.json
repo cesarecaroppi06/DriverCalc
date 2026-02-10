@@ -1,0 +1,10 @@
+[
+  {"id":"renault-clio-2012","label":"Renault Clio 1.5 dCi (2012)","brand":"renault","year":2012,"fuels":{"diesel":4.2}},
+  {"id":"renault-clio-2022","label":"Renault Clio E-Tech (2022)","brand":"renault","year":2022,"fuels":{"benzina":4.5}},
+  {"id":"renault-megane-2015","label":"Renault Mégane 1.5 dCi (2015)","brand":"renault","year":2015,"fuels":{"diesel":4.6}},
+  {"id":"renault-megane-2023","label":"Renault Mégane E-Tech EV60 (2023)","brand":"renault","year":2023,"fuels":{"elettrico":15.8}},
+  {"id":"renault-captur-2020","label":"Renault Captur Plug-in (2020)","brand":"renault","year":2020,"fuels":{"benzina":5.0}},
+  {"id":"renault-kadjar-2017","label":"Renault Kadjar 1.6 dCi (2017)","brand":"renault","year":2017,"fuels":{"diesel":5.2}},
+  {"id":"renault-scenic-2009","label":"Renault Scénic 1.9 dCi (2009)","brand":"renault","year":2009,"fuels":{"diesel":6.0}},
+  {"id":"renault-twingo-2021","label":"Renault Twingo E-Tech (2021)","brand":"renault","year":2021,"fuels":{"elettrico":15.2}}
+]

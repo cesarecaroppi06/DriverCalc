@@ -1,0 +1,10 @@
+[
+  {"id":"opel-corsa-2018","label":"Opel Corsa 1.2 Turbo (2018)","brand":"opel","year":2018,"fuels":{"benzina":5.3}},
+  {"id":"opel-corsa-2022","label":"Opel Corsa-e (2022)","brand":"opel","year":2022,"fuels":{"elettrico":15.8}},
+  {"id":"opel-astra-2016","label":"Opel Astra 1.6 CDTI (2016)","brand":"opel","year":2016,"fuels":{"diesel":4.9}},
+  {"id":"opel-astra-2023","label":"Opel Astra 1.2 Turbo (2023)","brand":"opel","year":2023,"fuels":{"benzina":5.5}},
+  {"id":"opel-mokka-2021","label":"Opel Mokka 1.2 Turbo (2021)","brand":"opel","year":2021,"fuels":{"benzina":5.7}},
+  {"id":"opel-mokka-2022","label":"Opel Mokka-e (2022)","brand":"opel","year":2022,"fuels":{"elettrico":16.0}},
+  {"id":"opel-grandland-2019","label":"Opel Grandland X 1.5 D (2019)","brand":"opel","year":2019,"fuels":{"diesel":5.6}},
+  {"id":"opel-insignia-2015","label":"Opel Insignia 2.0 CDTI (2015)","brand":"opel","year":2015,"fuels":{"diesel":5.9}}
+]

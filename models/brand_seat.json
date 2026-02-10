@@ -1,0 +1,10 @@
+[
+  {"id":"seat-ibiza-2017","label":"Seat Ibiza 1.0 TSI (2017)","brand":"seat","year":2017,"fuels":{"benzina":5.2}},
+  {"id":"seat-ibiza-2022","label":"Seat Ibiza 1.0 TSI (2022)","brand":"seat","year":2022,"fuels":{"benzina":5.0}},
+  {"id":"seat-leon-2018","label":"Seat Leon 1.6 TDI (2018)","brand":"seat","year":2018,"fuels":{"diesel":4.9}},
+  {"id":"seat-leon-2023","label":"Seat Leon e-HYBRID (2023)","brand":"seat","year":2023,"fuels":{"benzina":5.2}},
+  {"id":"seat-ateca-2019","label":"Seat Ateca 2.0 TDI (2019)","brand":"seat","year":2019,"fuels":{"diesel":5.5}},
+  {"id":"seat-arona-2021","label":"Seat Arona 1.0 TSI (2021)","brand":"seat","year":2021,"fuels":{"benzina":5.4}},
+  {"id":"seat-tarraco-2022","label":"Seat Tarraco 1.5 TSI (2022)","brand":"seat","year":2022,"fuels":{"benzina":6.8}},
+  {"id":"seat-mii-2020","label":"Seat Mii Electric (2020)","brand":"seat","year":2020,"fuels":{"elettrico":14.8}}
+]

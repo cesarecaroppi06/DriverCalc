@@ -1,0 +1,14 @@
+[
+  {"id":"bmw-serie1-2007","label":"BMW Serie 1 118d (2007)","brand":"bmw","year":2007,"fuels":{"diesel":5.9}},
+  {"id":"bmw-serie1-2019","label":"BMW Serie 1 118i (2019)","brand":"bmw","year":2019,"fuels":{"benzina":6.2}},
+  {"id":"bmw-serie3-2005","label":"BMW Serie 3 320d (2005)","brand":"bmw","year":2005,"fuels":{"diesel":6.1}},
+  {"id":"bmw-serie3-2016","label":"BMW Serie 3 320d (2016)","brand":"bmw","year":2016,"fuels":{"diesel":5.1}},
+  {"id":"bmw-serie3-2023","label":"BMW Serie 3 320e (2023)","brand":"bmw","year":2023,"fuels":{"benzina":5.3}},
+  {"id":"bmw-serie5-2010","label":"BMW Serie 5 520d (2010)","brand":"bmw","year":2010,"fuels":{"diesel":6.0}},
+  {"id":"bmw-serie5-2021","label":"BMW Serie 5 520d (2021)","brand":"bmw","year":2021,"fuels":{"diesel":5.4}},
+  {"id":"bmw-x1-2012","label":"BMW X1 sDrive18d (2012)","brand":"bmw","year":2012,"fuels":{"diesel":6.0}},
+  {"id":"bmw-x3-2018","label":"BMW X3 xDrive20d (2018)","brand":"bmw","year":2018,"fuels":{"diesel":6.4}},
+  {"id":"bmw-x5-2022","label":"BMW X5 xDrive45e (2022)","brand":"bmw","year":2022,"fuels":{"benzina":8.3}},
+  {"id":"bmw-i3-2018","label":"BMW i3 42 kWh (2018)","brand":"bmw","year":2018,"fuels":{"elettrico":15.5}},
+  {"id":"bmw-i4-2023","label":"BMW i4 eDrive40 (2023)","brand":"bmw","year":2023,"fuels":{"elettrico":17.8}}
+]

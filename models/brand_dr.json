@@ -1,0 +1,9 @@
+[
+  {"id":"dr-3-2021","label":"DR 3.0 1.5 (2021)","brand":"dr","year":2021,"fuels":{"benzina":7.1}},
+  {"id":"dr-4-2019","label":"DR 4.0 1.6 (2019)","brand":"dr","year":2019,"fuels":{"benzina":7.4}},
+  {"id":"dr-5-2022","label":"DR 5.0 1.5 Turbo (2022)","brand":"dr","year":2022,"fuels":{"benzina":7.6}},
+  {"id":"dr-6-2023","label":"DR 6.0 1.5 Turbo (2023)","brand":"dr","year":2023,"fuels":{"benzina":7.8}},
+  {"id":"dr-7-2018","label":"DR 7 1.8 (2018)","brand":"dr","year":2018,"fuels":{"benzina":8.2}},
+  {"id":"sportequipe-5-2023","label":"Sportequipe 5 1.5 Turbo (2023)","brand":"dr","year":2023,"fuels":{"benzina":7.5}},
+  {"id":"sportequipe-8-2024","label":"Sportequipe 8 2.0 Turbo (2024)","brand":"dr","year":2024,"fuels":{"benzina":8.1}}
+]

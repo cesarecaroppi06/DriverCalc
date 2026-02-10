@@ -1,0 +1,10 @@
+[
+  {"id":"lexus-ux-2020","label":"Lexus UX 250h (2020)","brand":"lexus","year":2020,"fuels":{"benzina":5.6}},
+  {"id":"lexus-nx-2022","label":"Lexus NX 350h (2022)","brand":"lexus","year":2022,"fuels":{"benzina":5.8}},
+  {"id":"lexus-nx-2023","label":"Lexus NX 450h+ (2023)","brand":"lexus","year":2023,"fuels":{"benzina":6.0}},
+  {"id":"lexus-rx-2019","label":"Lexus RX 450h (2019)","brand":"lexus","year":2019,"fuels":{"benzina":6.6}},
+  {"id":"lexus-es-2021","label":"Lexus ES 300h (2021)","brand":"lexus","year":2021,"fuels":{"benzina":5.3}},
+  {"id":"lexus-is-2017","label":"Lexus IS 300h (2017)","brand":"lexus","year":2017,"fuels":{"benzina":6.1}},
+  {"id":"lexus-ct-2016","label":"Lexus CT 200h (2016)","brand":"lexus","year":2016,"fuels":{"benzina":5.0}},
+  {"id":"lexus-rz-2023","label":"Lexus RZ 450e (2023)","brand":"lexus","year":2023,"fuels":{"elettrico":19.0}}
+]

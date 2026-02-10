@@ -1,0 +1,9 @@
+[
+  {"id":"land-rover-evoque-2018","label":"Land Rover Evoque 2.0 TD4 (2018)","brand":"land-rover","year":2018,"fuels":{"diesel":6.3}},
+  {"id":"land-rover-evoque-2023","label":"Range Rover Evoque PHEV (2023)","brand":"land-rover","year":2023,"fuels":{"benzina":6.4}},
+  {"id":"land-rover-discovery-sport-2019","label":"Discovery Sport 2.0 D (2019)","brand":"land-rover","year":2019,"fuels":{"diesel":6.8}},
+  {"id":"land-rover-discovery-2021","label":"Discovery 3.0 D (2021)","brand":"land-rover","year":2021,"fuels":{"diesel":7.9}},
+  {"id":"land-rover-velar-2020","label":"Range Rover Velar D200 (2020)","brand":"land-rover","year":2020,"fuels":{"diesel":7.1}},
+  {"id":"land-rover-range-rover-2023","label":"Range Rover PHEV (2023)","brand":"land-rover","year":2023,"fuels":{"benzina":8.5}},
+  {"id":"land-rover-defender-2022","label":"Land Rover Defender D250 (2022)","brand":"land-rover","year":2022,"fuels":{"diesel":8.4}}
+]

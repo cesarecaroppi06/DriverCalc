@@ -1,0 +1,8 @@
+[
+  {"id":"cupra-formentor-2021","label":"Cupra Formentor 2.0 TSI (2021)","brand":"cupra","year":2021,"fuels":{"benzina":6.8}},
+  {"id":"cupra-formentor-2023","label":"Cupra Formentor e-HYBRID (2023)","brand":"cupra","year":2023,"fuels":{"benzina":5.8}},
+  {"id":"cupra-leon-2020","label":"Cupra Leon 2.0 TSI (2020)","brand":"cupra","year":2020,"fuels":{"benzina":6.3}},
+  {"id":"cupra-born-2023","label":"Cupra Born 58 kWh (2023)","brand":"cupra","year":2023,"fuels":{"elettrico":16.0}},
+  {"id":"cupra-ateca-2019","label":"Cupra Ateca 2.0 TSI (2019)","brand":"cupra","year":2019,"fuels":{"benzina":7.4}},
+  {"id":"cupra-tavascan-2024","label":"Cupra Tavascan 77 kWh (2024)","brand":"cupra","year":2024,"fuels":{"elettrico":16.8}}
+]

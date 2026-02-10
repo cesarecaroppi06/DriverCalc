@@ -1,0 +1,9 @@
+[
+  {"id":"maserati-ghibli-2017","label":"Maserati Ghibli V6 (2017)","brand":"maserati","year":2017,"fuels":{"benzina":10.2}},
+  {"id":"maserati-ghibli-2022","label":"Maserati Ghibli Diesel (2022)","brand":"maserati","year":2022,"fuels":{"diesel":7.5}},
+  {"id":"maserati-levante-2019","label":"Maserati Levante V6 (2019)","brand":"maserati","year":2019,"fuels":{"benzina":11.5}},
+  {"id":"maserati-levante-2023","label":"Maserati Levante Hybrid (2023)","brand":"maserati","year":2023,"fuels":{"benzina":9.0}},
+  {"id":"maserati-quattroporte-2020","label":"Maserati Quattroporte V8 (2020)","brand":"maserati","year":2020,"fuels":{"benzina":11.3}},
+  {"id":"maserati-grecale-2023","label":"Maserati Grecale GT (2023)","brand":"maserati","year":2023,"fuels":{"benzina":9.4}},
+  {"id":"maserati-mc20-2022","label":"Maserati MC20 (2022)","brand":"maserati","year":2022,"fuels":{"benzina":12.2}}
+]

@@ -1,0 +1,10 @@
+[
+  {"id":"dacia-sandero-2021","label":"Dacia Sandero ECO-G (2021)","brand":"dacia","year":2021,"fuels":{"gpl":6.7}},
+  {"id":"dacia-sandero-2018","label":"Dacia Sandero SCe (2018)","brand":"dacia","year":2018,"fuels":{"benzina":5.8}},
+  {"id":"dacia-duster-2017","label":"Dacia Duster 1.5 dCi (2017)","brand":"dacia","year":2017,"fuels":{"diesel":5.2}},
+  {"id":"dacia-duster-2023","label":"Dacia Duster TCe (2023)","brand":"dacia","year":2023,"fuels":{"benzina":6.4}},
+  {"id":"dacia-jogger-2022","label":"Dacia Jogger ECO-G (2022)","brand":"dacia","year":2022,"fuels":{"gpl":7.0}},
+  {"id":"dacia-spring-2022","label":"Dacia Spring Electric (2022)","brand":"dacia","year":2022,"fuels":{"elettrico":13.8}},
+  {"id":"dacia-logan-2015","label":"Dacia Logan 1.5 dCi (2015)","brand":"dacia","year":2015,"fuels":{"diesel":5.0}},
+  {"id":"dacia-lodgy-2016","label":"Dacia Lodgy 1.5 dCi (2016)","brand":"dacia","year":2016,"fuels":{"diesel":5.5}}
+]

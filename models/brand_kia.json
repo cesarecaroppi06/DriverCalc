@@ -1,0 +1,10 @@
+[
+  {"id":"kia-picanto-2017","label":"Kia Picanto 1.0 (2017)","brand":"kia","year":2017,"fuels":{"benzina":5.2}},
+  {"id":"kia-sportage-2016","label":"Kia Sportage 1.7 CRDi (2016)","brand":"kia","year":2016,"fuels":{"diesel":5.9}},
+  {"id":"kia-sportage-2023","label":"Kia Sportage Hybrid (2023)","brand":"kia","year":2023,"fuels":{"benzina":5.4}},
+  {"id":"kia-ceed-2019","label":"Kia Ceed 1.6 CRDi (2019)","brand":"kia","year":2019,"fuels":{"diesel":4.8}},
+  {"id":"kia-niro-2021","label":"Kia Niro Hybrid (2021)","brand":"kia","year":2021,"fuels":{"benzina":4.4}},
+  {"id":"kia-niro-2023","label":"Kia Niro EV (2023)","brand":"kia","year":2023,"fuels":{"elettrico":16.5}},
+  {"id":"kia-sorento-2022","label":"Kia Sorento Plug-in (2022)","brand":"kia","year":2022,"fuels":{"benzina":6.2}},
+  {"id":"kia-rio-2018","label":"Kia Rio 1.2 (2018)","brand":"kia","year":2018,"fuels":{"benzina":5.4}}
+]

@@ -1,0 +1,10 @@
+[
+  {"id":"volvo-xc40-2019","label":"Volvo XC40 D3 (2019)","brand":"volvo","year":2019,"fuels":{"diesel":5.4}},
+  {"id":"volvo-xc40-2023","label":"Volvo XC40 Recharge (2023)","brand":"volvo","year":2023,"fuels":{"elettrico":19.0}},
+  {"id":"volvo-xc60-2018","label":"Volvo XC60 D4 (2018)","brand":"volvo","year":2018,"fuels":{"diesel":6.2}},
+  {"id":"volvo-xc60-2023","label":"Volvo XC60 Recharge (2023)","brand":"volvo","year":2023,"fuels":{"benzina":6.5}},
+  {"id":"volvo-s60-2017","label":"Volvo S60 D3 (2017)","brand":"volvo","year":2017,"fuels":{"diesel":5.5}},
+  {"id":"volvo-s60-2022","label":"Volvo S60 B4 (2022)","brand":"volvo","year":2022,"fuels":{"benzina":6.2}},
+  {"id":"volvo-v60-2020","label":"Volvo V60 D4 (2020)","brand":"volvo","year":2020,"fuels":{"diesel":5.6}},
+  {"id":"volvo-c40-2022","label":"Volvo C40 Recharge (2022)","brand":"volvo","year":2022,"fuels":{"elettrico":20.0}}
+]

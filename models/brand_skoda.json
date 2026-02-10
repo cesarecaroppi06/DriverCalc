@@ -1,0 +1,10 @@
+[
+  {"id":"skoda-fabia-2016","label":"Škoda Fabia 1.0 MPI (2016)","brand":"skoda","year":2016,"fuels":{"benzina":5.1}},
+  {"id":"skoda-fabia-2022","label":"Škoda Fabia 1.0 TSI (2022)","brand":"skoda","year":2022,"fuels":{"benzina":5.2}},
+  {"id":"skoda-octavia-2017","label":"Škoda Octavia 1.6 TDI (2017)","brand":"skoda","year":2017,"fuels":{"diesel":4.8}},
+  {"id":"skoda-octavia-2023","label":"Škoda Octavia iV (2023)","brand":"skoda","year":2023,"fuels":{"benzina":4.9}},
+  {"id":"skoda-kamiq-2020","label":"Škoda Kamiq 1.0 TSI (2020)","brand":"skoda","year":2020,"fuels":{"benzina":5.4}},
+  {"id":"skoda-karoq-2019","label":"Škoda Karoq 2.0 TDI (2019)","brand":"skoda","year":2019,"fuels":{"diesel":5.5}},
+  {"id":"skoda-kodiaq-2021","label":"Škoda Kodiaq 2.0 TDI (2021)","brand":"skoda","year":2021,"fuels":{"diesel":5.9}},
+  {"id":"skoda-superb-2018","label":"Škoda Superb 2.0 TDI (2018)","brand":"skoda","year":2018,"fuels":{"diesel":5.6}}
+]

@@ -1,0 +1,9 @@
+[
+  {"id":"jaguar-xe-2018","label":"Jaguar XE 2.0d (2018)","brand":"jaguar","year":2018,"fuels":{"diesel":5.4}},
+  {"id":"jaguar-xf-2020","label":"Jaguar XF 2.0d (2020)","brand":"jaguar","year":2020,"fuels":{"diesel":5.8}},
+  {"id":"jaguar-fpace-2019","label":"Jaguar F-Pace 2.0d (2019)","brand":"jaguar","year":2019,"fuels":{"diesel":6.6}},
+  {"id":"jaguar-fpace-2023","label":"Jaguar F-Pace P400e (2023)","brand":"jaguar","year":2023,"fuels":{"benzina":6.4}},
+  {"id":"jaguar-epace-2021","label":"Jaguar E-Pace P200 (2021)","brand":"jaguar","year":2021,"fuels":{"benzina":8.0}},
+  {"id":"jaguar-ipace-2022","label":"Jaguar I-Pace (2022)","brand":"jaguar","year":2022,"fuels":{"elettrico":22.5}},
+  {"id":"jaguar-xj-2016","label":"Jaguar XJ 3.0 V6 (2016)","brand":"jaguar","year":2016,"fuels":{"benzina":10.5}}
+]

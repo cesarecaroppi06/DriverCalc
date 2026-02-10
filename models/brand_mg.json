@@ -1,0 +1,10 @@
+[
+  {"id":"mg-zs-2019","label":"MG ZS 1.0 T-GDI (2019)","brand":"mg","year":2019,"fuels":{"benzina":6.9}},
+  {"id":"mg-zs-2021","label":"MG ZS EV (2021)","brand":"mg","year":2021,"fuels":{"elettrico":18.6}},
+  {"id":"mg-hs-2020","label":"MG HS 1.5 T-GDI (2020)","brand":"mg","year":2020,"fuels":{"benzina":7.4}},
+  {"id":"mg-ehs-2023","label":"MG EHS Plug-in (2023)","brand":"mg","year":2023,"fuels":{"benzina":6.5}},
+  {"id":"mg4-2023","label":"MG4 Electric (2023)","brand":"mg","year":2023,"fuels":{"elettrico":16.2}},
+  {"id":"mg5-2022","label":"MG5 Electric (2022)","brand":"mg","year":2022,"fuels":{"elettrico":17.5}},
+  {"id":"mg-marvel-r-2022","label":"MG Marvel R (2022)","brand":"mg","year":2022,"fuels":{"elettrico":20.0}},
+  {"id":"mg-zs-2024","label":"MG ZS EV (2024)","brand":"mg","year":2024,"fuels":{"elettrico":17.2}}
+]
