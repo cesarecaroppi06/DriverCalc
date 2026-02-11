@@ -24,10 +24,83 @@ const OFFICIAL_MODELS_YEAR_MIN = 1980;
 const OFFICIAL_MODELS_MAX_YEAR_SPAN = 26;
 const officialModelsCache = new Map();
 const officialModelsPending = new Map();
+const ACCOUNT_AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+
+function normalizeEmail(value = '') {
+    return String(value || '').trim().toLowerCase();
+}
+
+function deriveUsernameFromEmail(email = '') {
+    const base = normalizeEmail(email).split('@')[0] || '';
+    const cleaned = base.replace(/[^a-zA-Z0-9._-]+/g, '');
+    return cleaned || 'utente';
+}
+
+function sanitizeUsername(value = '', { fallback = '' } = {}) {
+    const normalized = String(value || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .replace(/[^a-zA-Z0-9._ -]+/g, '');
+    const collapsed = normalized.replace(/\s+/g, ' ').trim();
+    const picked = collapsed || fallback || '';
+    return picked.slice(0, 32);
+}
+
+function sanitizeProfileText(value = '', maxLen = 160) {
+    return String(value || '').trim().replace(/\s+/g, ' ').slice(0, maxLen);
+}
+
+function isValidDataImageUrl(value = '') {
+    if (!value) return true;
+    if (typeof value !== 'string') return false;
+    if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(value)) return false;
+    return Buffer.byteLength(value, 'utf8') <= ACCOUNT_AVATAR_MAX_BYTES;
+}
+
+function ensureUserShape(user = {}) {
+    const email = normalizeEmail(user.email);
+    const createdAt = Number(user.createdAt) || Date.now();
+    const lastLoginAt = Number(user.lastLoginAt) || createdAt;
+    const updatedAt = Number(user.updatedAt) || lastLoginAt;
+    const usernameFallback = deriveUsernameFromEmail(email);
+    const username = sanitizeUsername(user.username, { fallback: usernameFallback }) || usernameFallback;
+    const avatarCandidate = String(user.avatarUrl || '');
+    const avatarUrl = isValidDataImageUrl(avatarCandidate) ? avatarCandidate : '';
+
+    return {
+        ...user,
+        id: String(user.id || ''),
+        email,
+        passwordHash: String(user.passwordHash || ''),
+        username,
+        bio: sanitizeProfileText(user.bio || '', 220),
+        location: sanitizeProfileText(user.location || '', 80),
+        avatarUrl,
+        createdAt,
+        lastLoginAt,
+        updatedAt
+    };
+}
+
+function buildPublicUser(user = {}) {
+    const shaped = ensureUserShape(user);
+    return {
+        id: shaped.id,
+        email: shaped.email,
+        username: shaped.username,
+        bio: shaped.bio,
+        location: shaped.location,
+        avatarUrl: shaped.avatarUrl,
+        createdAt: shaped.createdAt,
+        lastLoginAt: shaped.lastLoginAt,
+        updatedAt: shaped.updatedAt
+    };
+}
 
 function ensureDbShape(db) {
     if (!db || typeof db !== 'object') db = {};
     if (!Array.isArray(db.users)) db.users = [];
+    db.users = db.users.map(ensureUserShape).filter((user) => user.id && user.email && user.passwordHash);
     if (!db.favorites || typeof db.favorites !== 'object') db.favorites = {};
     if (!db.companions || typeof db.companions !== 'object') db.companions = {};
     if (!db.completed || typeof db.completed !== 'object') db.completed = {};
@@ -223,31 +296,133 @@ function authMiddleware(req, res, next) {
 }
 
 app.post('/api/auth/register', async (req, res) => {
-    const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: 'Email e password sono obbligatorie' });
+    const { email, password, username } = req.body || {};
+    const normalizedEmail = normalizeEmail(email);
+    const rawPassword = String(password || '');
+    const rawUsername = String(username || '');
+    const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
+    if (!normalizedEmail || !rawPassword) return res.status(400).json({ error: 'Email e password sono obbligatorie' });
+    if (!isEmailValid) return res.status(400).json({ error: 'Formato email non valido' });
+    if (rawPassword.length < 6) return res.status(400).json({ error: 'La password deve avere almeno 6 caratteri' });
+
     const db = readDb();
-    if (db.users.find(u => u.email === email)) {
+    if (db.users.find(u => u.email === normalizedEmail)) {
         return res.status(409).json({ error: 'Utente già registrato' });
     }
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = { id: uuidv4(), email, passwordHash };
+
+    const passwordHash = await bcrypt.hash(rawPassword, 10);
+    const now = Date.now();
+    const safeUsername = sanitizeUsername(rawUsername, { fallback: deriveUsernameFromEmail(normalizedEmail) });
+    const user = ensureUserShape({
+        id: uuidv4(),
+        email: normalizedEmail,
+        passwordHash,
+        username: safeUsername,
+        bio: '',
+        location: '',
+        avatarUrl: '',
+        createdAt: now,
+        lastLoginAt: now,
+        updatedAt: now
+    });
     db.users.push(user);
     getShareSettings(db, user.id);
     writeDb(db);
+
     const token = issueToken(user);
-    return res.json({ token, user: { id: user.id, email: user.email } });
+    const stats = computeUserStats(db, user.id);
+    return res.json({ token, user: buildPublicUser(user), stats });
 });
 
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: 'Email e password sono obbligatorie' });
+    const normalizedEmail = normalizeEmail(email);
+    const rawPassword = String(password || '');
+    if (!normalizedEmail || !rawPassword) return res.status(400).json({ error: 'Email e password sono obbligatorie' });
     const db = readDb();
-    const user = db.users.find(u => u.email === email);
+    const user = db.users.find(u => u.email === normalizedEmail);
     if (!user) return res.status(401).json({ error: 'Credenziali non valide' });
-    const ok = await bcrypt.compare(password, user.passwordHash);
+    const ok = await bcrypt.compare(rawPassword, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'Credenziali non valide' });
+    user.lastLoginAt = Date.now();
+    user.updatedAt = Date.now();
+    writeDb(db);
     const token = issueToken(user);
-    return res.json({ token, user: { id: user.id, email: user.email } });
+    const stats = computeUserStats(db, user.id);
+    return res.json({ token, user: buildPublicUser(user), stats });
+});
+
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+    const db = readDb();
+    const user = db.users.find((u) => u.id === req.user.userId);
+    if (!user) return res.status(404).json({ error: 'Utente non trovato' });
+    return res.json({
+        user: buildPublicUser(user),
+        stats: computeUserStats(db, user.id)
+    });
+});
+
+app.put('/api/auth/profile', authMiddleware, (req, res) => {
+    const db = readDb();
+    const user = db.users.find((u) => u.id === req.user.userId);
+    if (!user) return res.status(404).json({ error: 'Utente non trovato' });
+
+    const incoming = req.body || {};
+    if (incoming.username !== undefined) {
+        const safeUsername = sanitizeUsername(incoming.username, { fallback: '' });
+        if (!safeUsername || safeUsername.length < 3) {
+            return res.status(400).json({ error: 'Username non valido (minimo 3 caratteri)' });
+        }
+        user.username = safeUsername;
+    }
+
+    if (incoming.bio !== undefined) {
+        user.bio = sanitizeProfileText(incoming.bio, 220);
+    }
+
+    if (incoming.location !== undefined) {
+        user.location = sanitizeProfileText(incoming.location, 80);
+    }
+
+    if (incoming.avatarUrl !== undefined) {
+        const avatarUrl = String(incoming.avatarUrl || '');
+        if (!isValidDataImageUrl(avatarUrl)) {
+            return res.status(400).json({ error: 'Immagine profilo non valida (usa JPG/PNG/WebP/GIF)' });
+        }
+        user.avatarUrl = avatarUrl;
+    }
+
+    user.updatedAt = Date.now();
+    writeDb(db);
+    return res.json({
+        user: buildPublicUser(user),
+        stats: computeUserStats(db, user.id)
+    });
+});
+
+app.put('/api/auth/password', authMiddleware, async (req, res) => {
+    const db = readDb();
+    const user = db.users.find((u) => u.id === req.user.userId);
+    if (!user) return res.status(404).json({ error: 'Utente non trovato' });
+
+    const currentPassword = String((req.body || {}).currentPassword || '');
+    const newPassword = String((req.body || {}).newPassword || '');
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Password attuale e nuova password sono obbligatorie' });
+    }
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: 'La nuova password deve avere almeno 6 caratteri' });
+    }
+
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) {
+        return res.status(401).json({ error: 'Password attuale non corretta' });
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.updatedAt = Date.now();
+    writeDb(db);
+    return res.json({ ok: true });
 });
 
 function getCollection(db, key, userId) {
@@ -269,6 +444,32 @@ function getShareSettings(db, userId) {
         };
     }
     return db.shareSettings[userId];
+}
+
+function computeUserStats(db, userId) {
+    const favoritesCount = getCollection(db, 'favorites', userId).length;
+    const companionTripsCount = getCollection(db, 'companions', userId).length;
+    const completed = getCollection(db, 'completed', userId);
+    const completedTripsCount = completed.length;
+    const friendsCount = getFriendList(db, userId).length;
+
+    let totalCompletedKm = 0;
+    let totalCompletedCost = 0;
+    completed.forEach((trip) => {
+        const km = Number.parseFloat(trip.distance || 0);
+        const cost = Number.parseFloat(trip.totalCost || 0);
+        if (Number.isFinite(km)) totalCompletedKm += km;
+        if (Number.isFinite(cost)) totalCompletedCost += cost;
+    });
+
+    return {
+        favoritesCount,
+        companionTripsCount,
+        completedTripsCount,
+        friendsCount,
+        totalCompletedKm: Number(totalCompletedKm.toFixed(2)),
+        totalCompletedCost: Number(totalCompletedCost.toFixed(2))
+    };
 }
 
 function normalizeSearchValue(value = '') {

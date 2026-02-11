@@ -3129,11 +3129,36 @@ const friendsBtn = document.getElementById('friendsBtn');
 const friendsOverlay = document.getElementById('friendsOverlay');
 const closeFriendsBtn = document.getElementById('closeFriends');
 const authEmailInput = document.getElementById('authEmail');
+const authUsernameInput = document.getElementById('authUsername');
 const authPasswordInput = document.getElementById('authPassword');
 const loginBtn = document.getElementById('loginBtn');
 const registerBtn = document.getElementById('registerBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const authStatus = document.getElementById('authStatus');
+const authFeedback = document.getElementById('authFeedback');
+const accountGuestPanel = document.getElementById('accountGuestPanel');
+const accountConnectedPanel = document.getElementById('accountConnectedPanel');
+const accountAvatarPreview = document.getElementById('accountAvatarPreview');
+const accountAvatarInput = document.getElementById('accountAvatarInput');
+const accountAvatarUploadBtn = document.getElementById('accountAvatarUploadBtn');
+const accountAvatarRemoveBtn = document.getElementById('accountAvatarRemoveBtn');
+const accountDisplayName = document.getElementById('accountDisplayName');
+const accountDisplayEmail = document.getElementById('accountDisplayEmail');
+const accountMemberSince = document.getElementById('accountMemberSince');
+const accountLastLogin = document.getElementById('accountLastLogin');
+const accountProfileUsername = document.getElementById('accountProfileUsername');
+const accountProfileEmail = document.getElementById('accountProfileEmail');
+const accountProfileLocation = document.getElementById('accountProfileLocation');
+const accountProfileBio = document.getElementById('accountProfileBio');
+const accountSaveProfileBtn = document.getElementById('accountSaveProfileBtn');
+const accountStatus = document.getElementById('accountStatus');
+const accountCurrentPassword = document.getElementById('accountCurrentPassword');
+const accountNewPassword = document.getElementById('accountNewPassword');
+const accountChangePasswordBtn = document.getElementById('accountChangePasswordBtn');
+const accountStatFavorites = document.getElementById('accountStatFavorites');
+const accountStatCompleted = document.getElementById('accountStatCompleted');
+const accountStatFriends = document.getElementById('accountStatFriends');
+const accountStatKm = document.getElementById('accountStatKm');
 const friendSearchInput = document.getElementById('friendSearchInput');
 const sendFriendRequestBtn = document.getElementById('sendFriendRequestBtn');
 const friendsStatus = document.getElementById('friendsStatus');
@@ -4132,6 +4157,9 @@ let completedTrips = [];
 let myCarPhotos = {};
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || null;
 let currentUser = null;
+let accountProfile = null;
+let accountStats = null;
+let authFeedbackTimer = null;
 let friends = [];
 let incomingFriendRequests = [];
 let outgoingFriendRequests = [];
@@ -4175,11 +4203,130 @@ async function apiRequest(path, method = 'GET', body) {
         if (res.status === 404 && path.startsWith('/share-settings') && !err.error) {
             throw new Error('Impostazioni condivisione non disponibili sul server');
         }
+        if (res.status === 404 && path.startsWith('/auth/') && !err.error) {
+            throw new Error('Funzione account non disponibile sul server (deploy non aggiornato)');
+        }
 
         throw new Error(err.error || `Errore API (${res.status})`);
     }
 
     return res.json().catch(() => ({}));
+}
+
+function setAuthFeedback(message = '', type = 'info') {
+    if (!authFeedback) return;
+    if (authFeedbackTimer) {
+        clearTimeout(authFeedbackTimer);
+        authFeedbackTimer = null;
+    }
+    if (!message) {
+        authFeedback.style.display = 'none';
+        authFeedback.textContent = '';
+        authFeedback.dataset.type = '';
+        return;
+    }
+    authFeedback.textContent = message;
+    authFeedback.dataset.type = type;
+    authFeedback.style.display = 'block';
+    if (type !== 'error') {
+        authFeedbackTimer = setTimeout(() => {
+            if (!authFeedback) return;
+            authFeedback.style.display = 'none';
+            authFeedback.textContent = '';
+            authFeedback.dataset.type = '';
+        }, 4200);
+    }
+}
+
+function formatAccountDate(value, includeTime = false) {
+    const ts = Number(value);
+    if (!Number.isFinite(ts) || ts <= 0) return '-';
+    const date = new Date(ts);
+    if (Number.isNaN(date.getTime())) return '-';
+    const opts = includeTime
+        ? { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }
+        : { day: '2-digit', month: '2-digit', year: 'numeric' };
+    return new Intl.DateTimeFormat('it-IT', opts).format(date);
+}
+
+function escapeSvgText(value = '') {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function buildDefaultAccountAvatar(name = '') {
+    const cleanName = String(name || '').trim();
+    const initials = cleanName
+        ? cleanName.split(/\s+/).slice(0, 2).map((p) => p.charAt(0).toUpperCase()).join('')
+        : 'DC';
+    const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+  <rect width="160" height="160" rx="30" fill="#0b162d"/>
+  <circle cx="80" cy="80" r="66" fill="url(#g)" opacity="0.95"/>
+  <text x="80" y="96" text-anchor="middle" font-family="Space Grotesk, Arial, sans-serif" font-size="54" font-weight="700" fill="#041127">${escapeSvgText(initials || 'DC')}</text>
+</svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function getFallbackAccountStats() {
+    const completedCount = completedTrips.length;
+    const km = completedTrips.reduce((sum, trip) => {
+        const value = Number.parseFloat(trip?.distance || 0);
+        return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+    return {
+        favoritesCount: favorites.length,
+        completedTripsCount: completedCount,
+        friendsCount: friends.length,
+        totalCompletedKm: Number(km.toFixed(2))
+    };
+}
+
+function renderAccountProfile() {
+    const profile = accountProfile || currentUser || {};
+    const username = (profile.username || profile.email || 'Utente').trim();
+    const email = (profile.email || currentUser?.email || '').trim();
+    const avatarSrc = profile.avatarUrl || buildDefaultAccountAvatar(username);
+    const stats = accountStats || getFallbackAccountStats();
+
+    if (accountAvatarPreview) accountAvatarPreview.src = avatarSrc;
+    if (accountDisplayName) accountDisplayName.textContent = username;
+    if (accountDisplayEmail) accountDisplayEmail.textContent = email || '-';
+    if (accountMemberSince) accountMemberSince.textContent = `Iscritto: ${formatAccountDate(profile.createdAt)}`;
+    if (accountLastLogin) accountLastLogin.textContent = `Ultimo accesso: ${formatAccountDate(profile.lastLoginAt, true)}`;
+
+    if (accountProfileUsername) accountProfileUsername.value = profile.username || '';
+    if (accountProfileEmail) accountProfileEmail.value = email || '';
+    if (accountProfileLocation) accountProfileLocation.value = profile.location || '';
+    if (accountProfileBio) accountProfileBio.value = profile.bio || '';
+
+    if (accountStatFavorites) accountStatFavorites.textContent = String(stats.favoritesCount || 0);
+    if (accountStatCompleted) accountStatCompleted.textContent = String(stats.completedTripsCount || 0);
+    if (accountStatFriends) accountStatFriends.textContent = String(stats.friendsCount || 0);
+    if (accountStatKm) accountStatKm.textContent = Number(stats.totalCompletedKm || 0).toFixed(0);
+}
+
+function updateAuthUI(message = '') {
+    if (authStatus) authStatus.textContent = message;
+    if (accountStatus) accountStatus.textContent = message;
+    if (logoutBtn) logoutBtn.style.display = authToken ? 'inline-block' : 'none';
+    if (loginBtn) loginBtn.style.display = authToken ? 'none' : 'inline-block';
+    if (registerBtn) registerBtn.style.display = authToken ? 'none' : 'inline-block';
+    if (accountGuestPanel) accountGuestPanel.style.display = authToken ? 'none' : 'block';
+    if (accountConnectedPanel) accountConnectedPanel.style.display = authToken ? 'block' : 'none';
+    if (authToken) {
+        renderAccountProfile();
+    }
 }
 
 function setFriendsStatus(message = '') {
@@ -4480,39 +4627,54 @@ function setAuth(token, user) {
     if (authToken) localStorage.setItem(AUTH_TOKEN_KEY, authToken);
     updateAuthUI();
     if (authToken) {
-        loadAllRemoteData();
-        loadFriendsData();
+        loadAllRemoteData().catch(() => {});
     }
 }
 
 function clearAuth() {
     authToken = null;
     currentUser = null;
+    accountProfile = null;
+    accountStats = null;
     friends = [];
     incomingFriendRequests = [];
     outgoingFriendRequests = [];
     localStorage.removeItem(AUTH_TOKEN_KEY);
     updateAuthUI();
+    renderAccountProfile();
     renderFriends();
     renderFriendRequests();
     renderFriendSharedData(null);
     setFriendsStatus('');
+    if (accountCurrentPassword) accountCurrentPassword.value = '';
+    if (accountNewPassword) accountNewPassword.value = '';
     if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
     if (friendsOverlay) friendsOverlay.style.display = 'none';
 }
 
-function updateAuthUI(message = '') {
-    if (authStatus) authStatus.textContent = message;
-    if (logoutBtn) logoutBtn.style.display = authToken ? 'inline-block' : 'none';
-    if (loginBtn) loginBtn.style.display = authToken ? 'none' : 'inline-block';
-    if (registerBtn) registerBtn.style.display = authToken ? 'none' : 'inline-block';
+async function loadAccountProfile() {
+    if (!authToken) {
+        accountProfile = null;
+        accountStats = null;
+        renderAccountProfile();
+        return;
+    }
+    const res = await apiRequest('/auth/me');
+    accountProfile = res.user || accountProfile || currentUser || null;
+    accountStats = res.stats || accountStats;
+    if (accountProfile) {
+        currentUser = { ...(currentUser || {}), ...accountProfile };
+    }
+    renderAccountProfile();
 }
 
 async function handleAuth(isRegister) {
     const email = (authEmailInput?.value || '').trim();
     const password = authPasswordInput?.value || '';
+    const username = (authUsernameInput?.value || '').trim();
     if (!email || !password) {
         updateAuthUI('Inserisci email e password');
+        setAuthFeedback('Inserisci email e password', 'error');
         return;
     }
     try {
@@ -4520,15 +4682,117 @@ async function handleAuth(isRegister) {
         const data = await fetch(`${API_BASE}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
+            body: JSON.stringify(isRegister ? { email, password, username } : { email, password })
         });
         const json = await data.json();
         if (!data.ok) throw new Error(json.error || 'Errore di autenticazione');
         setAuth(json.token, json.user);
-        updateAuthUI(isRegister ? 'Registrato e loggato' : 'Accesso riuscito');
-        closeAuth();
+        accountProfile = json.user || accountProfile;
+        accountStats = json.stats || accountStats;
+        updateAuthUI(isRegister ? 'Registrazione completata' : 'Accesso riuscito');
+        renderAccountProfile();
+        setAuthFeedback(
+            isRegister
+                ? `Benvenuto ${accountProfile?.username || ''}! Account creato con successo.`
+                : `Accesso eseguito: bentornato ${accountProfile?.username || accountProfile?.email || ''}.`,
+            'success'
+        );
+        if (authPasswordInput) authPasswordInput.value = '';
+        if (accountCurrentPassword) accountCurrentPassword.value = '';
+        if (accountNewPassword) accountNewPassword.value = '';
     } catch (err) {
         updateAuthUI(err.message);
+        setAuthFeedback(err.message, 'error');
+    }
+}
+
+async function saveAccountProfile() {
+    if (!authToken) {
+        openAuth();
+        updateAuthUI('Accedi per modificare il profilo');
+        return;
+    }
+    const payload = {
+        username: (accountProfileUsername?.value || '').trim(),
+        location: (accountProfileLocation?.value || '').trim(),
+        bio: (accountProfileBio?.value || '').trim()
+    };
+    try {
+        const res = await apiRequest('/auth/profile', 'PUT', payload);
+        accountProfile = res.user || accountProfile;
+        accountStats = res.stats || accountStats;
+        if (accountProfile) {
+            currentUser = { ...(currentUser || {}), ...accountProfile };
+        }
+        renderAccountProfile();
+        updateAuthUI('Profilo aggiornato');
+        setAuthFeedback('Profilo salvato correttamente', 'success');
+    } catch (e) {
+        updateAuthUI(e.message);
+        setAuthFeedback(e.message, 'error');
+    }
+}
+
+async function handleAccountAvatarSelected(file) {
+    if (!file || !authToken) return;
+    if (file.size > 8 * 1024 * 1024) {
+        updateAuthUI('Immagine troppo grande (max 8MB)');
+        setAuthFeedback('Immagine troppo grande (max 8MB)', 'error');
+        return;
+    }
+    updateAuthUI('Elaborazione immagine profilo...');
+    const dataUrl = await processMyCarPhotoFile(file);
+    if (!dataUrl) {
+        updateAuthUI('Formato immagine non supportato');
+        setAuthFeedback('Formato immagine non supportato', 'error');
+        return;
+    }
+    try {
+        const res = await apiRequest('/auth/profile', 'PUT', { avatarUrl: dataUrl });
+        accountProfile = res.user || accountProfile;
+        accountStats = res.stats || accountStats;
+        renderAccountProfile();
+        updateAuthUI('Immagine profilo aggiornata');
+        setAuthFeedback('Immagine profilo aggiornata', 'success');
+    } catch (e) {
+        updateAuthUI(e.message);
+        setAuthFeedback(e.message, 'error');
+    }
+}
+
+async function removeAccountAvatar() {
+    if (!authToken) return;
+    try {
+        const res = await apiRequest('/auth/profile', 'PUT', { avatarUrl: '' });
+        accountProfile = res.user || accountProfile;
+        accountStats = res.stats || accountStats;
+        renderAccountProfile();
+        updateAuthUI('Immagine profilo rimossa');
+        setAuthFeedback('Immagine profilo rimossa', 'success');
+    } catch (e) {
+        updateAuthUI(e.message);
+        setAuthFeedback(e.message, 'error');
+    }
+}
+
+async function changeAccountPassword() {
+    if (!authToken) return;
+    const currentPassword = accountCurrentPassword?.value || '';
+    const newPassword = accountNewPassword?.value || '';
+    if (!currentPassword || !newPassword) {
+        updateAuthUI('Inserisci password attuale e nuova password');
+        setAuthFeedback('Inserisci password attuale e nuova password', 'error');
+        return;
+    }
+    try {
+        await apiRequest('/auth/password', 'PUT', { currentPassword, newPassword });
+        if (accountCurrentPassword) accountCurrentPassword.value = '';
+        if (accountNewPassword) accountNewPassword.value = '';
+        updateAuthUI('Password aggiornata');
+        setAuthFeedback('Password aggiornata con successo', 'success');
+    } catch (e) {
+        updateAuthUI(e.message);
+        setAuthFeedback(e.message, 'error');
     }
 }
 
@@ -4538,11 +4802,13 @@ async function loadAllRemoteData() {
         loadCompanionTrips(),
         loadCompletedTrips(),
         loadMyCarPhotos(),
-        loadFriendsData().catch(() => {})
+        loadFriendsData().catch(() => {}),
+        loadAccountProfile().catch(() => {})
     ]);
     renderFavorites();
     renderCompanionHistory();
     renderBudget();
+    renderAccountProfile();
 }
 
 function upsertCompletedTrip(entry) {
@@ -4714,7 +4980,13 @@ function openAuth() {
     if (authOverlay) {
         authOverlay.style.display = 'flex';
         setActiveMenu(accountBtn);
-        updateAuthUI(authToken ? 'Sei connesso' : 'Accedi o registrati');
+        updateAuthUI(authToken ? 'Account connesso' : 'Accedi o registrati');
+        setAuthFeedback('');
+        if (authToken) {
+            loadAccountProfile().catch((e) => {
+                updateAuthUI(e.message || 'Impossibile caricare il profilo');
+            });
+        }
     }
 }
 
@@ -4758,6 +5030,7 @@ async function openFriendsView() {
 
 function closeAuth() {
     if (authOverlay) authOverlay.style.display = 'none';
+    setAuthFeedback('');
     setActiveMenu(homeBtn);
 }
 
@@ -5338,7 +5611,17 @@ registerBtn?.addEventListener('click', () => handleAuth(true));
 logoutBtn?.addEventListener('click', () => {
     clearAuth();
     updateAuthUI('Disconnesso');
+    setAuthFeedback('Disconnessione completata', 'info');
 });
+accountSaveProfileBtn?.addEventListener('click', saveAccountProfile);
+accountAvatarUploadBtn?.addEventListener('click', () => accountAvatarInput?.click());
+accountAvatarInput?.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    await handleAccountAvatarSelected(file);
+    e.target.value = '';
+});
+accountAvatarRemoveBtn?.addEventListener('click', removeAccountAvatar);
+accountChangePasswordBtn?.addEventListener('click', changeAccountPassword);
 sendFriendRequestBtn?.addEventListener('click', sendFriendRequest);
 friendSearchInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
