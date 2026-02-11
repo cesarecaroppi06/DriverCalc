@@ -20,6 +20,10 @@ const APP_STATE_ROW_ID = 1;
 let dbCache = null;
 let pgPool = null;
 let pendingRemoteWrite = Promise.resolve();
+const OFFICIAL_MODELS_YEAR_MIN = 1980;
+const OFFICIAL_MODELS_MAX_YEAR_SPAN = 26;
+const officialModelsCache = new Map();
+const officialModelsPending = new Map();
 
 function ensureDbShape(db) {
     if (!db || typeof db !== 'object') db = {};
@@ -267,6 +271,85 @@ function getShareSettings(db, userId) {
     return db.shareSettings[userId];
 }
 
+function normalizeSearchValue(value = '') {
+    return String(value)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9\s]+/g, ' ')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function scoreModelQueryMatch(modelName = '', query = '') {
+    const candidate = normalizeSearchValue(modelName);
+    const q = normalizeSearchValue(query);
+    if (!candidate) return 0;
+    if (!q) return 100;
+    if (candidate.includes(q)) return 100;
+
+    const tokens = q.split(' ').filter((token) => token.length >= 2);
+    if (!tokens.length) return 0;
+
+    let matched = 0;
+    tokens.forEach((token) => {
+        if (candidate.includes(token)) matched += 1;
+    });
+
+    const minRequired = tokens.length <= 2 ? 1 : Math.max(2, tokens.length - 1);
+    if (matched < minRequired) return 0;
+    return 40 + (matched * 15);
+}
+
+function parseBoolFlag(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
+function parseClampedYear(value, maxYear) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    const rounded = Math.trunc(numeric);
+    if (rounded < OFFICIAL_MODELS_YEAR_MIN || rounded > maxYear) return null;
+    return rounded;
+}
+
+async function fetchOfficialModelsFromVpic(make, year = null) {
+    const cacheKey = `${String(make || '').toLowerCase()}|${year || 'all'}`;
+    if (officialModelsCache.has(cacheKey)) return officialModelsCache.get(cacheKey);
+    if (officialModelsPending.has(cacheKey)) return officialModelsPending.get(cacheKey);
+
+    const encodedMake = encodeURIComponent(make);
+    const url = year
+        ? `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/${encodedMake}/modelyear/${year}?format=json`
+        : `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodedMake}?format=json`;
+
+    const request = fetch(url, { headers: { Accept: 'application/json' } })
+        .then(async (apiRes) => {
+            if (!apiRes.ok) {
+                const detail = await apiRes.text().catch(() => '');
+                throw new Error(detail || `HTTP ${apiRes.status}`);
+            }
+            const data = await apiRes.json();
+            const rawItems = Array.isArray(data.Results) ? data.Results : [];
+            const models = Array.from(
+                new Set(
+                    rawItems
+                        .map((item) => String(item.Model_Name || '').trim())
+                        .filter(Boolean)
+                )
+            ).sort((a, b) => a.localeCompare(b, 'it'));
+            officialModelsCache.set(cacheKey, models);
+            return models;
+        })
+        .finally(() => {
+            officialModelsPending.delete(cacheKey);
+        });
+
+    officialModelsPending.set(cacheKey, request);
+    return request;
+}
+
 function isFriends(db, a, b) {
     const list = getFriendList(db, a);
     return list.includes(b);
@@ -490,6 +573,98 @@ app.get('/api/friends/:friendId/shared', authMiddleware, (req, res) => {
         mycarPhotos: settings.shareMyCar ? (db.mycarPhotos[friendId] || {}) : {}
     };
     return res.json({ item: shared });
+});
+
+app.get('/api/official-models', async (req, res) => {
+    const make = String(req.query.make || '').trim();
+    const maxYear = new Date().getFullYear() + 1;
+    const year = parseClampedYear(req.query.year, maxYear);
+    const withYears = parseBoolFlag(req.query.withYears);
+    const query = String(req.query.query || req.query.q || '').trim();
+
+    if (!make || make.length < 2) {
+        return res.status(400).json({ error: 'Parametro make obbligatorio' });
+    }
+
+    try {
+        if (withYears) {
+            const normalizedQuery = normalizeSearchValue(query);
+            if (normalizedQuery.length < 3) {
+                return res.json({
+                    source: 'vpic-nhtsa',
+                    make,
+                    query,
+                    items: []
+                });
+            }
+
+            let yearFrom = parseClampedYear(req.query.yearFrom, maxYear);
+            let yearTo = parseClampedYear(req.query.yearTo, maxYear);
+            if (!Number.isFinite(yearFrom)) yearFrom = Math.max(OFFICIAL_MODELS_YEAR_MIN, maxYear - 20);
+            if (!Number.isFinite(yearTo)) yearTo = maxYear;
+            if (yearFrom > yearTo) {
+                const tmp = yearFrom;
+                yearFrom = yearTo;
+                yearTo = tmp;
+            }
+            if ((yearTo - yearFrom + 1) > OFFICIAL_MODELS_MAX_YEAR_SPAN) {
+                yearFrom = yearTo - OFFICIAL_MODELS_MAX_YEAR_SPAN + 1;
+            }
+
+            const years = [];
+            for (let y = yearTo; y >= yearFrom; y -= 1) years.push(y);
+
+            const yearRows = [];
+            const batchSize = 4;
+            for (let i = 0; i < years.length; i += batchSize) {
+                const batch = years.slice(i, i + batchSize);
+                const rows = await Promise.all(
+                    batch.map(async (y) => ({
+                        year: y,
+                        names: await fetchOfficialModelsFromVpic(make, y)
+                    }))
+                );
+                yearRows.push(...rows);
+            }
+
+            const items = [];
+            const seen = new Set();
+            yearRows.forEach((row) => {
+                (row.names || []).forEach((name) => {
+                    if (scoreModelQueryMatch(name, normalizedQuery) <= 0) return;
+                    const key = `${name.toLowerCase()}|${row.year}`;
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    items.push({ name, year: row.year });
+                });
+            });
+
+            items.sort((a, b) => {
+                if (b.year !== a.year) return b.year - a.year;
+                return a.name.localeCompare(b.name, 'it');
+            });
+
+            return res.json({
+                source: 'vpic-nhtsa',
+                make,
+                query,
+                yearFrom,
+                yearTo,
+                items
+            });
+        }
+
+        const models = await fetchOfficialModelsFromVpic(make, year);
+
+        return res.json({
+            source: 'vpic-nhtsa',
+            make,
+            year,
+            items: models
+        });
+    } catch (err) {
+        return res.status(502).json({ error: 'Errore servizio modelli ufficiali' });
+    }
 });
 
 app.post('/api/google/routes', async (req, res) => {

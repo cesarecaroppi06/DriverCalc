@@ -2172,7 +2172,27 @@ Object.keys(carConsumption).forEach(key => {
 
 // Carica modelli estesi da JSON esterno per non appesantire il bundle
 const DYNAMIC_MODELS_GROUP_ID = 'dynamic-models-group';
-const BRAND_DATA_VERSION = '4';
+const BRAND_DATA_VERSION = '5';
+const MODEL_YEAR_MIN = 1980;
+const MODEL_YEAR_MAX = Math.max(new Date().getFullYear(), 2026);
+const OFFICIAL_MODELS_SOURCE = 'vpic-nhtsa';
+const officialModelNameCache = new Map();
+const officialModelRequestCache = new Map();
+const officialModelVariantCache = new Map();
+const officialModelVariantRequestCache = new Map();
+let modelSearchRequestId = 0;
+const officialMakeAliases = {
+    'alfa-romeo': 'alfa romeo',
+    'land-rover': 'land rover',
+    mercedes: 'mercedes-benz',
+    ds: 'ds automobiles'
+};
+const brandInferenceAliases = {
+    'land-rover': ['range rover', 'evoque', 'velar', 'defender', 'discovery sport', 'discovery'],
+    audi: ['q8', 'q7', 'q6 e tron', 'q8 e tron', 'rs q8'],
+    mercedes: ['mercedes benz'],
+    'alfa-romeo': ['alfa romeo']
+};
 const MODEL_IMAGE_MAP = {
     // Esempio: 'fiat-panda-2024': 'assets/cars/fiat-panda-2024.png'
 };
@@ -2229,6 +2249,319 @@ const brandDataFiles = {
     lancia: 'models/brand_lancia.json'
 };
 const loadedBrandData = new Set();
+
+function normalizeModelLabel(label = '') {
+    return String(label)
+        .replace(/\s*\((?:19|20)\d{2}\)\s*/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function normalizeSearchText(text = '') {
+    return String(text)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9\s]+/g, ' ')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function scoreTextAgainstQuery(text = '', query = '') {
+    const candidate = normalizeSearchText(text);
+    const q = normalizeSearchText(query);
+    if (!candidate || !q) return 0;
+
+    if (candidate.includes(q)) return 100;
+
+    const tokens = q.split(' ').filter(Boolean);
+    if (!tokens.length) return 0;
+
+    let matched = 0;
+    tokens.forEach((token) => {
+        if (candidate.includes(token)) matched += 1;
+    });
+
+    const minRequired = tokens.length <= 2 ? 1 : Math.max(2, tokens.length - 1);
+    if (matched < minRequired) return 0;
+
+    const longestToken = tokens.slice().sort((a, b) => b.length - a.length)[0] || '';
+    const longestBoost = longestToken && candidate.includes(longestToken) ? 10 : 0;
+    return 40 + (matched * 15) + longestBoost;
+}
+
+function escapeRegexLiteral(value = '') {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function phraseInText(text = '', phrase = '') {
+    const normalizedText = normalizeSearchText(text);
+    const normalizedPhrase = normalizeSearchText(phrase);
+    if (!normalizedText || !normalizedPhrase) return false;
+    const pattern = normalizedPhrase.split(' ').map(escapeRegexLiteral).join('\\s+');
+    return new RegExp(`\\b${pattern}\\b`, 'i').test(normalizedText);
+}
+
+function extractYearFromLabel(label = '') {
+    const match = String(label).match(/\b((?:19|20)\d{2})\b/);
+    if (!match) return null;
+    const year = Number(match[1]);
+    return Number.isFinite(year) ? year : null;
+}
+
+function slugifyModelToken(value = '') {
+    return String(value)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase();
+}
+
+function buildModelVariantId(brandKey = '', baseLabel = '', year = '') {
+    const brand = slugifyModelToken(brandKey) || 'brand';
+    const model = slugifyModelToken(baseLabel) || 'model';
+    return `${brand}-${model}-${year}`;
+}
+
+function resolveOfficialMakeName(brandKey = '', brandLabel = '') {
+    if (officialMakeAliases[brandKey]) return officialMakeAliases[brandKey];
+    if (brandLabel) return brandLabel.toLowerCase();
+    return brandKey.replace(/-/g, ' ').toLowerCase();
+}
+
+function getBrandLabelFromKey(brandKey = '') {
+    if (!brandKey || !carBrandSelect) return '';
+    const value = `brand-${brandKey}`;
+    const option = Array.from(carBrandSelect.options || []).find((opt) => (opt.value || '').toLowerCase() === value.toLowerCase());
+    return formatBrandInputLabel((option?.textContent || '').trim()) || brandKey.replace(/-/g, ' ');
+}
+
+function inferBrandKeyFromModelQuery(query = '') {
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedQuery) return '';
+
+    const entries = Object.entries(brandMatchers || {});
+    for (const [brandKey, keys] of entries) {
+        const terms = new Set();
+        terms.add(brandKey.replace(/-/g, ' '));
+        (keys || []).forEach((term) => terms.add(String(term).replace(/-/g, ' ')));
+        (brandInferenceAliases[brandKey] || []).forEach((term) => terms.add(String(term)));
+        for (const term of terms) {
+            const compactTerm = term.replace(/\s+/g, '');
+            const isShortCode = compactTerm.length >= 2 && /[a-z]/i.test(compactTerm) && /\d/.test(compactTerm);
+            if (term.length < 3 && !isShortCode) continue;
+            if (phraseInText(normalizedQuery, term)) {
+                return brandKey;
+            }
+        }
+    }
+    return '';
+}
+
+function getRequestedYearHint(query = '') {
+    const parsedYear = extractYearFromLabel(query);
+    if (!Number.isFinite(parsedYear)) return null;
+    return Math.min(Math.max(parsedYear, MODEL_YEAR_MIN), MODEL_YEAR_MAX);
+}
+
+async function fetchOfficialModelNames(brandKey = '', brandLabel = '', yearHint = null) {
+    if (!brandKey) return [];
+    const normalizedYear = Number.isFinite(yearHint) ? yearHint : null;
+    const cacheKey = `${brandKey}|${normalizedYear || 'all'}`;
+
+    if (officialModelNameCache.has(cacheKey)) {
+        return officialModelNameCache.get(cacheKey);
+    }
+    if (officialModelRequestCache.has(cacheKey)) {
+        return officialModelRequestCache.get(cacheKey);
+    }
+
+    const make = resolveOfficialMakeName(brandKey, brandLabel);
+    const params = new URLSearchParams({ make });
+    if (normalizedYear) params.set('year', String(normalizedYear));
+    const endpoint = `${API_BASE}/official-models?${params.toString()}`;
+
+    const request = fetch(endpoint, { headers: { Accept: 'application/json' } })
+        .then(async (res) => {
+            if (!res.ok) return [];
+            const payload = await res.json().catch(() => ({}));
+            const names = Array.isArray(payload.items) ? payload.items : [];
+            const deduped = Array.from(new Set(
+                names.map((name) => normalizeModelLabel(name)).filter(Boolean)
+            ));
+            officialModelNameCache.set(cacheKey, deduped);
+            return deduped;
+        })
+        .catch(() => [])
+        .finally(() => {
+            officialModelRequestCache.delete(cacheKey);
+        });
+
+    officialModelRequestCache.set(cacheKey, request);
+    return request;
+}
+
+async function fetchOfficialModelVariantsByYear(brandKey = '', brandLabel = '', query = '') {
+    if (!brandKey) return [];
+    const normalizedQuery = normalizeSearchText(query);
+    if (normalizedQuery.length < 6) return [];
+
+    const cacheKey = `${brandKey}|${normalizedQuery}`;
+    if (officialModelVariantCache.has(cacheKey)) {
+        return officialModelVariantCache.get(cacheKey);
+    }
+    if (officialModelVariantRequestCache.has(cacheKey)) {
+        return officialModelVariantRequestCache.get(cacheKey);
+    }
+
+    const make = resolveOfficialMakeName(brandKey, brandLabel);
+    const currentYear = new Date().getFullYear();
+    const yearFrom = Math.max(MODEL_YEAR_MIN, currentYear - 20);
+    const yearTo = currentYear + 1;
+    const params = new URLSearchParams({
+        make,
+        withYears: '1',
+        query: normalizedQuery,
+        yearFrom: String(yearFrom),
+        yearTo: String(yearTo)
+    });
+    const endpoint = `${API_BASE}/official-models?${params.toString()}`;
+
+    const request = fetch(endpoint, { headers: { Accept: 'application/json' } })
+        .then(async (res) => {
+            if (!res.ok) return [];
+            const payload = await res.json().catch(() => ({}));
+            const rawItems = Array.isArray(payload.items) ? payload.items : [];
+            const normalized = rawItems
+                .map((entry) => ({
+                    name: normalizeModelLabel(entry?.name || ''),
+                    year: Number(entry?.year) || null
+                }))
+                .filter((entry) => entry.name && Number.isFinite(entry.year));
+            officialModelVariantCache.set(cacheKey, normalized);
+            return normalized;
+        })
+        .catch(() => [])
+        .finally(() => {
+            officialModelVariantRequestCache.delete(cacheKey);
+        });
+
+    officialModelVariantRequestCache.set(cacheKey, request);
+    return request;
+}
+
+function buildEstimatedFuelsForBrand(brandSelectValue = '') {
+    const brandFuels = carConsumption[brandSelectValue]?.fuels || {};
+    const fallbackFuels = carConsumption.sedan?.fuels || { benzina: 6.4, diesel: 5.1, gpl: 7.4, metano: 4.8, elettrico: 17.5 };
+    const result = {};
+    ['benzina', 'diesel', 'gpl', 'metano', 'elettrico'].forEach((fuel) => {
+        const brandValue = Number(brandFuels[fuel]);
+        const fallbackValue = Number(fallbackFuels[fuel]);
+        if (Number.isFinite(brandValue)) {
+            result[fuel] = brandValue;
+        } else if (Number.isFinite(fallbackValue)) {
+            result[fuel] = fallbackValue;
+        }
+    });
+    return result;
+}
+
+function buildSuggestedModelPayload(rawModelName = '', query = '', {
+    official = false,
+    brandKeyOverride = '',
+    brandLabelOverride = '',
+    yearOverride = null
+} = {}) {
+    const selectedBrandValue = (carBrandSelect?.value || '').trim();
+    const selectedBrandKey = selectedBrandValue.replace(/^brand-/, '').trim().toLowerCase();
+    const brandKey = (brandKeyOverride || selectedBrandKey || '').trim().toLowerCase();
+    if (!brandKey) return null;
+
+    const brandValue = carConsumption[`brand-${brandKey}`]
+        ? `brand-${brandKey}`
+        : selectedBrandValue;
+    const brandLabel = (brandLabelOverride || formatBrandInputLabel(getSelectedOptionText(carBrandSelect)) || getBrandLabelFromKey(brandKey) || brandKey).trim();
+    const modelName = normalizeModelLabel(rawModelName || query);
+    if (!modelName || modelName.length < 2) return null;
+
+    const queryYear = getRequestedYearHint(query);
+    const parsedYearOverride = Number(yearOverride);
+    const year = Number.isFinite(parsedYearOverride) ? parsedYearOverride : queryYear;
+    const fullName = modelName.toLowerCase().startsWith(brandLabel.toLowerCase())
+        ? (year ? `${modelName} (${year})` : modelName)
+        : (year ? `${brandLabel} ${modelName} (${year})` : `${brandLabel} ${modelName}`);
+
+    const idYearToken = year || 'nd';
+    const idPrefix = official ? 'official' : 'custom';
+    const modelId = `${buildModelVariantId(brandKey, normalizeModelLabel(fullName), idYearToken)}-${idPrefix}`;
+    const modelData = {
+        id: modelId,
+        label: fullName,
+        brand: brandKey,
+        year: year || null,
+        fuels: buildEstimatedFuelsForBrand(brandValue),
+        source: official ? OFFICIAL_MODELS_SOURCE : 'manual'
+    };
+
+    return {
+        value: modelId,
+        label: official ? `Ufficiale: ${fullName}` : `Aggiungi: ${fullName}`,
+        customModel: modelData
+    };
+}
+
+async function collectOfficialModelMatches(query = '', brandKey = '', brandLabel = '') {
+    if (!brandKey) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+
+    const yearHint = getRequestedYearHint(query);
+    const names = await fetchOfficialModelNames(brandKey, brandLabel, yearHint);
+    const baseMatches = names
+        .map((name) => ({ name, score: scoreTextAgainstQuery(name, query) }))
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 25)
+        .map((item) => buildSuggestedModelPayload(item.name, query, {
+            official: true,
+            brandKeyOverride: brandKey,
+            brandLabelOverride: brandLabel
+        }))
+        .filter(Boolean);
+
+    let variantMatches = [];
+    if (!yearHint) {
+        const variants = await fetchOfficialModelVariantsByYear(brandKey, brandLabel, query);
+        variantMatches = variants
+            .map((entry) => ({
+                name: entry.name,
+                year: entry.year,
+                score: scoreTextAgainstQuery(`${entry.name} ${entry.year}`, query)
+            }))
+            .filter((entry) => entry.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 20)
+            .map((entry) => buildSuggestedModelPayload(entry.name, query, {
+                official: true,
+                brandKeyOverride: brandKey,
+                brandLabelOverride: brandLabel,
+                yearOverride: entry.year
+            }))
+            .filter(Boolean);
+    }
+
+    const merged = [];
+    const seen = new Set();
+    [...variantMatches, ...baseMatches].forEach((item) => {
+        const key = (item?.label || '').toLowerCase();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        merged.push(item);
+    });
+    return merged;
+}
+
 async function loadCarModelsFromJson() {
     if (!carTypeSelect) return;
     if (carTypeSelect.dataset.dynamicLoaded === 'yes') return;
@@ -2248,7 +2581,7 @@ async function loadCarModelsFromJson() {
         if (!group) {
             group = document.createElement('optgroup');
             group.id = DYNAMIC_MODELS_GROUP_ID;
-            group.label = 'Modelli estesi 2010-2025';
+            group.label = `Modelli estesi e ufficiali ${MODEL_YEAR_MIN}-${MODEL_YEAR_MAX}`;
             carTypeSelect.appendChild(group);
         }
         group.innerHTML = '';
@@ -2615,6 +2948,7 @@ function collectModelMatches(query = '', brandKey = '') {
     const showAll = !brandKey;
     const results = [];
     const seen = new Set();
+    const scoresByValue = new Map();
 
     carOptionsSnapshot.forEach(node => {
         if (node.tagName === 'OPTION') {
@@ -2625,9 +2959,10 @@ function collectModelMatches(query = '', brandKey = '') {
             const matchesBrand = showAll || isGeneric || optBrand === brandKey;
             const text = opt.textContent || '';
             const value = opt.value || '';
-            const matchesSearch = text.toLowerCase().includes(q) || value.toLowerCase().includes(q);
-            if (matchesBrand && matchesSearch && !seen.has(value)) {
+            const score = Math.max(scoreTextAgainstQuery(text, query), scoreTextAgainstQuery(value, query));
+            if (matchesBrand && score > 0 && !seen.has(value)) {
                 seen.add(value);
+                scoresByValue.set(value, score);
                 results.push({ value, label: text });
             }
             return;
@@ -2642,19 +2977,21 @@ function collectModelMatches(query = '', brandKey = '') {
                 const matchesBrand = showAll || isGeneric || optBrand === brandKey;
                 const text = opt.textContent || '';
                 const value = opt.value || '';
-                const matchesSearch = text.toLowerCase().includes(q) || value.toLowerCase().includes(q);
-                if (matchesBrand && matchesSearch && !seen.has(value)) {
+                const score = Math.max(scoreTextAgainstQuery(text, query), scoreTextAgainstQuery(value, query));
+                if (matchesBrand && score > 0 && !seen.has(value)) {
                     seen.add(value);
+                    scoresByValue.set(value, score);
                     results.push({ value, label: text });
                 }
             });
         }
     });
 
-    return results;
+    return results.sort((a, b) => (scoresByValue.get(b.value) || 0) - (scoresByValue.get(a.value) || 0));
 }
 
-function updateModelResults(query = '') {
+async function updateModelResults(query = '') {
+    const requestId = ++modelSearchRequestId;
     if (!carTypeResults) return;
     const q = query.trim().toLowerCase();
     if (!q) {
@@ -2663,14 +3000,67 @@ function updateModelResults(query = '') {
     }
     if (!carOptionsSnapshot.length) snapshotCarOptionsStructure();
 
-    const brandKey = (carBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
-    const matches = collectModelMatches(query, brandKey);
-    renderResults(carTypeResults, matches, query, (item) => {
-        carTypeSelect.value = item.value;
-        syncModelInputFromSelect();
-        clearResultsContainer(carTypeResults);
-        carTypeSelect.dispatchEvent(new Event('change'));
-    });
+    const selectedBrandKey = (carBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
+    const inferredBrandKey = selectedBrandKey ? '' : inferBrandKeyFromModelQuery(query);
+    const brandKey = selectedBrandKey || inferredBrandKey;
+    const selectedBrandLabel = formatBrandInputLabel(getSelectedOptionText(carBrandSelect));
+    const brandLabel = selectedBrandLabel || getBrandLabelFromKey(brandKey);
+    try {
+        if (brandKey) await ensureBrandModelsLoaded(brandKey);
+        const localMatches = collectModelMatches(query, brandKey);
+        const officialMatches = await collectOfficialModelMatches(query, brandKey, brandLabel);
+        if (requestId !== modelSearchRequestId) return;
+
+        const merged = [];
+        const seenLabels = new Set();
+        [...localMatches, ...officialMatches].forEach((item) => {
+            if (!item || !item.label) return;
+            const key = item.label.toLowerCase();
+            if (seenLabels.has(key)) return;
+            seenLabels.add(key);
+            merged.push(item);
+        });
+
+        let matches = merged.slice(0, 30);
+        if (!matches.length) {
+            const customSuggestion = buildSuggestedModelPayload(query, query, {
+                official: false,
+                brandKeyOverride: brandKey,
+                brandLabelOverride: brandLabel
+            });
+            if (customSuggestion) matches = [customSuggestion];
+        }
+
+        renderResults(carTypeResults, matches, query, (item) => {
+            if (item.customModel) {
+                appendModelsToSelect([item.customModel]);
+            }
+            carTypeSelect.value = item.value;
+            syncModelInputFromSelect();
+            clearResultsContainer(carTypeResults);
+            carTypeSelect.dispatchEvent(new Event('change'));
+        });
+    } catch (err) {
+        if (requestId !== modelSearchRequestId) return;
+        let fallbackMatches = collectModelMatches(query, brandKey).slice(0, 30);
+        if (!fallbackMatches.length) {
+            const customSuggestion = buildSuggestedModelPayload(query, query, {
+                official: false,
+                brandKeyOverride: brandKey,
+                brandLabelOverride: brandLabel
+            });
+            if (customSuggestion) fallbackMatches = [customSuggestion];
+        }
+        renderResults(carTypeResults, fallbackMatches, query, (item) => {
+            if (item.customModel) {
+                appendModelsToSelect([item.customModel]);
+            }
+            carTypeSelect.value = item.value;
+            syncModelInputFromSelect();
+            clearResultsContainer(carTypeResults);
+            carTypeSelect.dispatchEvent(new Event('change'));
+        });
+    }
 }
 
 function getSelectedOptionText(selectEl) {
@@ -3258,7 +3648,7 @@ function appendModelsToSelect(models, { replaceGroup = false } = {}) {
     if (!group) {
         group = document.createElement('optgroup');
         group.id = DYNAMIC_MODELS_GROUP_ID;
-        group.label = 'Modelli estesi 2000-2025';
+        group.label = `Modelli estesi e ufficiali ${MODEL_YEAR_MIN}-${MODEL_YEAR_MAX}`;
         carTypeSelect.appendChild(group);
     }
     if (replaceGroup) group.innerHTML = '';
@@ -3270,7 +3660,10 @@ function appendModelsToSelect(models, { replaceGroup = false } = {}) {
         if (existingIds.has(model.id)) return;
 
         const enrichedFuels = enrichDualFuel(model.label, model.fuels);
-        carConsumption[model.id] = { label: model.label, fuels: enrichedFuels };
+        const cleanLabel = normalizeModelLabel(model.label);
+        const yearLabel = Number(model.year) || extractYearFromLabel(model.label);
+        const fullLabel = yearLabel ? `${cleanLabel} (${yearLabel})` : cleanLabel;
+        carConsumption[model.id] = { label: fullLabel, fuels: enrichedFuels };
 
         const fuels = Object.keys(enrichedFuels);
         const firstFuel = fuels[0];
@@ -3280,7 +3673,7 @@ function appendModelsToSelect(models, { replaceGroup = false } = {}) {
 
         const opt = document.createElement('option');
         opt.value = model.id;
-        opt.textContent = `${model.label} (${model.year || 'n/d'}) - ${consumptionText}`;
+        opt.textContent = `${fullLabel} - ${consumptionText}`;
         const brand = (model.brand || '').toLowerCase();
         if (brand) opt.dataset.brand = brand;
         group.appendChild(opt);

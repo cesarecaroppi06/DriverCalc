@@ -47,6 +47,7 @@
   {"id":"audi-a1-2012","label":"Audi A1 1.6 TDI (2012)","brand":"audi","year":2012,"fuels":{"diesel":4.7}},
   {"id":"audi-a3-2016","label":"Audi A3 1.4 TFSI (2016)","brand":"audi","year":2016,"fuels":{"benzina":5.3}},
   {"id":"audi-q5-2020","label":"Audi Q5 40 TDI (2020)","brand":"audi","year":2020,"fuels":{"diesel":6.0}},
+  {"id":"audi-q8-2021","label":"Audi Q8 55 TFSI quattro (2021)","brand":"audi","year":2021,"fuels":{"benzina":9.1}},
   {"id":"audi-q4-etron-2024","label":"Audi Q4 e-tron 45 (2024)","brand":"audi","year":2024,"fuels":{"elettrico":18.2}},
 
   {"id":"kia-picanto-2012","label":"Kia Picanto 1.0 (2012)","brand":"kia","year":2012,"fuels":{"benzina":5.1}},
@@ -121,6 +122,7 @@
 
   {"id":"landrover-freelander-2012","label":"Land Rover Freelander 2.2 (2012)","brand":"land-rover","year":2012,"fuels":{"diesel":7.6}},
   {"id":"landrover-evoque-2016","label":"Land Rover Evoque 2.0 TD4 (2016)","brand":"land-rover","year":2016,"fuels":{"diesel":6.6}},
+  {"id":"landrover-evoque-2021","label":"Range Rover Evoque P200 (2021)","brand":"land-rover","year":2021,"fuels":{"benzina":8.1}},
   {"id":"landrover-velar-2020","label":"Range Rover Velar D200 (2020)","brand":"land-rover","year":2020,"fuels":{"diesel":7.1}},
   {"id":"landrover-defender-2024","label":"Land Rover Defender D250 (2024)","brand":"land-rover","year":2024,"fuels":{"diesel":8.4}},
 

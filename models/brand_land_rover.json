@@ -1,9 +1,26 @@
 [
+  {"id":"land-rover-freelander-2012","label":"Land Rover Freelander 2 2.2 TD4 (2012)","brand":"land-rover","year":2012,"fuels":{"diesel":7.6}},
+  {"id":"land-rover-evoque-2012","label":"Range Rover Evoque 2.2 SD4 (2012)","brand":"land-rover","year":2012,"fuels":{"diesel":6.8}},
+  {"id":"land-rover-evoque-2014","label":"Range Rover Evoque 2.2 TD4 (2014)","brand":"land-rover","year":2014,"fuels":{"diesel":6.4}},
+  {"id":"land-rover-evoque-2016","label":"Land Rover Evoque 2.0 TD4 (2016)","brand":"land-rover","year":2016,"fuels":{"diesel":6.6}},
   {"id":"land-rover-evoque-2018","label":"Land Rover Evoque 2.0 TD4 (2018)","brand":"land-rover","year":2018,"fuels":{"diesel":6.3}},
+  {"id":"land-rover-evoque-2019","label":"Range Rover Evoque D180 AWD (2019)","brand":"land-rover","year":2019,"fuels":{"diesel":6.8}},
+  {"id":"land-rover-evoque-2021","label":"Range Rover Evoque P200 (2021)","brand":"land-rover","year":2021,"fuels":{"benzina":8.1}},
   {"id":"land-rover-evoque-2023","label":"Range Rover Evoque PHEV (2023)","brand":"land-rover","year":2023,"fuels":{"benzina":6.4}},
+  {"id":"land-rover-evoque-2024","label":"Range Rover Evoque D200 (2024)","brand":"land-rover","year":2024,"fuels":{"diesel":6.9}},
   {"id":"land-rover-discovery-sport-2019","label":"Discovery Sport 2.0 D (2019)","brand":"land-rover","year":2019,"fuels":{"diesel":6.8}},
+  {"id":"land-rover-discovery-sport-2022","label":"Discovery Sport D200 MHEV (2022)","brand":"land-rover","year":2022,"fuels":{"diesel":6.9}},
+  {"id":"land-rover-discovery-2017","label":"Discovery 3.0 TD6 (2017)","brand":"land-rover","year":2017,"fuels":{"diesel":7.8}},
   {"id":"land-rover-discovery-2021","label":"Discovery 3.0 D (2021)","brand":"land-rover","year":2021,"fuels":{"diesel":7.9}},
+  {"id":"land-rover-discovery-2024","label":"Discovery D350 MHEV (2024)","brand":"land-rover","year":2024,"fuels":{"diesel":8.0}},
+  {"id":"land-rover-velar-2018","label":"Range Rover Velar D240 (2018)","brand":"land-rover","year":2018,"fuels":{"diesel":6.7}},
   {"id":"land-rover-velar-2020","label":"Range Rover Velar D200 (2020)","brand":"land-rover","year":2020,"fuels":{"diesel":7.1}},
+  {"id":"land-rover-velar-2023","label":"Range Rover Velar P400e (2023)","brand":"land-rover","year":2023,"fuels":{"benzina":7.2}},
+  {"id":"land-rover-range-rover-2016","label":"Range Rover 3.0 TDV6 (2016)","brand":"land-rover","year":2016,"fuels":{"diesel":8.2}},
+  {"id":"land-rover-range-rover-2020","label":"Range Rover D300 (2020)","brand":"land-rover","year":2020,"fuels":{"diesel":8.5}},
   {"id":"land-rover-range-rover-2023","label":"Range Rover PHEV (2023)","brand":"land-rover","year":2023,"fuels":{"benzina":8.5}},
-  {"id":"land-rover-defender-2022","label":"Land Rover Defender D250 (2022)","brand":"land-rover","year":2022,"fuels":{"diesel":8.4}}
+  {"id":"land-rover-range-rover-2024","label":"Range Rover D350 MHEV (2024)","brand":"land-rover","year":2024,"fuels":{"diesel":8.3}},
+  {"id":"land-rover-defender-2020","label":"Land Rover Defender D240 (2020)","brand":"land-rover","year":2020,"fuels":{"diesel":8.7}},
+  {"id":"land-rover-defender-2022","label":"Land Rover Defender D250 (2022)","brand":"land-rover","year":2022,"fuels":{"diesel":8.4}},
+  {"id":"land-rover-defender-2024","label":"Land Rover Defender D300 MHEV (2024)","brand":"land-rover","year":2024,"fuels":{"diesel":8.6}}
 ]
