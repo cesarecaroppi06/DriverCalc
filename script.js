@@ -845,6 +845,39 @@ async function reverseGeocodePhoton(lat, lng) {
     return (props && (props.city || props.town || props.village || props.county || props.name)) || null;
 }
 
+async function resolveCityFromCoordinates(lat, lng) {
+    let city = null;
+    if (hasGoogleKey()) {
+        try {
+            city = await reverseGeocodeGoogle(lat, lng);
+        } catch (e) {
+            city = null;
+        }
+    }
+    if (!city) {
+        try {
+            city = await reverseGeocodeORS(lat, lng);
+        } catch (e) {
+            city = null;
+        }
+    }
+    if (!city && USE_PHOTON) {
+        try {
+            city = await reverseGeocodePhoton(lat, lng);
+        } catch (e) {
+            city = null;
+        }
+    }
+    if (!city) {
+        try {
+            city = await reverseGeocodeNominatim(lat, lng);
+        } catch (e) {
+            city = null;
+        }
+    }
+    return city;
+}
+
 function normalizeCityName(name) {
     if (!name) return '';
     return name
@@ -3252,7 +3285,7 @@ async function getRouteInfo(fromLoc, toLoc) {
     if (useLocalDb && key1 && routeInfo[key1]) return routeInfo[key1];
     if (useLocalDb && key2 && routeInfo[key2]) return routeInfo[key2];
 
-    if (useLocalDb) {
+    if (useLocalDb && hasHereKey()) {
         // Tentativo con HERE (include pedaggi se key presente)
         let hereRoute = null;
         try {
@@ -3422,7 +3455,7 @@ async function calculateTrip() {
     try {
         await renderRouteOnMap(route, departure, arrival, fromLocation, toLocation);
     } catch (e) {
-        console.warn('Errore render mappa', e);
+        // Se il rendering mappa fallisce, non bloccare il calcolo costi.
     }
 
     // Normalizza distanze e pedaggi
@@ -4345,35 +4378,7 @@ useLocationBtn?.addEventListener('click', async () => {
         const lng = pos.coords.longitude;
         lastUserLocation = { lat, lng };
         await renderUserLocationOnMap();
-    let city = null;
-    try {
-        if (hasGoogleKey()) {
-            city = await reverseGeocodeGoogle(lat, lng);
-        }
-    } catch (e) {
-            city = null;
-        }
-    if (!city) {
-        try {
-            city = await reverseGeocodeORS(lat, lng);
-        } catch (e) {
-            city = null;
-        }
-    }
-    if (!city && USE_PHOTON) {
-        try {
-            city = await reverseGeocodePhoton(lat, lng);
-        } catch (e) {
-            city = null;
-        }
-    }
-    if (!city) {
-        try {
-            city = await reverseGeocodeNominatim(lat, lng);
-        } catch (e) {
-            city = null;
-        }
-    }
+        const city = await resolveCityFromCoordinates(lat, lng);
         if (city) {
             const match = findCityOptionByName(city);
             if (match) {
