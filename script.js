@@ -3119,6 +3119,8 @@ const favoritesList = document.getElementById('favoritesList');
 const favoritesEmpty = document.getElementById('favoritesEmpty');
 const closeFavoritesBtn = document.getElementById('closeFavorites');
 const saveFavoriteBtn = document.getElementById('saveFavoriteBtn');
+const copySummaryBtn = document.getElementById('copySummaryBtn');
+const tripActionFeedback = document.getElementById('tripActionFeedback');
 const accountBtn = document.getElementById('accountBtn');
 const authOverlay = document.getElementById('authOverlay');
 const closeAuthBtn = document.getElementById('closeAuth');
@@ -3160,6 +3162,7 @@ const accountStatCompleted = document.getElementById('accountStatCompleted');
 const accountStatFriends = document.getElementById('accountStatFriends');
 const accountStatKm = document.getElementById('accountStatKm');
 const friendSearchInput = document.getElementById('friendSearchInput');
+const friendSearchResults = document.getElementById('friendSearchResults');
 const sendFriendRequestBtn = document.getElementById('sendFriendRequestBtn');
 const friendsStatus = document.getElementById('friendsStatus');
 const friendsStatusMirror = document.getElementById('friendsStatusMirror');
@@ -3928,165 +3931,183 @@ function getSegmentDistances(route) {
 
 // Calcola il costo del viaggio
 async function calculateTrip() {
-    // Validazione
-    if ((!departureSelect.value && !(departureAddressInput?.value || '').trim()) ||
-        (!arrivalSelect.value && !(arrivalAddressInput?.value || '').trim()) ||
-        !carBrandSelect.value || !carTypeSelect.value || !fuelTypeSelect.value) {
-        showError('⚠️ Per favore, seleziona partenza, arrivo, marca, modello e carburante!');
-        return;
-    }
-
-    if (completedTripCheckbox) completedTripCheckbox.checked = false;
-
-    let fromLocation = null;
-    let toLocation = null;
-    try {
-        fromLocation = await resolveLocation('la partenza', departureAddressInput, departureSelect);
-        toLocation = await resolveLocation('l’arrivo', arrivalAddressInput, arrivalSelect);
-    } catch (e) {
-        showError(e.message || '❌ Errore nel recupero degli indirizzi.');
-        return;
-    }
-
-    const samePoint = haversineKm(fromLocation.lat, fromLocation.lng, toLocation.lat, toLocation.lng) < 0.2;
-    if (samePoint) {
-        showError('❌ Il punto di partenza e arrivo non possono essere uguali!');
-        return;
-    }
-
-    const departure = fromLocation.label;
-    const arrival = toLocation.label;
-    const carBrand = carBrandSelect.value;
-    const carType = carTypeSelect.value;
-    const fuelType = fuelTypeSelect.value;
-    const baseFuelType = resolveBaseFuel(fuelType);
-    const fuelPrice = parseFloat(fuelPriceInput.value);
-    const fuelLabel = fuelTypeSelect.options[fuelTypeSelect.selectedIndex]?.textContent || fuelType;
-
-    const carProfile = carConsumption[carType];
-    const carBrandLabel = carBrandSelect.options[carBrandSelect.selectedIndex]?.textContent || carBrand;
-    const carTypeLabel = carProfile?.label || carTypeSelect.options[carTypeSelect.selectedIndex]?.textContent || carType;
-    const consumptionPer100 = carProfile && (carProfile.fuels[fuelType] ?? carProfile.fuels[baseFuelType]);
-    if (!consumptionPer100) {
-        showError('❌ Questa combinazione auto/alimentazione non è supportata. Scegli un altro carburante o tipo di auto.');
-        return;
-    }
-    
-    // Ottiene info rotta
-    let route = null;
-    try {
-        route = await getRouteInfo(fromLocation, toLocation);
-    } catch (e) {
-        route = null;
-    }
-    if (!route) {
-        showError('❌ Errore nel calcolo della rotta. Riprova oppure scegli una tratta diversa.');
-        return;
-    }
+    if (isCalculatingTrip) return;
+    setCalculateBusy(true);
+    setTripActionFeedback('');
+    const mapStatus = document.getElementById('mapStatus');
+    if (mapStatus) mapStatus.textContent = 'Calcolo percorso in corso...';
 
     try {
-        await renderRouteOnMap(route, departure, arrival, fromLocation, toLocation);
-    } catch (e) {
-        // Se il rendering mappa fallisce, non bloccare il calcolo costi.
+        // Validazione
+        if ((!departureSelect.value && !(departureAddressInput?.value || '').trim()) ||
+            (!arrivalSelect.value && !(arrivalAddressInput?.value || '').trim()) ||
+            !carBrandSelect.value || !carTypeSelect.value || !fuelTypeSelect.value) {
+            showError('⚠️ Per favore, seleziona partenza, arrivo, marca, modello e carburante!');
+            return;
+        }
+
+        if (completedTripCheckbox) completedTripCheckbox.checked = false;
+
+        let fromLocation = null;
+        let toLocation = null;
+        try {
+            fromLocation = await resolveLocation('la partenza', departureAddressInput, departureSelect);
+            toLocation = await resolveLocation('l’arrivo', arrivalAddressInput, arrivalSelect);
+        } catch (e) {
+            showError(e.message || '❌ Errore nel recupero degli indirizzi.');
+            return;
+        }
+
+        const samePoint = haversineKm(fromLocation.lat, fromLocation.lng, toLocation.lat, toLocation.lng) < 0.2;
+        if (samePoint) {
+            showError('❌ Il punto di partenza e arrivo non possono essere uguali!');
+            return;
+        }
+
+        const departure = fromLocation.label;
+        const arrival = toLocation.label;
+        const carBrand = carBrandSelect.value;
+        const carType = carTypeSelect.value;
+        const fuelType = fuelTypeSelect.value;
+        const baseFuelType = resolveBaseFuel(fuelType);
+        const fuelPrice = parseFloat(fuelPriceInput.value);
+        if (!Number.isFinite(fuelPrice) || fuelPrice <= 0) {
+            showError('❌ Inserisci un prezzo carburante valido maggiore di zero.');
+            return;
+        }
+        const fuelLabel = fuelTypeSelect.options[fuelTypeSelect.selectedIndex]?.textContent || fuelType;
+
+        const carProfile = carConsumption[carType];
+        const carBrandLabel = carBrandSelect.options[carBrandSelect.selectedIndex]?.textContent || carBrand;
+        const carTypeLabel = carProfile?.label || carTypeSelect.options[carTypeSelect.selectedIndex]?.textContent || carType;
+        const consumptionPer100 = carProfile && (carProfile.fuels[fuelType] ?? carProfile.fuels[baseFuelType]);
+        if (!consumptionPer100) {
+            showError('❌ Questa combinazione auto/alimentazione non è supportata. Scegli un altro carburante o tipo di auto.');
+            return;
+        }
+        
+        // Ottiene info rotta
+        let route = null;
+        try {
+            route = await getRouteInfo(fromLocation, toLocation);
+        } catch (e) {
+            route = null;
+        }
+        if (!route) {
+            showError('❌ Errore nel calcolo della rotta. Riprova oppure scegli una tratta diversa.');
+            return;
+        }
+
+        try {
+            await renderRouteOnMap(route, departure, arrival, fromLocation, toLocation);
+        } catch (e) {
+            // Se il rendering mappa fallisce, non bloccare il calcolo costi.
+        }
+
+        // Normalizza distanze e pedaggi
+        const totalDistance = Math.max(route.totalDistance, 0);
+        const segments = getSegmentDistances(route);
+        const highwayDistance = Math.min(segments.highway, totalDistance);
+        const expresswayDistance = Math.min(segments.expressway, totalDistance - highwayDistance);
+        const extraDistance = Math.min(segments.extra, totalDistance - highwayDistance - expresswayDistance);
+        const urbanDistance = Math.min(segments.urban, totalDistance - highwayDistance - expresswayDistance - extraDistance);
+        const roadDistance = totalDistance - highwayDistance;
+        // Se è presente un pedaggio ufficiale nella rotta, usa quello; altrimenti stima al km
+        const hasOfficialToll = route.tollCost !== undefined && route.tollCost !== null && route.tollCost > 0;
+        const directKm = haversineKm(fromLocation.lat, fromLocation.lng, toLocation.lat, toLocation.lng);
+        const isShortTrip = totalDistance < 30;
+        const isLikelyUrban = directKm < 18 && totalDistance < 45;
+        const tollEligible = !hasOfficialToll && !isShortTrip && !isLikelyUrban && highwayDistance >= 10;
+        const tollCost = hasOfficialToll
+            ? route.tollCost
+            : (tollEligible ? highwayDistance * TOLL_RATE_EUR_PER_KM : 0);
+        
+        // Calcola numero caselli (solo quando stimiamo i pedaggi)
+        const tollBooths = tollEligible ? calculateTollBooths(highwayDistance) : 0;
+        const tollBoothsCost = hasOfficialToll ? 0 : (tollBooths * TOLL_BOOTH_COST);
+
+        // Consumo totale semplice: (distanza * consumo_per_100km) / 100
+        const fuelUnit = getFuelUnit(fuelType);
+        const fuelTotal = (totalDistance * consumptionPer100) / 100;
+        const fuelCost = fuelTotal * fuelPrice;
+
+        // Costo totale: carburante + pedaggi + caselli
+        const totalCost = fuelCost + tollCost + tollBoothsCost;
+        const costPerKm = (totalCost / totalDistance).toFixed(2);
+
+        // Tempo stimato per segmenti
+        const timeHours = 
+            (highwayDistance / SPEEDS.highway) +
+            (expresswayDistance / SPEEDS.expressway) +
+            (extraDistance / SPEEDS.extra) +
+            (urbanDistance / SPEEDS.urban);
+        const estimatedTimeMinutes = Math.round(timeHours * 60);
+
+        const nowTs = Date.now();
+        lastCalculatedTrip = {
+            departure,
+            arrival,
+            departureIsAddress: fromLocation.kind === 'address',
+            arrivalIsAddress: toLocation.kind === 'address',
+            departureAddress: fromLocation.kind === 'address' ? fromLocation.label : '',
+            arrivalAddress: toLocation.kind === 'address' ? toLocation.label : '',
+            departureCity: fromLocation.kind === 'city' ? fromLocation.label : '',
+            arrivalCity: toLocation.kind === 'city' ? toLocation.label : '',
+            departureLat: fromLocation.lat,
+            departureLng: fromLocation.lng,
+            arrivalLat: toLocation.lat,
+            arrivalLng: toLocation.lng,
+            carBrand,
+            carType,
+            fuelType,
+            fuelLabel,
+            carLabel: `${carBrandLabel} • ${carTypeLabel}`,
+            distance: totalDistance.toFixed(0),
+            totalCost: totalCost.toFixed(2),
+            tollCost: (parseFloat(tollCost) + parseFloat(tollBoothsCost)).toFixed(2),
+            fuelCost: fuelCost.toFixed(2),
+            timestamp: nowTs,
+            tripId: nowTs,
+            completed: completedTripCheckbox?.checked || false,
+            type: 'solo'
+        };
+
+        // Aggiorna i risultati
+        displayResults({
+            totalDistance: totalDistance.toFixed(0),
+            highwayDistance: highwayDistance.toFixed(1),
+            roadDistance: roadDistance.toFixed(1),
+            expresswayDistance: expresswayDistance.toFixed(1),
+            extraDistance: extraDistance.toFixed(1),
+            urbanDistance: urbanDistance.toFixed(1),
+            fuelTotal: fuelTotal.toFixed(2),
+            fuelUnit: fuelUnit,
+            fuelCost: fuelCost.toFixed(2),
+            tollCost: tollCost.toFixed(2),
+            tollBooths: tollBooths,
+            tollBoothsCost: tollBoothsCost.toFixed(2),
+            hasOfficialToll: hasOfficialToll,
+            isTollEligible: tollEligible,
+            totalCost: totalCost.toFixed(2),
+            costPerKm: costPerKm,
+            departure: departure,
+            arrival: arrival,
+            carType: carType,
+            carTypeLabel: carTypeLabel,
+            carBrandLabel: carBrandLabel,
+            fuelType: fuelType,
+            consumptionPer100: consumptionPer100,
+            estimatedTime: estimatedTimeMinutes
+        });
+        
+        hideError();
+        setTripActionFeedback('Calcolo completato. Puoi salvare o copiare il riepilogo.');
+    } finally {
+        if (mapStatus && mapStatus.textContent === 'Calcolo percorso in corso...') {
+            mapStatus.textContent = '';
+        }
+        setCalculateBusy(false);
     }
-
-    // Normalizza distanze e pedaggi
-    const totalDistance = Math.max(route.totalDistance, 0);
-    const segments = getSegmentDistances(route);
-    const highwayDistance = Math.min(segments.highway, totalDistance);
-    const expresswayDistance = Math.min(segments.expressway, totalDistance - highwayDistance);
-    const extraDistance = Math.min(segments.extra, totalDistance - highwayDistance - expresswayDistance);
-    const urbanDistance = Math.min(segments.urban, totalDistance - highwayDistance - expresswayDistance - extraDistance);
-    const roadDistance = totalDistance - highwayDistance;
-    // Se è presente un pedaggio ufficiale nella rotta, usa quello; altrimenti stima al km
-    const hasOfficialToll = route.tollCost !== undefined && route.tollCost !== null && route.tollCost > 0;
-    const directKm = haversineKm(fromLocation.lat, fromLocation.lng, toLocation.lat, toLocation.lng);
-    const isShortTrip = totalDistance < 30;
-    const isLikelyUrban = directKm < 18 && totalDistance < 45;
-    const tollEligible = !hasOfficialToll && !isShortTrip && !isLikelyUrban && highwayDistance >= 10;
-    const tollCost = hasOfficialToll
-        ? route.tollCost
-        : (tollEligible ? highwayDistance * TOLL_RATE_EUR_PER_KM : 0);
-    
-    // Calcola numero caselli (solo quando stimiamo i pedaggi)
-    const tollBooths = tollEligible ? calculateTollBooths(highwayDistance) : 0;
-    const tollBoothsCost = hasOfficialToll ? 0 : (tollBooths * TOLL_BOOTH_COST);
-
-    // Consumo totale semplice: (distanza * consumo_per_100km) / 100
-    const fuelUnit = getFuelUnit(fuelType);
-    const fuelTotal = (totalDistance * consumptionPer100) / 100;
-    const fuelCost = fuelTotal * fuelPrice;
-
-    // Costo totale: carburante + pedaggi + caselli
-    const totalCost = fuelCost + tollCost + tollBoothsCost;
-    const costPerKm = (totalCost / totalDistance).toFixed(2);
-
-    // Tempo stimato per segmenti
-    const timeHours = 
-        (highwayDistance / SPEEDS.highway) +
-        (expresswayDistance / SPEEDS.expressway) +
-        (extraDistance / SPEEDS.extra) +
-        (urbanDistance / SPEEDS.urban);
-    const estimatedTimeMinutes = Math.round(timeHours * 60);
-
-    const nowTs = Date.now();
-    lastCalculatedTrip = {
-        departure,
-        arrival,
-        departureIsAddress: fromLocation.kind === 'address',
-        arrivalIsAddress: toLocation.kind === 'address',
-        departureAddress: fromLocation.kind === 'address' ? fromLocation.label : '',
-        arrivalAddress: toLocation.kind === 'address' ? toLocation.label : '',
-        departureCity: fromLocation.kind === 'city' ? fromLocation.label : '',
-        arrivalCity: toLocation.kind === 'city' ? toLocation.label : '',
-        departureLat: fromLocation.lat,
-        departureLng: fromLocation.lng,
-        arrivalLat: toLocation.lat,
-        arrivalLng: toLocation.lng,
-        carBrand,
-        carType,
-        fuelType,
-        fuelLabel,
-        carLabel: `${carBrandLabel} • ${carTypeLabel}`,
-        distance: totalDistance.toFixed(0),
-        totalCost: totalCost.toFixed(2),
-        tollCost: (parseFloat(tollCost) + parseFloat(tollBoothsCost)).toFixed(2),
-        fuelCost: fuelCost.toFixed(2),
-        timestamp: nowTs,
-        tripId: nowTs,
-        completed: completedTripCheckbox?.checked || false,
-        type: 'solo'
-    };
-
-    // Aggiorna i risultati
-    displayResults({
-        totalDistance: totalDistance.toFixed(0),
-        highwayDistance: highwayDistance.toFixed(1),
-        roadDistance: roadDistance.toFixed(1),
-        expresswayDistance: expresswayDistance.toFixed(1),
-        extraDistance: extraDistance.toFixed(1),
-        urbanDistance: urbanDistance.toFixed(1),
-        fuelTotal: fuelTotal.toFixed(2),
-        fuelUnit: fuelUnit,
-        fuelCost: fuelCost.toFixed(2),
-        tollCost: tollCost.toFixed(2),
-        tollBooths: tollBooths,
-        tollBoothsCost: tollBoothsCost.toFixed(2),
-        hasOfficialToll: hasOfficialToll,
-        isTollEligible: tollEligible,
-        totalCost: totalCost.toFixed(2),
-        costPerKm: costPerKm,
-        departure: departure,
-        arrival: arrival,
-        carType: carType,
-        carTypeLabel: carTypeLabel,
-        carBrandLabel: carBrandLabel,
-        fuelType: fuelType,
-        consumptionPer100: consumptionPer100,
-        estimatedTime: estimatedTimeMinutes
-    });
-    
-    hideError();
 }
 
 // Mostra i risultati
@@ -4130,6 +4151,7 @@ function showError(message) {
     errorDiv.textContent = message;
     errorDiv.style.display = 'block';
     resultsSection.style.display = 'none';
+    setTripActionFeedback('');
 }
 
 // Nascondi errore
@@ -4160,6 +4182,11 @@ let currentUser = null;
 let accountProfile = null;
 let accountStats = null;
 let authFeedbackTimer = null;
+let isCalculatingTrip = false;
+let tripActionFeedbackTimer = null;
+let friendSearchTimer = null;
+let friendSearchAbortController = null;
+let friendSearchRequestId = 0;
 let friends = [];
 let incomingFriendRequests = [];
 let outgoingFriendRequests = [];
@@ -4326,6 +4353,109 @@ function updateAuthUI(message = '') {
     if (accountConnectedPanel) accountConnectedPanel.style.display = authToken ? 'block' : 'none';
     if (authToken) {
         renderAccountProfile();
+    }
+}
+
+function setCalculateBusy(isBusy) {
+    isCalculatingTrip = !!isBusy;
+    if (!calculateBtn) return;
+    if (isBusy) {
+        if (!calculateBtn.dataset.originalLabel) {
+            calculateBtn.dataset.originalLabel = calculateBtn.textContent || '📊 Calcola Costo Viaggio';
+        }
+        calculateBtn.disabled = true;
+        calculateBtn.textContent = '⏳ Calcolo in corso...';
+        calculateBtn.setAttribute('aria-busy', 'true');
+    } else {
+        calculateBtn.disabled = false;
+        calculateBtn.textContent = calculateBtn.dataset.originalLabel || '📊 Calcola Costo Viaggio';
+        calculateBtn.removeAttribute('aria-busy');
+    }
+}
+
+function setTripActionFeedback(message = '') {
+    if (!tripActionFeedback) return;
+    if (tripActionFeedbackTimer) {
+        clearTimeout(tripActionFeedbackTimer);
+        tripActionFeedbackTimer = null;
+    }
+    tripActionFeedback.textContent = message;
+    if (!message) return;
+    tripActionFeedbackTimer = setTimeout(() => {
+        if (!tripActionFeedback) return;
+        tripActionFeedback.textContent = '';
+    }, 4500);
+}
+
+function setFriendRequestBusy(isBusy) {
+    if (!sendFriendRequestBtn) return;
+    if (!sendFriendRequestBtn.dataset.originalLabel) {
+        sendFriendRequestBtn.dataset.originalLabel = sendFriendRequestBtn.textContent || 'Invia richiesta';
+    }
+    sendFriendRequestBtn.disabled = !!isBusy;
+    sendFriendRequestBtn.textContent = isBusy
+        ? 'Invio...'
+        : (sendFriendRequestBtn.dataset.originalLabel || 'Invia richiesta');
+}
+
+function clearFriendSearchResults() {
+    if (friendSearchAbortController) {
+        try { friendSearchAbortController.abort(); } catch (e) {}
+        friendSearchAbortController = null;
+    }
+    clearResultsContainer(friendSearchResults);
+}
+
+async function fetchFriendSearchSuggestions(query = '') {
+    if (!authToken || !friendSearchResults) return;
+    const q = String(query || '').trim();
+    if (q.length < 2) {
+        clearFriendSearchResults();
+        return;
+    }
+
+    const requestId = ++friendSearchRequestId;
+    if (friendSearchAbortController) {
+        try { friendSearchAbortController.abort(); } catch (e) {}
+    }
+    friendSearchAbortController = new AbortController();
+
+    try {
+        const res = await fetch(`${API_BASE}/friends/search?q=${encodeURIComponent(q)}`, {
+            headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${authToken}`
+            },
+            signal: friendSearchAbortController.signal
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload.error || 'Ricerca utenti non disponibile');
+        if (requestId !== friendSearchRequestId) return;
+
+        const items = Array.isArray(payload.items)
+            ? payload.items.map((u) => ({
+                id: u.id,
+                value: u.email,
+                label: u.email
+            }))
+            : [];
+        if (!items.length) {
+            clearResultsContainer(friendSearchResults);
+            return;
+        }
+        renderResults(friendSearchResults, items, q, (item) => {
+            if (friendSearchInput) friendSearchInput.value = item.value || '';
+            clearResultsContainer(friendSearchResults);
+            setFriendsStatus('');
+        });
+    } catch (e) {
+        if (e?.name === 'AbortError') return;
+        if (requestId !== friendSearchRequestId) return;
+        clearResultsContainer(friendSearchResults);
+    } finally {
+        if (requestId === friendSearchRequestId) {
+            friendSearchAbortController = null;
+        }
     }
 }
 
@@ -4607,9 +4737,11 @@ async function sendFriendRequest() {
         setFriendsStatus('Formato email non valido');
         return;
     }
+    setFriendRequestBusy(true);
     try {
         await apiRequest('/friends/request', 'POST', { email });
         friendSearchInput.value = '';
+        clearFriendSearchResults();
         await loadFriendsData();
         setFriendsStatus('Richiesta inviata');
     } catch (e) {
@@ -4618,6 +4750,8 @@ async function sendFriendRequest() {
             openAuth();
         }
         setFriendsStatus(e.message);
+    } finally {
+        setFriendRequestBusy(false);
     }
 }
 
@@ -5004,6 +5138,8 @@ async function openFriendRequestsView() {
     setFriendsStatus('Gestisci richieste amicizia');
     try {
         await loadFriendsData();
+        clearFriendSearchResults();
+        if (friendSearchInput) friendSearchInput.focus();
     } catch (e) {
         setFriendsStatus('Impossibile caricare richieste amicizia');
     }
@@ -5036,12 +5172,54 @@ function closeAuth() {
 
 function closeFriendRequestsView() {
     if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
+    clearFriendSearchResults();
     setActiveMenu(homeBtn);
 }
 
 function closeFriendsView() {
     if (friendsOverlay) friendsOverlay.style.display = 'none';
     setActiveMenu(homeBtn);
+}
+
+async function copyTripSummary() {
+    if (!lastCalculatedTrip) {
+        setTripActionFeedback('Calcola prima una tratta da copiare.');
+        return;
+    }
+
+    const distance = `${lastCalculatedTrip.distance || '-'} km`;
+    const totalCost = `€${lastCalculatedTrip.totalCost || '-'}`;
+    const fuelCost = `€${lastCalculatedTrip.fuelCost || '-'}`;
+    const tollCost = `€${lastCalculatedTrip.tollCost || '-'}`;
+    const lines = [
+        'Riepilogo viaggio DriveCalc',
+        `${lastCalculatedTrip.departure} -> ${lastCalculatedTrip.arrival}`,
+        `Auto: ${lastCalculatedTrip.carLabel || '-'}`,
+        `Alimentazione: ${lastCalculatedTrip.fuelLabel || lastCalculatedTrip.fuelType || '-'}`,
+        `Distanza: ${distance}`,
+        `Carburante: ${fuelCost}`,
+        `Pedaggi: ${tollCost}`,
+        `Totale: ${totalCost}`
+    ];
+    const text = lines.join('\n');
+
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const helper = document.createElement('textarea');
+            helper.value = text;
+            helper.style.position = 'fixed';
+            helper.style.opacity = '0';
+            document.body.appendChild(helper);
+            helper.select();
+            document.execCommand('copy');
+            document.body.removeChild(helper);
+        }
+        setTripActionFeedback('Riepilogo copiato negli appunti.');
+    } catch (e) {
+        setTripActionFeedback('Impossibile copiare automaticamente. Riprova.');
+    }
 }
 
 async function saveCurrentToFavorites() {
@@ -5458,6 +5636,7 @@ function resetCalculator() {
     filterModelsByBrand();
     updateFuelPriceUI();
     hideError();
+    setTripActionFeedback('');
     updateMyCarPreview();
 }
 
@@ -5516,6 +5695,7 @@ backToCalculatorBtn?.addEventListener('click', showCalculatorView);
 favoritesBtn?.addEventListener('click', openFavorites);
 closeFavoritesBtn?.addEventListener('click', closeFavorites);
 saveFavoriteBtn?.addEventListener('click', saveCurrentToFavorites);
+copySummaryBtn?.addEventListener('click', copyTripSummary);
 companionsBtn?.addEventListener('click', openCompanions);
 friendRequestsBtn?.addEventListener('click', openFriendRequestsView);
 friendsBtn?.addEventListener('click', openFriendsView);
@@ -5623,6 +5803,20 @@ accountAvatarInput?.addEventListener('change', async (e) => {
 accountAvatarRemoveBtn?.addEventListener('click', removeAccountAvatar);
 accountChangePasswordBtn?.addEventListener('click', changeAccountPassword);
 sendFriendRequestBtn?.addEventListener('click', sendFriendRequest);
+friendSearchInput?.addEventListener('input', (e) => {
+    if (friendSearchTimer) {
+        clearTimeout(friendSearchTimer);
+        friendSearchTimer = null;
+    }
+    const value = (e.target.value || '').trim();
+    if (!authToken || value.length < 2) {
+        clearFriendSearchResults();
+        return;
+    }
+    friendSearchTimer = setTimeout(() => {
+        fetchFriendSearchSuggestions(value);
+    }, 220);
+});
 friendSearchInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         e.preventDefault();
@@ -5674,6 +5868,9 @@ document.addEventListener('click', (e) => {
     }
     if (arrivalAddressResults && arrivalAddressInput && !arrivalAddressResults.contains(e.target) && e.target !== arrivalAddressInput) {
         clearResultsContainer(arrivalAddressResults);
+    }
+    if (friendSearchResults && friendSearchInput && !friendSearchResults.contains(e.target) && e.target !== friendSearchInput) {
+        clearResultsContainer(friendSearchResults);
     }
 });
 

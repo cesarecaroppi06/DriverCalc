@@ -652,7 +652,7 @@ app.get('/api/friends', authMiddleware, (req, res) => {
     const items = friendIds
         .map(friendId => db.users.find(u => u.id === friendId))
         .filter(Boolean)
-        .map(u => ({ id: u.id, email: u.email }));
+        .map(u => buildPublicUser(u));
     return res.json({ items });
 });
 
@@ -661,10 +661,10 @@ app.get('/api/friends/search', authMiddleware, (req, res) => {
     const q = String(req.query.q || '').trim().toLowerCase();
     if (!q || q.length < 2) return res.json({ items: [] });
     const items = db.users
-        .filter(u => u.email.toLowerCase().includes(q))
+        .filter(u => (u.email.toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q)))
         .filter(u => u.id !== req.user.userId)
         .slice(0, 10)
-        .map(u => ({ id: u.id, email: u.email }));
+        .map(u => buildPublicUser(u));
     return res.json({ items });
 });
 
@@ -678,6 +678,9 @@ app.get('/api/friends/requests', authMiddleware, (req, res) => {
                 id: r.id,
                 fromUserId: r.fromUserId,
                 fromEmail: fromUser ? fromUser.email : 'utente',
+                fromUsername: fromUser ? fromUser.username : '',
+                fromLocation: fromUser ? fromUser.location : '',
+                fromAvatarUrl: fromUser ? fromUser.avatarUrl : '',
                 createdAt: r.createdAt
             };
         });
@@ -689,6 +692,9 @@ app.get('/api/friends/requests', authMiddleware, (req, res) => {
                 id: r.id,
                 toUserId: r.toUserId,
                 toEmail: toUser ? toUser.email : 'utente',
+                toUsername: toUser ? toUser.username : '',
+                toLocation: toUser ? toUser.location : '',
+                toAvatarUrl: toUser ? toUser.avatarUrl : '',
                 createdAt: r.createdAt
             };
         });
@@ -767,7 +773,7 @@ app.get('/api/friends/:friendId/shared', authMiddleware, (req, res) => {
 
     const settings = getShareSettings(db, friendId);
     const shared = {
-        friend: { id: friendUser.id, email: friendUser.email },
+        friend: buildPublicUser(friendUser),
         settings,
         favorites: settings.shareFavorites ? (db.favorites[friendId] || []) : [],
         companions: settings.shareCompanionTrips ? (db.companions[friendId] || []) : [],

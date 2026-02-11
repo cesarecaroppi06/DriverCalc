@@ -1696,6 +1696,25 @@ input:focus {
     color: #ffffff;
 }
 
+.result-actions #copySummaryBtn {
+    flex: 1;
+    min-width: 160px;
+}
+
+#tripActionFeedback {
+    margin-top: 8px;
+    min-height: 18px;
+}
+
+button:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+#friendSearchResults {
+    margin-top: -2px;
+}
+
 .modal-overlay {
     background: rgba(3, 8, 18, 0.72);
     backdrop-filter: blur(3px);
