@@ -11,8 +11,15 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-prod';
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
+const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
+const USE_POSTGRES_STATE = Boolean(DATABASE_URL);
 const DEFAULT_DB_FILE = 'db.json';
 const FALLBACK_DB_PATH = path.join(__dirname, 'data', DEFAULT_DB_FILE);
+const APP_STATE_ROW_ID = 1;
+
+let dbCache = null;
+let pgPool = null;
+let pendingRemoteWrite = Promise.resolve();
 
 function ensureDbShape(db) {
     if (!db || typeof db !== 'object') db = {};
@@ -77,7 +84,7 @@ console.log(`[DriveCalc API] Database path: ${DB_PATH}`);
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 
-function readDb() {
+function readDbFromFile() {
     try {
         const raw = fs.readFileSync(DB_PATH, 'utf-8');
         return ensureDbShape(JSON.parse(raw));
@@ -86,8 +93,112 @@ function readDb() {
     }
 }
 
-function writeDb(db) {
+function writeDbToFile(db) {
     fs.writeFileSync(DB_PATH, JSON.stringify(ensureDbShape(db), null, 2), 'utf-8');
+}
+
+function cloneDb(db) {
+    return JSON.parse(JSON.stringify(ensureDbShape(db)));
+}
+
+function getPgSslOption() {
+    if (String(process.env.PGSSLMODE || '').toLowerCase() === 'disable') {
+        return false;
+    }
+    if (DATABASE_URL.includes('localhost') || DATABASE_URL.includes('127.0.0.1')) {
+        return false;
+    }
+    return { rejectUnauthorized: false };
+}
+
+async function ensureRemoteStateTable() {
+    await pgPool.query(`
+        CREATE TABLE IF NOT EXISTS app_state (
+            id SMALLINT PRIMARY KEY,
+            data JSONB NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+}
+
+async function loadDbFromPostgres() {
+    const result = await pgPool.query('SELECT data FROM app_state WHERE id = $1', [APP_STATE_ROW_ID]);
+    if (result.rows.length && result.rows[0] && result.rows[0].data) {
+        return ensureDbShape(result.rows[0].data);
+    }
+    return null;
+}
+
+async function saveDbToPostgres(db) {
+    await pgPool.query(
+        `
+        INSERT INTO app_state (id, data, updated_at)
+        VALUES ($1, $2::jsonb, NOW())
+        ON CONFLICT (id)
+        DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+        `,
+        [APP_STATE_ROW_ID, JSON.stringify(ensureDbShape(db))]
+    );
+}
+
+function queueRemotePersist(db) {
+    if (!USE_POSTGRES_STATE || !pgPool) return;
+    const payload = cloneDb(db);
+    pendingRemoteWrite = pendingRemoteWrite
+        .then(() => saveDbToPostgres(payload))
+        .catch((err) => {
+            console.error('[DriveCalc API] Errore salvataggio remoto DB:', err.message);
+            // Manteniamo comunque un fallback locale per debug/recovery.
+            writeDbToFile(payload);
+        });
+}
+
+async function initStorage() {
+    if (USE_POSTGRES_STATE) {
+        let PoolCtor = null;
+        try {
+            ({ Pool: PoolCtor } = require('pg'));
+        } catch (err) {
+            throw new Error('Dipendenza "pg" mancante. Esegui npm install nella cartella server.');
+        }
+
+        pgPool = new PoolCtor({
+            connectionString: DATABASE_URL,
+            ssl: getPgSslOption()
+        });
+
+        await pgPool.query('SELECT 1');
+        await ensureRemoteStateTable();
+
+        const remoteDb = await loadDbFromPostgres();
+        if (remoteDb) {
+            dbCache = ensureDbShape(remoteDb);
+            console.log('[DriveCalc API] Storage: PostgreSQL (remote app_state)');
+        } else {
+            const localDb = readDbFromFile();
+            dbCache = ensureDbShape(localDb);
+            await saveDbToPostgres(dbCache);
+            console.log('[DriveCalc API] Storage: PostgreSQL inizializzato da file locale');
+        }
+        return;
+    }
+
+    dbCache = readDbFromFile();
+    console.log('[DriveCalc API] Storage: file locale');
+}
+
+function readDb() {
+    if (!dbCache) {
+        dbCache = readDbFromFile();
+    }
+    return cloneDb(dbCache);
+}
+
+function writeDb(db) {
+    const shaped = ensureDbShape(db);
+    dbCache = cloneDb(shaped);
+    writeDbToFile(shaped);
+    queueRemotePersist(shaped);
 }
 
 function issueToken(user) {
@@ -435,6 +546,16 @@ app.get('/api/google/reverse-geocode', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`DriveCalc API in ascolto su http://localhost:${PORT}`);
-});
+async function startServer() {
+    try {
+        await initStorage();
+        app.listen(PORT, () => {
+            console.log(`DriveCalc API in ascolto su http://localhost:${PORT}`);
+        });
+    } catch (err) {
+        console.error('[DriveCalc API] Errore inizializzazione storage:', err.message);
+        process.exit(1);
+    }
+}
+
+startServer();
