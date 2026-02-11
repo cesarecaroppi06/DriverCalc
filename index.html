@@ -54,10 +54,10 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="carBrand">🏷️ Marca di Macchina:</label>
-                    <input type="text" id="carBrandSearch" class="filter-input" placeholder="Scrivi per filtrare le marche">
+                    <label for="carBrandSearch">🏷️ Marca di Macchina:</label>
+                    <input type="text" id="carBrandSearch" class="filter-input" placeholder="Scrivi marca (es. Fiat, Toyota)">
                     <div id="carBrandResults" class="filter-results" aria-live="polite"></div>
-                    <select id="carBrand" required>
+                    <select id="carBrand" required class="location-hidden" aria-hidden="true" tabindex="-1">
                         <option value="">Seleziona marca...</option>
                         <option value="brand-fiat">Fiat (medio) - 5.8 L/100 km</option>
                         <option value="brand-toyota">Toyota (medio) - 5.2 L/100 km</option>
@@ -102,10 +102,10 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="carType">🚙 Modello di Macchina:</label>
-                    <input type="text" id="carTypeSearch" class="filter-input" placeholder="Scrivi per filtrare i modelli">
+                    <label for="carTypeSearch">🚙 Modello di Macchina:</label>
+                    <input type="text" id="carTypeSearch" class="filter-input" placeholder="Scrivi modello (es. Panda, Golf, Model 3)">
                     <div id="carTypeResults" class="filter-results" aria-live="polite"></div>
-                    <select id="carType" required>
+                    <select id="carType" required class="location-hidden" aria-hidden="true" tabindex="-1">
                         <option value="">Seleziona modello...</option>
                         <optgroup label="Categorie generali">
                             <option value="city-car">🚗 City Car (Fiat Panda, Toyota Aygo)</option>
@@ -700,6 +700,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="script.js?v=15"></script>
+    <script src="script.js?v=16"></script>
 </body>
 </html>
