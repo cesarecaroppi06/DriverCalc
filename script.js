@@ -2747,8 +2747,24 @@ const loginBtn = document.getElementById('loginBtn');
 const registerBtn = document.getElementById('registerBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const authStatus = document.getElementById('authStatus');
+const friendsSection = document.getElementById('friendsSection');
+const friendSearchInput = document.getElementById('friendSearchInput');
+const sendFriendRequestBtn = document.getElementById('sendFriendRequestBtn');
+const friendsStatus = document.getElementById('friendsStatus');
+const friendRequestsList = document.getElementById('friendRequestsList');
+const friendRequestsEmpty = document.getElementById('friendRequestsEmpty');
+const friendOutgoingList = document.getElementById('friendOutgoingList');
+const friendOutgoingEmpty = document.getElementById('friendOutgoingEmpty');
+const shareFavoritesToggle = document.getElementById('shareFavoritesToggle');
+const shareMyCarToggle = document.getElementById('shareMyCarToggle');
+const shareCompanionsToggle = document.getElementById('shareCompanionsToggle');
+const friendsList = document.getElementById('friendsList');
+const friendsEmpty = document.getElementById('friendsEmpty');
+const friendSharedList = document.getElementById('friendSharedList');
+const friendSharedEmpty = document.getElementById('friendSharedEmpty');
 const completedTripCheckbox = document.getElementById('completedTrip');
 const companionsBtn = document.getElementById('companionsBtn');
+const friendsBtn = document.getElementById('friendsBtn');
 const companionsOverlay = document.getElementById('companionsOverlay');
 const closeCompanionsBtn = document.getElementById('closeCompanions');
 const companionNameInput = document.getElementById('companionName');
@@ -3727,6 +3743,14 @@ let completedTrips = [];
 let myCarPhotos = {};
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || null;
 let currentUser = null;
+let friends = [];
+let incomingFriendRequests = [];
+let outgoingFriendRequests = [];
+let shareSettings = {
+    shareFavorites: true,
+    shareMyCar: true,
+    shareCompanionTrips: true
+};
 
 async function apiRequest(path, method = 'GET', body) {
     if (!authToken) throw new Error('Token mancante');
@@ -3745,6 +3769,205 @@ async function apiRequest(path, method = 'GET', body) {
     return res.json();
 }
 
+function setFriendsStatus(message = '') {
+    if (friendsStatus) friendsStatus.textContent = message;
+}
+
+function renderFriendSharedData(shared) {
+    if (!friendSharedList || !friendSharedEmpty) return;
+    friendSharedList.innerHTML = '';
+    if (!shared) {
+        friendSharedEmpty.style.display = 'block';
+        return;
+    }
+    friendSharedEmpty.style.display = 'none';
+
+    const favoritesCount = (shared.favorites || []).length;
+    const companionsCount = (shared.companions || []).length;
+    const myCarCount = Object.keys(shared.mycarPhotos || {}).length;
+
+    [
+        `Amico: ${shared.friend?.email || '-'}`,
+        `Preferiti condivisi: ${favoritesCount}`,
+        `Tratte in compagnia condivise: ${companionsCount}`,
+        `Foto auto condivise: ${myCarCount}`
+    ].forEach(text => {
+        const li = document.createElement('li');
+        li.className = 'favorite-item';
+        const meta = document.createElement('div');
+        meta.className = 'favorite-meta';
+        const title = document.createElement('strong');
+        title.textContent = text;
+        meta.append(title);
+        li.append(meta);
+        friendSharedList.appendChild(li);
+    });
+}
+
+function renderFriends() {
+    if (!friendsList || !friendsEmpty) return;
+    friendsList.innerHTML = '';
+    if (!friends.length) {
+        friendsEmpty.style.display = 'block';
+        return;
+    }
+    friendsEmpty.style.display = 'none';
+    friends.forEach(friend => {
+        const li = document.createElement('li');
+        li.className = 'favorite-item';
+
+        const meta = document.createElement('div');
+        meta.className = 'favorite-meta';
+        const title = document.createElement('strong');
+        title.textContent = friend.email;
+        meta.append(title);
+
+        const actions = document.createElement('div');
+        actions.className = 'favorite-actions';
+        const viewBtn = document.createElement('button');
+        viewBtn.className = 'pill-btn primary';
+        viewBtn.textContent = 'Vedi condivisi';
+        viewBtn.addEventListener('click', async () => {
+            try {
+                const res = await apiRequest(`/friends/${friend.id}/shared`);
+                renderFriendSharedData(res.item || null);
+                setFriendsStatus('');
+            } catch (e) {
+                setFriendsStatus(e.message);
+            }
+        });
+        actions.append(viewBtn);
+        li.append(meta, actions);
+        friendsList.appendChild(li);
+    });
+}
+
+function renderFriendRequests() {
+    if (friendRequestsList && friendRequestsEmpty) {
+        friendRequestsList.innerHTML = '';
+        if (!incomingFriendRequests.length) {
+            friendRequestsEmpty.style.display = 'block';
+        } else {
+            friendRequestsEmpty.style.display = 'none';
+            incomingFriendRequests.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'favorite-item';
+
+                const meta = document.createElement('div');
+                meta.className = 'favorite-meta';
+                const title = document.createElement('strong');
+                title.textContent = item.fromEmail;
+                meta.append(title);
+
+                const actions = document.createElement('div');
+                actions.className = 'favorite-actions';
+                const acceptBtn = document.createElement('button');
+                acceptBtn.className = 'pill-btn primary';
+                acceptBtn.textContent = 'Accetta';
+                acceptBtn.addEventListener('click', async () => {
+                    try {
+                        await apiRequest(`/friends/requests/${item.id}/accept`, 'POST');
+                        await loadFriendsData();
+                        setFriendsStatus('Richiesta accettata');
+                    } catch (e) {
+                        setFriendsStatus(e.message);
+                    }
+                });
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'pill-btn danger';
+                rejectBtn.textContent = 'Rifiuta';
+                rejectBtn.addEventListener('click', async () => {
+                    try {
+                        await apiRequest(`/friends/requests/${item.id}/reject`, 'POST');
+                        await loadFriendsData();
+                        setFriendsStatus('Richiesta rifiutata');
+                    } catch (e) {
+                        setFriendsStatus(e.message);
+                    }
+                });
+                actions.append(acceptBtn, rejectBtn);
+                li.append(meta, actions);
+                friendRequestsList.appendChild(li);
+            });
+        }
+    }
+
+    if (friendOutgoingList && friendOutgoingEmpty) {
+        friendOutgoingList.innerHTML = '';
+        if (!outgoingFriendRequests.length) {
+            friendOutgoingEmpty.style.display = 'block';
+        } else {
+            friendOutgoingEmpty.style.display = 'none';
+            outgoingFriendRequests.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'favorite-item';
+                const meta = document.createElement('div');
+                meta.className = 'favorite-meta';
+                const title = document.createElement('strong');
+                title.textContent = `In attesa: ${item.toEmail}`;
+                meta.append(title);
+                li.append(meta);
+                friendOutgoingList.appendChild(li);
+            });
+        }
+    }
+}
+
+function applyShareSettingsToUI() {
+    if (shareFavoritesToggle) shareFavoritesToggle.checked = !!shareSettings.shareFavorites;
+    if (shareMyCarToggle) shareMyCarToggle.checked = !!shareSettings.shareMyCar;
+    if (shareCompanionsToggle) shareCompanionsToggle.checked = !!shareSettings.shareCompanionTrips;
+}
+
+async function loadFriendsData() {
+    if (!authToken) return;
+    const [friendsRes, requestsRes, shareRes] = await Promise.all([
+        apiRequest('/friends').catch(() => ({ items: [] })),
+        apiRequest('/friends/requests').catch(() => ({ incoming: [], outgoing: [] })),
+        apiRequest('/share-settings').catch(() => ({ settings: shareSettings }))
+    ]);
+    friends = friendsRes.items || [];
+    incomingFriendRequests = requestsRes.incoming || [];
+    outgoingFriendRequests = requestsRes.outgoing || [];
+    shareSettings = shareRes.settings || shareSettings;
+    renderFriends();
+    renderFriendRequests();
+    applyShareSettingsToUI();
+}
+
+async function saveShareSettings() {
+    if (!authToken) return;
+    const payload = {
+        shareFavorites: !!shareFavoritesToggle?.checked,
+        shareMyCar: !!shareMyCarToggle?.checked,
+        shareCompanionTrips: !!shareCompanionsToggle?.checked
+    };
+    try {
+        const res = await apiRequest('/share-settings', 'PUT', payload);
+        shareSettings = res.settings || payload;
+        applyShareSettingsToUI();
+        setFriendsStatus('Impostazioni privacy salvate');
+    } catch (e) {
+        setFriendsStatus(e.message);
+    }
+}
+
+async function sendFriendRequest() {
+    const email = (friendSearchInput?.value || '').trim();
+    if (!email) {
+        setFriendsStatus('Inserisci una email valida');
+        return;
+    }
+    try {
+        await apiRequest('/friends/request', 'POST', { email });
+        friendSearchInput.value = '';
+        await loadFriendsData();
+        setFriendsStatus('Richiesta inviata');
+    } catch (e) {
+        setFriendsStatus(e.message);
+    }
+}
+
 function setAuth(token, user) {
     authToken = token;
     currentUser = user || null;
@@ -3752,14 +3975,22 @@ function setAuth(token, user) {
     updateAuthUI();
     if (authToken) {
         loadAllRemoteData();
+        loadFriendsData();
     }
 }
 
 function clearAuth() {
     authToken = null;
     currentUser = null;
+    friends = [];
+    incomingFriendRequests = [];
+    outgoingFriendRequests = [];
     localStorage.removeItem(AUTH_TOKEN_KEY);
     updateAuthUI();
+    renderFriends();
+    renderFriendRequests();
+    renderFriendSharedData(null);
+    setFriendsStatus('');
 }
 
 function updateAuthUI(message = '') {
@@ -3767,6 +3998,7 @@ function updateAuthUI(message = '') {
     if (logoutBtn) logoutBtn.style.display = authToken ? 'inline-block' : 'none';
     if (loginBtn) loginBtn.style.display = authToken ? 'none' : 'inline-block';
     if (registerBtn) registerBtn.style.display = authToken ? 'none' : 'inline-block';
+    if (friendsSection) friendsSection.style.display = authToken ? 'block' : 'none';
 }
 
 async function handleAuth(isRegister) {
@@ -3798,7 +4030,8 @@ async function loadAllRemoteData() {
         loadFavorites(),
         loadCompanionTrips(),
         loadCompletedTrips(),
-        loadMyCarPhotos()
+        loadMyCarPhotos(),
+        loadFriendsData().catch(() => {})
     ]);
     renderFavorites();
     renderCompanionHistory();
@@ -3975,6 +4208,24 @@ function openAuth() {
         authOverlay.style.display = 'flex';
         setActiveMenu(accountBtn);
         updateAuthUI(authToken ? 'Sei connesso' : 'Accedi o registrati');
+        if (authToken) {
+            loadFriendsData().catch(() => {
+                setFriendsStatus('Impossibile caricare amici');
+            });
+        }
+    }
+}
+
+function openFriendsView() {
+    if (!authOverlay) return;
+    authOverlay.style.display = 'flex';
+    setActiveMenu(friendsBtn);
+    updateAuthUI(authToken ? 'Gestisci amici e condivisione dati' : 'Accedi per usare la sezione amici');
+    if (authToken) {
+        loadFriendsData().catch(() => {
+            setFriendsStatus('Impossibile caricare amici');
+        });
+        friendsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
 
@@ -4435,6 +4686,7 @@ favoritesBtn?.addEventListener('click', openFavorites);
 closeFavoritesBtn?.addEventListener('click', closeFavorites);
 saveFavoriteBtn?.addEventListener('click', saveCurrentToFavorites);
 companionsBtn?.addEventListener('click', openCompanions);
+friendsBtn?.addEventListener('click', openFriendsView);
 closeCompanionsBtn?.addEventListener('click', closeCompanions);
 addCompanionBtn?.addEventListener('click', addCompanion);
 saveCompanionTripBtn?.addEventListener('click', saveCompanionTrip);
@@ -4526,6 +4778,16 @@ logoutBtn?.addEventListener('click', () => {
     clearAuth();
     updateAuthUI('Disconnesso');
 });
+sendFriendRequestBtn?.addEventListener('click', sendFriendRequest);
+friendSearchInput?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        sendFriendRequest();
+    }
+});
+shareFavoritesToggle?.addEventListener('change', saveShareSettings);
+shareMyCarToggle?.addEventListener('change', saveShareSettings);
+shareCompanionsToggle?.addEventListener('change', saveShareSettings);
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {

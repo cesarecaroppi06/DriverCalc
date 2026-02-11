@@ -19,14 +19,27 @@ app.use(express.json({ limit: '5mb' }));
 function readDb() {
     try {
         const raw = fs.readFileSync(DB_PATH, 'utf-8');
-        return JSON.parse(raw);
+        return ensureDbShape(JSON.parse(raw));
     } catch (err) {
-        return { users: [], favorites: {}, companions: {}, completed: {}, mycarPhotos: {} };
+        return ensureDbShape({});
     }
 }
 
 function writeDb(db) {
     fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
+}
+
+function ensureDbShape(db) {
+    if (!db || typeof db !== 'object') db = {};
+    if (!Array.isArray(db.users)) db.users = [];
+    if (!db.favorites || typeof db.favorites !== 'object') db.favorites = {};
+    if (!db.companions || typeof db.companions !== 'object') db.companions = {};
+    if (!db.completed || typeof db.completed !== 'object') db.completed = {};
+    if (!db.mycarPhotos || typeof db.mycarPhotos !== 'object') db.mycarPhotos = {};
+    if (!Array.isArray(db.friendRequests)) db.friendRequests = [];
+    if (!db.friendships || typeof db.friendships !== 'object') db.friendships = {};
+    if (!db.shareSettings || typeof db.shareSettings !== 'object') db.shareSettings = {};
+    return db;
 }
 
 function issueToken(user) {
@@ -56,6 +69,7 @@ app.post('/api/auth/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const user = { id: uuidv4(), email, passwordHash };
     db.users.push(user);
+    getShareSettings(db, user.id);
     writeDb(db);
     const token = issueToken(user);
     return res.json({ token, user: { id: user.id, email: user.email } });
@@ -76,6 +90,27 @@ app.post('/api/auth/login', async (req, res) => {
 function getCollection(db, key, userId) {
     if (!db[key][userId]) db[key][userId] = [];
     return db[key][userId];
+}
+
+function getFriendList(db, userId) {
+    if (!db.friendships[userId]) db.friendships[userId] = [];
+    return db.friendships[userId];
+}
+
+function getShareSettings(db, userId) {
+    if (!db.shareSettings[userId]) {
+        db.shareSettings[userId] = {
+            shareFavorites: true,
+            shareMyCar: true,
+            shareCompanionTrips: true
+        };
+    }
+    return db.shareSettings[userId];
+}
+
+function isFriends(db, a, b) {
+    const list = getFriendList(db, a);
+    return list.includes(b);
 }
 
 function addCrudRoutes(resourceKey) {
@@ -146,6 +181,157 @@ app.delete('/api/mycar-photo/:modelId', authMiddleware, (req, res) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+app.get('/api/share-settings', authMiddleware, (req, res) => {
+    const db = readDb();
+    const settings = getShareSettings(db, req.user.userId);
+    writeDb(db);
+    return res.json({ settings });
+});
+
+app.put('/api/share-settings', authMiddleware, (req, res) => {
+    const db = readDb();
+    const current = getShareSettings(db, req.user.userId);
+    const incoming = req.body || {};
+    const settings = {
+        shareFavorites: typeof incoming.shareFavorites === 'boolean' ? incoming.shareFavorites : current.shareFavorites,
+        shareMyCar: typeof incoming.shareMyCar === 'boolean' ? incoming.shareMyCar : current.shareMyCar,
+        shareCompanionTrips: typeof incoming.shareCompanionTrips === 'boolean' ? incoming.shareCompanionTrips : current.shareCompanionTrips
+    };
+    db.shareSettings[req.user.userId] = settings;
+    writeDb(db);
+    return res.json({ settings });
+});
+
+app.get('/api/friends', authMiddleware, (req, res) => {
+    const db = readDb();
+    const friendIds = getFriendList(db, req.user.userId);
+    const items = friendIds
+        .map(friendId => db.users.find(u => u.id === friendId))
+        .filter(Boolean)
+        .map(u => ({ id: u.id, email: u.email }));
+    return res.json({ items });
+});
+
+app.get('/api/friends/search', authMiddleware, (req, res) => {
+    const db = readDb();
+    const q = String(req.query.q || '').trim().toLowerCase();
+    if (!q || q.length < 2) return res.json({ items: [] });
+    const items = db.users
+        .filter(u => u.email.toLowerCase().includes(q))
+        .filter(u => u.id !== req.user.userId)
+        .slice(0, 10)
+        .map(u => ({ id: u.id, email: u.email }));
+    return res.json({ items });
+});
+
+app.get('/api/friends/requests', authMiddleware, (req, res) => {
+    const db = readDb();
+    const incoming = db.friendRequests
+        .filter(r => r.toUserId === req.user.userId && r.status === 'pending')
+        .map(r => {
+            const fromUser = db.users.find(u => u.id === r.fromUserId);
+            return {
+                id: r.id,
+                fromUserId: r.fromUserId,
+                fromEmail: fromUser ? fromUser.email : 'utente',
+                createdAt: r.createdAt
+            };
+        });
+    const outgoing = db.friendRequests
+        .filter(r => r.fromUserId === req.user.userId && r.status === 'pending')
+        .map(r => {
+            const toUser = db.users.find(u => u.id === r.toUserId);
+            return {
+                id: r.id,
+                toUserId: r.toUserId,
+                toEmail: toUser ? toUser.email : 'utente',
+                createdAt: r.createdAt
+            };
+        });
+    return res.json({ incoming, outgoing });
+});
+
+app.post('/api/friends/request', authMiddleware, (req, res) => {
+    const db = readDb();
+    const email = String((req.body || {}).email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'Email obbligatoria' });
+    const toUser = db.users.find(u => u.email.toLowerCase() === email);
+    if (!toUser) return res.status(404).json({ error: 'Utente non trovato' });
+    if (toUser.id === req.user.userId) return res.status(400).json({ error: 'Non puoi aggiungere te stesso' });
+    if (isFriends(db, req.user.userId, toUser.id)) return res.status(409).json({ error: 'Siete già amici' });
+
+    const existingPending = db.friendRequests.find(r =>
+        r.status === 'pending' &&
+        ((r.fromUserId === req.user.userId && r.toUserId === toUser.id) ||
+         (r.fromUserId === toUser.id && r.toUserId === req.user.userId))
+    );
+    if (existingPending) return res.status(409).json({ error: 'Richiesta già esistente' });
+
+    const now = Date.now();
+    const request = {
+        id: uuidv4(),
+        fromUserId: req.user.userId,
+        toUserId: toUser.id,
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now
+    };
+    db.friendRequests.push(request);
+    writeDb(db);
+    return res.json({ item: { id: request.id, toEmail: toUser.email, status: request.status } });
+});
+
+app.post('/api/friends/requests/:id/accept', authMiddleware, (req, res) => {
+    const db = readDb();
+    const reqId = req.params.id;
+    const request = db.friendRequests.find(r => r.id === reqId);
+    if (!request) return res.status(404).json({ error: 'Richiesta non trovata' });
+    if (request.toUserId !== req.user.userId) return res.status(403).json({ error: 'Operazione non consentita' });
+    if (request.status !== 'pending') return res.status(409).json({ error: 'Richiesta non più valida' });
+
+    request.status = 'accepted';
+    request.updatedAt = Date.now();
+    const fromList = getFriendList(db, request.fromUserId);
+    const toList = getFriendList(db, request.toUserId);
+    if (!fromList.includes(request.toUserId)) fromList.push(request.toUserId);
+    if (!toList.includes(request.fromUserId)) toList.push(request.fromUserId);
+    writeDb(db);
+    return res.json({ ok: true });
+});
+
+app.post('/api/friends/requests/:id/reject', authMiddleware, (req, res) => {
+    const db = readDb();
+    const reqId = req.params.id;
+    const request = db.friendRequests.find(r => r.id === reqId);
+    if (!request) return res.status(404).json({ error: 'Richiesta non trovata' });
+    if (request.toUserId !== req.user.userId) return res.status(403).json({ error: 'Operazione non consentita' });
+    if (request.status !== 'pending') return res.status(409).json({ error: 'Richiesta non più valida' });
+    request.status = 'rejected';
+    request.updatedAt = Date.now();
+    writeDb(db);
+    return res.json({ ok: true });
+});
+
+app.get('/api/friends/:friendId/shared', authMiddleware, (req, res) => {
+    const db = readDb();
+    const friendId = req.params.friendId;
+    if (!isFriends(db, req.user.userId, friendId)) {
+        return res.status(403).json({ error: 'Utente non tra i tuoi amici' });
+    }
+    const friendUser = db.users.find(u => u.id === friendId);
+    if (!friendUser) return res.status(404).json({ error: 'Utente non trovato' });
+
+    const settings = getShareSettings(db, friendId);
+    const shared = {
+        friend: { id: friendUser.id, email: friendUser.email },
+        settings,
+        favorites: settings.shareFavorites ? (db.favorites[friendId] || []) : [],
+        companions: settings.shareCompanionTrips ? (db.companions[friendId] || []) : [],
+        mycarPhotos: settings.shareMyCar ? (db.mycarPhotos[friendId] || {}) : {}
+    };
+    return res.json({ item: shared });
+});
 
 app.post('/api/google/routes', async (req, res) => {
     if (!GOOGLE_MAPS_API_KEY) return res.status(500).json({ error: 'Google API key mancante' });

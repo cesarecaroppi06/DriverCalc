@@ -23,6 +23,7 @@
                     <li><button id="homeBtn" class="active">🏠 Home</button></li>
                     <li><button id="budgetBtn">📊 Bilancio</button></li>
                     <li><button id="companionsBtn">🤝 Tratta in compagnia</button></li>
+                    <li><button id="friendsBtn">👥 I miei amici</button></li>
                     <li><button id="myCarBtn">🚗 La mia auto</button></li>
                     <li><button id="favoritesBtn">⭐ Preferiti</button></li>
                     <li><button id="accountBtn">👤 Account</button></li>
@@ -491,6 +492,36 @@
                         <button id="logoutBtn" class="pill-btn danger" style="display:none;">🚪 Esci</button>
                     </div>
                     <div id="authStatus" class="helper-text"></div>
+
+                    <div id="friendsSection" class="friends-section" style="display:none;">
+                        <h4 class="section-title">👥 Amici</h4>
+                        <div class="participants-input">
+                            <input id="friendSearchInput" type="email" placeholder="Email utente da aggiungere">
+                            <button id="sendFriendRequestBtn" class="pill-btn primary" type="button">Invia richiesta</button>
+                        </div>
+                        <div id="friendsStatus" class="helper-text"></div>
+
+                        <h4 class="section-title">Richieste ricevute</h4>
+                        <div id="friendRequestsEmpty" class="empty-state">Nessuna richiesta ricevuta.</div>
+                        <ul id="friendRequestsList" class="favorites-list companions-list"></ul>
+
+                        <h4 class="section-title">Richieste inviate</h4>
+                        <div id="friendOutgoingEmpty" class="empty-state">Nessuna richiesta inviata.</div>
+                        <ul id="friendOutgoingList" class="favorites-list companions-list"></ul>
+
+                        <h4 class="section-title">Privacy condivisione</h4>
+                        <label class="checkbox-label"><input id="shareFavoritesToggle" type="checkbox"> Condividi preferiti</label>
+                        <label class="checkbox-label"><input id="shareMyCarToggle" type="checkbox"> Condividi la mia auto</label>
+                        <label class="checkbox-label"><input id="shareCompanionsToggle" type="checkbox"> Condividi tratte in compagnia</label>
+
+                        <h4 class="section-title">I miei amici</h4>
+                        <div id="friendsEmpty" class="empty-state">Nessun amico aggiunto.</div>
+                        <ul id="friendsList" class="favorites-list companions-list"></ul>
+
+                        <h4 class="section-title">Dati condivisi amico</h4>
+                        <div id="friendSharedEmpty" class="empty-state">Seleziona un amico per vedere i suoi dati condivisi.</div>
+                        <ul id="friendSharedList" class="favorites-list companions-list"></ul>
+                    </div>
                 </div>
             </div>
 
@@ -649,6 +680,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="script.js?v=11"></script>
+    <script src="script.js?v=12"></script>
 </body>
 </html>
