@@ -3754,19 +3754,43 @@ let shareSettings = {
 
 async function apiRequest(path, method = 'GET', body) {
     if (!authToken) throw new Error('Token mancante');
-    const res = await fetch(`${API_BASE}${path}`, {
-        method,
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`
-        },
-        body: body ? JSON.stringify(body) : undefined
-    });
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Errore API');
+    let res;
+    try {
+        res = await fetch(`${API_BASE}${path}`, {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${authToken}`
+            },
+            body: body ? JSON.stringify(body) : undefined
+        });
+    } catch (e) {
+        throw new Error('Server API non raggiungibile');
     }
-    return res.json();
+
+    if (!res.ok) {
+        const rawText = await res.text().catch(() => '');
+        let err = {};
+        try {
+            err = rawText ? JSON.parse(rawText) : {};
+        } catch (e) {
+            err = {};
+        }
+
+        if (res.status === 401) {
+            throw new Error(err.error || 'Sessione scaduta, rifai login');
+        }
+        if (res.status === 404 && path.startsWith('/friends')) {
+            throw new Error('Funzione amici non disponibile sul server (deploy non aggiornato)');
+        }
+        if (res.status === 404 && path.startsWith('/share-settings')) {
+            throw new Error('Impostazioni condivisione non disponibili sul server');
+        }
+
+        throw new Error(err.error || `Errore API (${res.status})`);
+    }
+
+    return res.json().catch(() => ({}));
 }
 
 function setFriendsStatus(message = '') {
@@ -3958,12 +3982,21 @@ async function sendFriendRequest() {
         setFriendsStatus('Inserisci una email valida');
         return;
     }
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!isValidEmail) {
+        setFriendsStatus('Formato email non valido');
+        return;
+    }
     try {
         await apiRequest('/friends/request', 'POST', { email });
         friendSearchInput.value = '';
         await loadFriendsData();
         setFriendsStatus('Richiesta inviata');
     } catch (e) {
+        if ((e.message || '').toLowerCase().includes('sessione scaduta')) {
+            clearAuth();
+            openAuth();
+        }
         setFriendsStatus(e.message);
     }
 }
