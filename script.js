@@ -3780,10 +3780,10 @@ async function apiRequest(path, method = 'GET', body) {
         if (res.status === 401) {
             throw new Error(err.error || 'Sessione scaduta, rifai login');
         }
-        if (res.status === 404 && path.startsWith('/friends')) {
+        if (res.status === 404 && path.startsWith('/friends') && !err.error) {
             throw new Error('Funzione amici non disponibile sul server (deploy non aggiornato)');
         }
-        if (res.status === 404 && path.startsWith('/share-settings')) {
+        if (res.status === 404 && path.startsWith('/share-settings') && !err.error) {
             throw new Error('Impostazioni condivisione non disponibili sul server');
         }
 
