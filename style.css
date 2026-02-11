@@ -891,6 +891,15 @@ select:focus, input:focus {
     border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.friend-shared-photo {
+    width: 120px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.04);
+}
+
 .info-inline {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.1);

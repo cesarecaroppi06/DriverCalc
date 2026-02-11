@@ -2741,16 +2741,22 @@ const saveFavoriteBtn = document.getElementById('saveFavoriteBtn');
 const accountBtn = document.getElementById('accountBtn');
 const authOverlay = document.getElementById('authOverlay');
 const closeAuthBtn = document.getElementById('closeAuth');
+const friendRequestsBtn = document.getElementById('friendRequestsBtn');
+const friendRequestsOverlay = document.getElementById('friendRequestsOverlay');
+const closeFriendRequestsBtn = document.getElementById('closeFriendRequests');
+const friendsBtn = document.getElementById('friendsBtn');
+const friendsOverlay = document.getElementById('friendsOverlay');
+const closeFriendsBtn = document.getElementById('closeFriends');
 const authEmailInput = document.getElementById('authEmail');
 const authPasswordInput = document.getElementById('authPassword');
 const loginBtn = document.getElementById('loginBtn');
 const registerBtn = document.getElementById('registerBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const authStatus = document.getElementById('authStatus');
-const friendsSection = document.getElementById('friendsSection');
 const friendSearchInput = document.getElementById('friendSearchInput');
 const sendFriendRequestBtn = document.getElementById('sendFriendRequestBtn');
 const friendsStatus = document.getElementById('friendsStatus');
+const friendsStatusMirror = document.getElementById('friendsStatusMirror');
 const friendRequestsList = document.getElementById('friendRequestsList');
 const friendRequestsEmpty = document.getElementById('friendRequestsEmpty');
 const friendOutgoingList = document.getElementById('friendOutgoingList');
@@ -2764,7 +2770,6 @@ const friendSharedList = document.getElementById('friendSharedList');
 const friendSharedEmpty = document.getElementById('friendSharedEmpty');
 const completedTripCheckbox = document.getElementById('completedTrip');
 const companionsBtn = document.getElementById('companionsBtn');
-const friendsBtn = document.getElementById('friendsBtn');
 const companionsOverlay = document.getElementById('companionsOverlay');
 const closeCompanionsBtn = document.getElementById('closeCompanions');
 const companionNameInput = document.getElementById('companionName');
@@ -3795,6 +3800,61 @@ async function apiRequest(path, method = 'GET', body) {
 
 function setFriendsStatus(message = '') {
     if (friendsStatus) friendsStatus.textContent = message;
+    if (friendsStatusMirror) friendsStatusMirror.textContent = message;
+}
+
+function formatFriendTripDate(value) {
+    if (!value) return '-';
+    const parsed = Number(value);
+    const dt = Number.isFinite(parsed) ? new Date(parsed) : new Date(value);
+    if (Number.isNaN(dt.getTime())) return '-';
+    return dt.toLocaleDateString('it-IT');
+}
+
+function formatFriendCurrency(value) {
+    const amount = Number.parseFloat(value);
+    if (!Number.isFinite(amount)) return '-';
+    return `€${amount.toFixed(2)}`;
+}
+
+function normalizeFriendPhotoLabel(key) {
+    if (!key || key === 'default') return 'Foto auto principale';
+    return `Foto ${String(key).replace(/[-_]+/g, ' ')}`;
+}
+
+function appendFriendSharedItem(title, subtitle = '', meta = '', imageSrc = '') {
+    if (!friendSharedList) return;
+    const li = document.createElement('li');
+    li.className = 'favorite-item';
+    const metaWrap = document.createElement('div');
+    metaWrap.className = 'favorite-meta';
+    const heading = document.createElement('strong');
+    heading.textContent = title;
+    metaWrap.append(heading);
+
+    if (subtitle) {
+        const sub = document.createElement('span');
+        sub.textContent = subtitle;
+        metaWrap.append(sub);
+    }
+
+    if (meta) {
+        const detail = document.createElement('span');
+        detail.textContent = meta;
+        metaWrap.append(detail);
+    }
+
+    li.append(metaWrap);
+
+    if (imageSrc) {
+        const image = document.createElement('img');
+        image.className = 'friend-shared-photo';
+        image.src = imageSrc;
+        image.alt = title;
+        li.append(image);
+    }
+
+    friendSharedList.appendChild(li);
 }
 
 function renderFriendSharedData(shared) {
@@ -3806,26 +3866,55 @@ function renderFriendSharedData(shared) {
     }
     friendSharedEmpty.style.display = 'none';
 
-    const favoritesCount = (shared.favorites || []).length;
-    const companionsCount = (shared.companions || []).length;
-    const myCarCount = Object.keys(shared.mycarPhotos || {}).length;
+    const favoritesItems = Array.isArray(shared.favorites) ? shared.favorites : [];
+    const companionsItems = Array.isArray(shared.companions) ? shared.companions : [];
+    const photoEntries = Object.entries(shared.mycarPhotos || {}).filter(([, value]) => typeof value === 'string' && value.startsWith('data:image'));
+    const settings = shared.settings || {};
 
-    [
+    appendFriendSharedItem(
         `Amico: ${shared.friend?.email || '-'}`,
-        `Preferiti condivisi: ${favoritesCount}`,
-        `Tratte in compagnia condivise: ${companionsCount}`,
-        `Foto auto condivise: ${myCarCount}`
-    ].forEach(text => {
-        const li = document.createElement('li');
-        li.className = 'favorite-item';
-        const meta = document.createElement('div');
-        meta.className = 'favorite-meta';
-        const title = document.createElement('strong');
-        title.textContent = text;
-        meta.append(title);
-        li.append(meta);
-        friendSharedList.appendChild(li);
-    });
+        `Preferiti: ${favoritesItems.length} • Tratte in compagnia: ${companionsItems.length}`,
+        `Foto auto condivise: ${photoEntries.length}`
+    );
+
+    if (!settings.shareFavorites) {
+        appendFriendSharedItem('Preferiti non condivisi', 'Questo amico ha disattivato la condivisione dei preferiti.');
+    } else if (!favoritesItems.length) {
+        appendFriendSharedItem('Nessun preferito condiviso', "L'amico non ha ancora salvato tratte preferite da mostrare.");
+    } else {
+        favoritesItems.forEach((trip) => {
+            const route = `${trip.departure || '-'} -> ${trip.arrival || '-'}`;
+            const subtitle = `${trip.carLabel || 'Auto non specificata'} • ${trip.fuelLabel || 'Carburante non specificato'}`;
+            const meta = `Distanza: ${trip.distance || '-'} km • Totale: ${formatFriendCurrency(trip.totalCost)} • Data: ${formatFriendTripDate(trip.timestamp)}`;
+            appendFriendSharedItem(`Preferito: ${route}`, subtitle, meta);
+        });
+    }
+
+    if (!settings.shareMyCar) {
+        appendFriendSharedItem('Foto auto non condivise', 'Questo amico ha disattivato la condivisione della sezione La mia auto.');
+    } else if (!photoEntries.length) {
+        appendFriendSharedItem('Nessuna foto auto condivisa', "L'amico non ha ancora caricato foto nella sezione La mia auto.");
+    } else {
+        photoEntries.forEach(([key, dataUrl]) => {
+            appendFriendSharedItem(normalizeFriendPhotoLabel(key), '', '', dataUrl);
+        });
+    }
+
+    if (!settings.shareCompanionTrips) {
+        appendFriendSharedItem('Tratte in compagnia non condivise', 'Questo amico ha disattivato la condivisione delle tratte in compagnia.');
+    } else if (!companionsItems.length) {
+        appendFriendSharedItem('Nessuna tratta in compagnia condivisa', "L'amico non ha ancora tratte in compagnia da mostrare.");
+    } else {
+        companionsItems.forEach((trip) => {
+            const route = `${trip.departure || '-'} -> ${trip.arrival || '-'}`;
+            const people = Array.isArray(trip.participants) && trip.participants.length
+                ? trip.participants.join(', ')
+                : 'Partecipanti non indicati';
+            const subtitle = `Partecipanti: ${people}`;
+            const meta = `Totale: ${formatFriendCurrency(trip.totalCost)} • Quota: ${formatFriendCurrency(trip.perPerson)} • Data: ${formatFriendTripDate(trip.timestamp)}`;
+            appendFriendSharedItem(`Tratta in compagnia: ${route}`, subtitle, meta);
+        });
+    }
 }
 
 function renderFriends() {
@@ -4024,6 +4113,8 @@ function clearAuth() {
     renderFriendRequests();
     renderFriendSharedData(null);
     setFriendsStatus('');
+    if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
+    if (friendsOverlay) friendsOverlay.style.display = 'none';
 }
 
 function updateAuthUI(message = '') {
@@ -4031,7 +4122,6 @@ function updateAuthUI(message = '') {
     if (logoutBtn) logoutBtn.style.display = authToken ? 'inline-block' : 'none';
     if (loginBtn) loginBtn.style.display = authToken ? 'none' : 'inline-block';
     if (registerBtn) registerBtn.style.display = authToken ? 'none' : 'inline-block';
-    if (friendsSection) friendsSection.style.display = authToken ? 'block' : 'none';
 }
 
 async function handleAuth(isRegister) {
@@ -4241,29 +4331,59 @@ function openAuth() {
         authOverlay.style.display = 'flex';
         setActiveMenu(accountBtn);
         updateAuthUI(authToken ? 'Sei connesso' : 'Accedi o registrati');
-        if (authToken) {
-            loadFriendsData().catch(() => {
-                setFriendsStatus('Impossibile caricare amici');
-            });
-        }
     }
 }
 
-function openFriendsView() {
-    if (!authOverlay) return;
-    authOverlay.style.display = 'flex';
+async function openFriendRequestsView() {
+    if (!authToken) {
+        openAuth();
+        updateAuthUI('Accedi per inviare o gestire richieste amicizia');
+        return;
+    }
+    if (!friendRequestsOverlay) return;
+    if (authOverlay) authOverlay.style.display = 'none';
+    if (friendsOverlay) friendsOverlay.style.display = 'none';
+    friendRequestsOverlay.style.display = 'flex';
+    setActiveMenu(friendRequestsBtn);
+    setFriendsStatus('Gestisci richieste amicizia');
+    try {
+        await loadFriendsData();
+    } catch (e) {
+        setFriendsStatus('Impossibile caricare richieste amicizia');
+    }
+}
+
+async function openFriendsView() {
+    if (!authToken) {
+        openAuth();
+        updateAuthUI('Accedi per visualizzare I miei amici');
+        return;
+    }
+    if (!friendsOverlay) return;
+    if (authOverlay) authOverlay.style.display = 'none';
+    if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
+    friendsOverlay.style.display = 'flex';
     setActiveMenu(friendsBtn);
-    updateAuthUI(authToken ? 'Gestisci amici e condivisione dati' : 'Accedi per usare la sezione amici');
-    if (authToken) {
-        loadFriendsData().catch(() => {
-            setFriendsStatus('Impossibile caricare amici');
-        });
-        friendsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setFriendsStatus('Visualizza dati condivisi dagli amici');
+    try {
+        await loadFriendsData();
+    } catch (e) {
+        setFriendsStatus('Impossibile caricare amici');
     }
 }
 
 function closeAuth() {
     if (authOverlay) authOverlay.style.display = 'none';
+    setActiveMenu(homeBtn);
+}
+
+function closeFriendRequestsView() {
+    if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
+    setActiveMenu(homeBtn);
+}
+
+function closeFriendsView() {
+    if (friendsOverlay) friendsOverlay.style.display = 'none';
     setActiveMenu(homeBtn);
 }
 
@@ -4719,7 +4839,10 @@ favoritesBtn?.addEventListener('click', openFavorites);
 closeFavoritesBtn?.addEventListener('click', closeFavorites);
 saveFavoriteBtn?.addEventListener('click', saveCurrentToFavorites);
 companionsBtn?.addEventListener('click', openCompanions);
+friendRequestsBtn?.addEventListener('click', openFriendRequestsView);
 friendsBtn?.addEventListener('click', openFriendsView);
+closeFriendRequestsBtn?.addEventListener('click', closeFriendRequestsView);
+closeFriendsBtn?.addEventListener('click', closeFriendsView);
 closeCompanionsBtn?.addEventListener('click', closeCompanions);
 addCompanionBtn?.addEventListener('click', addCompanion);
 saveCompanionTripBtn?.addEventListener('click', saveCompanionTrip);
@@ -4842,6 +4965,12 @@ document.addEventListener('keydown', (e) => {
         if (authOverlay && authOverlay.style.display === 'flex') {
             closeAuth();
         }
+        if (friendRequestsOverlay && friendRequestsOverlay.style.display === 'flex') {
+            closeFriendRequestsView();
+        }
+        if (friendsOverlay && friendsOverlay.style.display === 'flex') {
+            closeFriendsView();
+        }
     }
 });
 
@@ -4863,6 +4992,10 @@ document.addEventListener('click', (e) => {
 // Enter per calcolare
 document.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
+        const tagName = (e.target && e.target.tagName ? e.target.tagName : '').toLowerCase();
+        if (tagName === 'input' || tagName === 'textarea' || tagName === 'select' || e.target?.isContentEditable) {
+            return;
+        }
         calculateTrip().catch(err => {
             console.error(err);
             showError('❌ Si è verificato un errore durante il calcolo. Riprova.');
