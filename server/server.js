@@ -11,7 +11,68 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-prod';
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
-const DB_PATH = path.join(__dirname, 'data', 'db.json');
+const DEFAULT_DB_FILE = 'db.json';
+const FALLBACK_DB_PATH = path.join(__dirname, 'data', DEFAULT_DB_FILE);
+
+function ensureDbShape(db) {
+    if (!db || typeof db !== 'object') db = {};
+    if (!Array.isArray(db.users)) db.users = [];
+    if (!db.favorites || typeof db.favorites !== 'object') db.favorites = {};
+    if (!db.companions || typeof db.companions !== 'object') db.companions = {};
+    if (!db.completed || typeof db.completed !== 'object') db.completed = {};
+    if (!db.mycarPhotos || typeof db.mycarPhotos !== 'object') db.mycarPhotos = {};
+    if (!Array.isArray(db.friendRequests)) db.friendRequests = [];
+    if (!db.friendships || typeof db.friendships !== 'object') db.friendships = {};
+    if (!db.shareSettings || typeof db.shareSettings !== 'object') db.shareSettings = {};
+    return db;
+}
+
+function tryInitDbFile(filePath) {
+    try {
+        const dir = path.dirname(filePath);
+        fs.mkdirSync(dir, { recursive: true });
+        if (!fs.existsSync(filePath)) {
+            fs.writeFileSync(filePath, JSON.stringify(ensureDbShape({}), null, 2), 'utf-8');
+        }
+        fs.accessSync(filePath, fs.constants.R_OK | fs.constants.W_OK);
+        return true;
+    } catch (err) {
+        return false;
+    }
+}
+
+function resolveDbPath() {
+    const explicitDbPath = String(process.env.DB_PATH || '').trim();
+    if (explicitDbPath) {
+        if (!tryInitDbFile(explicitDbPath)) {
+            throw new Error(`Impossibile accedere a DB_PATH: ${explicitDbPath}`);
+        }
+        return explicitDbPath;
+    }
+
+    const dbFileName = String(process.env.DB_FILE_NAME || DEFAULT_DB_FILE).trim() || DEFAULT_DB_FILE;
+    const candidateDirs = [
+        String(process.env.DRIVECALC_DATA_DIR || '').trim(),
+        String(process.env.RENDER_DISK_PATH || '').trim(),
+        '/var/data',
+        path.join(__dirname, 'data')
+    ].filter(Boolean);
+
+    for (const dir of candidateDirs) {
+        const candidatePath = path.join(dir, dbFileName);
+        if (tryInitDbFile(candidatePath)) {
+            return candidatePath;
+        }
+    }
+
+    if (!tryInitDbFile(FALLBACK_DB_PATH)) {
+        throw new Error('Impossibile inizializzare il database');
+    }
+    return FALLBACK_DB_PATH;
+}
+
+const DB_PATH = resolveDbPath();
+console.log(`[DriveCalc API] Database path: ${DB_PATH}`);
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
@@ -26,20 +87,7 @@ function readDb() {
 }
 
 function writeDb(db) {
-    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
-}
-
-function ensureDbShape(db) {
-    if (!db || typeof db !== 'object') db = {};
-    if (!Array.isArray(db.users)) db.users = [];
-    if (!db.favorites || typeof db.favorites !== 'object') db.favorites = {};
-    if (!db.companions || typeof db.companions !== 'object') db.companions = {};
-    if (!db.completed || typeof db.completed !== 'object') db.completed = {};
-    if (!db.mycarPhotos || typeof db.mycarPhotos !== 'object') db.mycarPhotos = {};
-    if (!Array.isArray(db.friendRequests)) db.friendRequests = [];
-    if (!db.friendships || typeof db.friendships !== 'object') db.friendships = {};
-    if (!db.shareSettings || typeof db.shareSettings !== 'object') db.shareSettings = {};
-    return db;
+    fs.writeFileSync(DB_PATH, JSON.stringify(ensureDbShape(db), null, 2), 'utf-8');
 }
 
 function issueToken(user) {
