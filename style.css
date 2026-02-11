@@ -543,6 +543,10 @@ select:focus, input:focus {
     color: rgba(226, 232, 240, 0.9);
 }
 
+.location-hidden {
+    display: none;
+}
+
 .map-section {
     margin-top: 24px;
     background: rgba(255, 255, 255, 0.06);

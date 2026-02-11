@@ -33,24 +33,21 @@
             <main>
             <div class="calculator-section">
                 <div class="form-group">
-                    <label for="departure">📍 Punto di Partenza:</label>
-                    <select id="departure" required>
+                    <label for="departureAddress">📍 Punto di Partenza (città o via):</label>
+                    <select id="departure" required class="location-hidden" aria-hidden="true" tabindex="-1">
                         <option value="">Seleziona città...</option>
                     </select>
-                    <button id="useLocationBtn" class="pill-btn" type="button">📡 Usa la mia posizione</button>
-                    <label for="departureAddress" class="sub-label">Oppure indirizzo completo</label>
-                    <input type="text" id="departureAddress" class="filter-input" placeholder="Via, numero civico, città">
+                    <input type="text" id="departureAddress" class="filter-input" placeholder="Scrivi città o indirizzo (es. Roma / Via Roma 10, Milano)">
                     <div id="departureAddressResults" class="filter-results" aria-live="polite"></div>
-                    <p class="helper-text">Se inserisci un indirizzo, la città selezionata viene ignorata.</p>
+                    <button id="useLocationBtn" class="pill-btn" type="button">📡 Usa la mia posizione</button>
                 </div>
 
                 <div class="form-group">
-                    <label for="arrival">📍 Punto di Arrivo:</label>
-                    <select id="arrival" required>
+                    <label for="arrivalAddress">📍 Punto di Arrivo (città o via):</label>
+                    <select id="arrival" required class="location-hidden" aria-hidden="true" tabindex="-1">
                         <option value="">Seleziona città...</option>
                     </select>
-                    <label for="arrivalAddress" class="sub-label">Oppure indirizzo completo</label>
-                    <input type="text" id="arrivalAddress" class="filter-input" placeholder="Via, numero civico, città">
+                    <input type="text" id="arrivalAddress" class="filter-input" placeholder="Scrivi città o indirizzo (es. Ferrara / Via Garibaldi 22, Roma)">
                     <div id="arrivalAddressResults" class="filter-results" aria-live="polite"></div>
                 </div>
 
@@ -652,6 +649,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="script.js?v=10"></script>
+    <script src="script.js?v=11"></script>
 </body>
 </html>

@@ -835,6 +835,24 @@ async function reverseGeocodeNominatim(lat, lng) {
     return (address && (address.city || address.town || address.village || address.county)) || null;
 }
 
+async function reverseGeocodeNominatimDetailed(lat, lng) {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1&accept-language=it`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const address = data && data.address ? data.address : {};
+    const city = address.city || address.town || address.village || address.county || '';
+    const road = address.road || address.pedestrian || address.footway || address.cycleway || address.path || '';
+    const number = address.house_number || address.housenumber || '';
+    const fullAddress = road
+        ? `${road}${number ? ` ${number}` : ''}${city ? `, ${city}` : ''}`.trim()
+        : (data.display_name || city || '');
+    return {
+        city: city || null,
+        fullAddress: fullAddress || null
+    };
+}
+
 async function reverseGeocodePhoton(lat, lng) {
     const url = `https://photon.komoot.io/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&lang=it`;
     const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
@@ -890,17 +908,43 @@ function normalizeCityName(name) {
 async function resolveLocation(roleLabel, addressInput, citySelect) {
     const addressValue = (addressInput?.value || '').trim();
     if (addressValue) {
+        const pickedKind = addressInput?.dataset?.kind || '';
+        const pickedCity = addressInput?.dataset?.city || '';
         const lat = parseFloat(addressInput?.dataset?.lat || '');
         const lng = parseFloat(addressInput?.dataset?.lng || '');
+
+        if (pickedKind === 'city' && (pickedCity || addressValue)) {
+            const cityValue = pickedCity || addressValue;
+            const [lon, cityLat] = await geocodeCity(cityValue);
+            return { label: cityValue, lat: cityLat, lng: lon, kind: 'city', city: cityValue };
+        }
+
         if (Number.isFinite(lat) && Number.isFinite(lng)) {
             return { label: addressValue, lat, lng, kind: 'address', address: addressValue };
         }
+
+        const exactCity = cities.find(c => normalizeCityName(c.name) === normalizeCityName(addressValue));
+        if (exactCity) {
+            const [lon, cityLat] = await geocodeCity(exactCity.name);
+            return { label: exactCity.name, lat: cityLat, lng: lon, kind: 'city', city: exactCity.name };
+        }
+
         try {
-            const cityBias = citySelect?.value || '';
-            const suggestions = await fetchAddressSuggestions(addressValue, cityBias);
+            const suggestions = await fetchUnifiedLocationSuggestions(addressValue);
             if (suggestions.length) {
                 const best = suggestions[0];
+                if (best.kind === 'city') {
+                    const [lon, cityLat] = await geocodeCity(best.city);
+                    addressInput.value = best.city;
+                    addressInput.dataset.kind = 'city';
+                    addressInput.dataset.city = best.city;
+                    addressInput.dataset.lat = '';
+                    addressInput.dataset.lng = '';
+                    return { label: best.city, lat: cityLat, lng: lon, kind: 'city', city: best.city };
+                }
                 addressInput.value = best.label;
+                addressInput.dataset.kind = 'address';
+                addressInput.dataset.city = '';
                 addressInput.dataset.lat = String(best.lat);
                 addressInput.dataset.lng = String(best.lng);
                 return { label: best.label, lat: best.lat, lng: best.lng, kind: 'address', address: best.label };
@@ -910,6 +954,8 @@ async function resolveLocation(roleLabel, addressInput, citySelect) {
         }
         try {
             const coords = await geocodeAddress(addressValue, citySelect?.value || '');
+            addressInput.dataset.kind = 'address';
+            addressInput.dataset.city = '';
             addressInput.dataset.lat = String(coords.lat);
             addressInput.dataset.lng = String(coords.lng);
             return { label: addressValue, lat: coords.lat, lng: coords.lng, kind: 'address', address: addressValue };
@@ -956,14 +1002,19 @@ function applyLocationToForm(entry) {
     if (depIsAddr) {
         if (departureAddressInput) {
             departureAddressInput.value = entry.departureAddress || entry.departure || '';
+            departureAddressInput.dataset.kind = 'address';
+            departureAddressInput.dataset.city = '';
             departureAddressInput.dataset.lat = entry.departureLat ? String(entry.departureLat) : '';
             departureAddressInput.dataset.lng = entry.departureLng ? String(entry.departureLng) : '';
         }
         if (departureSelect) departureSelect.value = '';
     } else {
-        if (departureSelect) departureSelect.value = entry.departureCity || entry.departure || '';
+        const depCity = entry.departureCity || entry.departure || '';
+        if (departureSelect) departureSelect.value = depCity;
         if (departureAddressInput) {
-            departureAddressInput.value = '';
+            departureAddressInput.value = depCity;
+            departureAddressInput.dataset.kind = depCity ? 'city' : '';
+            departureAddressInput.dataset.city = depCity;
             departureAddressInput.dataset.lat = '';
             departureAddressInput.dataset.lng = '';
         }
@@ -972,14 +1023,19 @@ function applyLocationToForm(entry) {
     if (arrIsAddr) {
         if (arrivalAddressInput) {
             arrivalAddressInput.value = entry.arrivalAddress || entry.arrival || '';
+            arrivalAddressInput.dataset.kind = 'address';
+            arrivalAddressInput.dataset.city = '';
             arrivalAddressInput.dataset.lat = entry.arrivalLat ? String(entry.arrivalLat) : '';
             arrivalAddressInput.dataset.lng = entry.arrivalLng ? String(entry.arrivalLng) : '';
         }
         if (arrivalSelect) arrivalSelect.value = '';
     } else {
-        if (arrivalSelect) arrivalSelect.value = entry.arrivalCity || entry.arrival || '';
+        const arrCity = entry.arrivalCity || entry.arrival || '';
+        if (arrivalSelect) arrivalSelect.value = arrCity;
         if (arrivalAddressInput) {
-            arrivalAddressInput.value = '';
+            arrivalAddressInput.value = arrCity;
+            arrivalAddressInput.dataset.kind = arrCity ? 'city' : '';
+            arrivalAddressInput.dataset.city = arrCity;
             arrivalAddressInput.dataset.lat = '';
             arrivalAddressInput.dataset.lng = '';
         }
@@ -2476,6 +2532,39 @@ async function fetchAddressSuggestions(query, cityBias = '', signal) {
     return nominatimItems;
 }
 
+function fetchCitySuggestions(query) {
+    const normalizedQuery = normalizeCityName(query);
+    if (!normalizedQuery) return [];
+    return cities
+        .filter(c => normalizeCityName(c.name).includes(normalizedQuery))
+        .slice(0, 6)
+        .map(c => ({
+            kind: 'city',
+            city: c.name,
+            label: `${c.name} (${c.region})`
+        }));
+}
+
+async function fetchUnifiedLocationSuggestions(query, signal) {
+    const cityItems = fetchCitySuggestions(query);
+    const addressItems = await fetchAddressSuggestions(query, '', signal).catch(() => []);
+    const mappedAddresses = addressItems.map(item => ({
+        kind: 'address',
+        label: item.label,
+        lat: item.lat,
+        lng: item.lng
+    }));
+
+    const all = [...cityItems, ...mappedAddresses];
+    const seen = new Set();
+    return all.filter(item => {
+        const key = `${item.kind}|${(item.city || item.label || '').toLowerCase()}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    }).slice(0, 10);
+}
+
 function debounce(fn, delay = 250) {
     let timer = null;
     return (...args) => {
@@ -2490,13 +2579,23 @@ function setupAddressAutocomplete(input, resultsEl, citySelect) {
     const runSearch = async (value) => {
         if (controller) controller.abort();
         controller = new AbortController();
-        const cityBias = citySelect?.value || '';
-        const items = await fetchAddressSuggestions(value, cityBias, controller.signal).catch(() => []);
+        const items = await fetchUnifiedLocationSuggestions(value, controller.signal).catch(() => []);
         if (input.value.trim() !== value) return;
         renderResults(resultsEl, items, value, (item) => {
-            input.value = item.label;
-            input.dataset.lat = String(item.lat);
-            input.dataset.lng = String(item.lng);
+            input.dataset.kind = item.kind || '';
+            if (item.kind === 'city') {
+                input.value = item.city || item.label || '';
+                input.dataset.city = item.city || '';
+                input.dataset.lat = '';
+                input.dataset.lng = '';
+                if (citySelect) citySelect.value = item.city || '';
+            } else {
+                input.value = item.label;
+                input.dataset.city = '';
+                input.dataset.lat = String(item.lat);
+                input.dataset.lng = String(item.lng);
+                if (citySelect) citySelect.value = '';
+            }
             clearResultsContainer(resultsEl);
         });
     };
@@ -2504,8 +2603,11 @@ function setupAddressAutocomplete(input, resultsEl, citySelect) {
 
     input.addEventListener('input', (e) => {
         const value = e.target.value.trim();
+        input.dataset.kind = '';
+        input.dataset.city = '';
         input.dataset.lat = '';
         input.dataset.lng = '';
+        if (citySelect) citySelect.value = '';
         if (!value || value.length < 2) {
             clearResultsContainer(resultsEl);
             return;
@@ -4265,11 +4367,15 @@ function resetCalculator() {
     carBrandSelect.value = '';
     if (departureAddressInput) {
         departureAddressInput.value = '';
+        departureAddressInput.dataset.kind = '';
+        departureAddressInput.dataset.city = '';
         departureAddressInput.dataset.lat = '';
         departureAddressInput.dataset.lng = '';
     }
     if (arrivalAddressInput) {
         arrivalAddressInput.value = '';
+        arrivalAddressInput.dataset.kind = '';
+        arrivalAddressInput.dataset.city = '';
         arrivalAddressInput.dataset.lat = '';
         arrivalAddressInput.dataset.lng = '';
     }
@@ -4378,31 +4484,23 @@ useLocationBtn?.addEventListener('click', async () => {
         const lng = pos.coords.longitude;
         lastUserLocation = { lat, lng };
         await renderUserLocationOnMap();
-        const city = await resolveCityFromCoordinates(lat, lng);
-        if (city) {
+        const details = await reverseGeocodeNominatimDetailed(lat, lng).catch(() => null);
+        const city = details?.city || await resolveCityFromCoordinates(lat, lng);
+        const fullAddress = details?.fullAddress || city || 'Posizione attuale';
+
+        if (departureAddressInput) {
+            departureAddressInput.value = fullAddress;
+            departureAddressInput.dataset.kind = 'address';
+            departureAddressInput.dataset.city = city || '';
+            departureAddressInput.dataset.lat = String(lat);
+            departureAddressInput.dataset.lng = String(lng);
+        }
+        if (departureSelect && city) {
             const match = findCityOptionByName(city);
-            if (match) {
-                departureSelect.value = match.value;
-                if (departureAddressInput) {
-                    departureAddressInput.value = '';
-                    departureAddressInput.dataset.lat = '';
-                    departureAddressInput.dataset.lng = '';
-                }
-            } else {
-                if (departureAddressInput) {
-                    departureAddressInput.value = city;
-                    departureAddressInput.dataset.lat = String(lat);
-                    departureAddressInput.dataset.lng = String(lng);
-                }
-                showError(`⚠️ Posizione trovata: ${city}. Uso l'indirizzo in partenza.`);
-            }
-        } else {
-            if (departureAddressInput) {
-                departureAddressInput.value = 'Posizione attuale';
-                departureAddressInput.dataset.lat = String(lat);
-                departureAddressInput.dataset.lng = String(lng);
-            }
-            showError('⚠️ Impossibile determinare la città dalla posizione. Uso coordinate GPS.');
+            departureSelect.value = match ? match.value : '';
+        }
+        if (!details?.fullAddress) {
+            showError('⚠️ Posizione rilevata. Via non disponibile: uso città/coordinate.');
         }
         useLocationBtn.disabled = false;
         useLocationBtn.textContent = '📡 Usa la mia posizione';
