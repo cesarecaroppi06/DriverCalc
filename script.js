@@ -315,6 +315,9 @@ let googleMapsErrorCheckTimer = null;
 let leafletMapInstance = null;
 let leafletRouteLayer = null;
 let leafletRouteMarkers = [];
+let googleFuelMarkers = [];
+let googleFuelInfoWindow = null;
+let leafletFuelMarkers = [];
 let userLocationMarkerGoogle = null;
 let userLocationMarkerLeaflet = null;
 let lastUserLocation = null;
@@ -367,6 +370,7 @@ function clearMapContainer(mapEl) {
 
 function destroyGoogleMap(mapEl) {
     clearGoogleRoute();
+    clearGoogleFuelStations();
     if (userLocationMarkerGoogle) {
         userLocationMarkerGoogle.setMap(null);
         userLocationMarkerGoogle = null;
@@ -377,6 +381,7 @@ function destroyGoogleMap(mapEl) {
 
 function destroyLeafletMap(mapEl) {
     clearLeafletRoute();
+    clearLeafletFuelStations();
     if (userLocationMarkerLeaflet) {
         userLocationMarkerLeaflet.remove();
         userLocationMarkerLeaflet = null;
@@ -491,6 +496,14 @@ function clearGoogleRoute() {
     googleRouteMarkers = [];
 }
 
+function clearGoogleFuelStations() {
+    googleFuelMarkers.forEach((marker) => marker.setMap(null));
+    googleFuelMarkers = [];
+    if (googleFuelInfoWindow) {
+        googleFuelInfoWindow.close();
+    }
+}
+
 async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
     const ok = await ensureMapReady('google');
     const mapSection = document.getElementById('mapSection');
@@ -504,6 +517,7 @@ async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
     mapSection.style.display = 'block';
     if (mapStatus) mapStatus.textContent = route?.isApproximate ? 'Percorso stimato (linea d’aria)' : '';
     clearGoogleRoute();
+    clearGoogleFuelStations();
 
     if (!polyline || !window.google || !google.maps?.geometry?.encoding) return;
     const path = google.maps.geometry.encoding.decodePath(polyline);
@@ -551,6 +565,174 @@ function clearLeafletRoute() {
     leafletRouteMarkers = [];
 }
 
+function clearLeafletFuelStations() {
+    leafletFuelMarkers.forEach((marker) => marker.remove());
+    leafletFuelMarkers = [];
+}
+
+function clearFuelStationsOnMap() {
+    clearGoogleFuelStations();
+    clearLeafletFuelStations();
+}
+
+function escapeFuelPopupText(value = '') {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function buildFuelMarkerPriceLabel(station = {}, fuelType = 'benzina') {
+    const price = Number(station.price);
+    if (!Number.isFinite(price)) return '€-';
+    const suffix = fuelType === 'metano' ? '/kg' : '';
+    return `€${price.toFixed(3)}${suffix}`;
+}
+
+function buildFuelStationPopupHtml(station = {}, fuelType = 'benzina') {
+    const title = escapeFuelPopupText(station.brand || station.name || 'Benzinaio');
+    const address = escapeFuelPopupText(station.address || 'Indirizzo non disponibile');
+    const price = escapeFuelPopupText(formatFuelFinderPrice(station.price, fuelType));
+    const distance = escapeFuelPopupText(formatFuelFinderDistance(station.distanceKm));
+    const updated = escapeFuelPopupText(formatFuelFinderFreshnessText(station));
+    return `<strong>${title}</strong><br>${address}<br>${price} • ${distance}<br>${updated}`;
+}
+
+async function renderFuelStationsOnMap(stations = [], center = null, options = {}) {
+    const mapSection = document.getElementById('mapSection');
+    const mapStatus = document.getElementById('mapStatus');
+    const fuelType = normalizeFuelFinderType(options.fuelType || 'benzina');
+    const freshnessMaxHours = Number(options.freshnessMaxHours || 72);
+    const validStations = Array.isArray(stations)
+        ? stations.filter((station) => Number.isFinite(Number(station.lat)) && Number.isFinite(Number(station.lng)))
+        : [];
+    const targetCenter = center && Number.isFinite(Number(center.lat)) && Number.isFinite(Number(center.lng))
+        ? { lat: Number(center.lat), lng: Number(center.lng) }
+        : (lastUserLocation ? { lat: Number(lastUserLocation.lat), lng: Number(lastUserLocation.lng) } : null);
+
+    clearFuelStationsOnMap();
+
+    const provider = await ensureMapReady(activeMapProvider || 'leaflet');
+    if (!provider || !mapSection) return;
+
+    mapSection.style.display = 'block';
+    if (mapStatus) {
+        if (validStations.length) {
+            mapStatus.textContent = `Benzinai su mappa (prezzi verificati, aggiornati max ${freshnessMaxHours}h).`;
+        } else {
+            mapStatus.textContent = "Nessun benzinaio affidabile da mostrare su mappa in quest'area.";
+        }
+    }
+
+    if (provider === 'google' && googleMapInstance) {
+        if (targetCenter) {
+            if (!userLocationMarkerGoogle) {
+                userLocationMarkerGoogle = new google.maps.Marker({
+                    position: targetCenter,
+                    map: googleMapInstance,
+                    title: 'La tua posizione'
+                });
+            } else {
+                userLocationMarkerGoogle.setPosition(targetCenter);
+                userLocationMarkerGoogle.setMap(googleMapInstance);
+            }
+        }
+
+        if (!googleFuelInfoWindow) {
+            googleFuelInfoWindow = new google.maps.InfoWindow();
+        }
+
+        const bounds = new google.maps.LatLngBounds();
+        if (targetCenter) bounds.extend(targetCenter);
+
+        validStations.forEach((station) => {
+            const position = { lat: Number(station.lat), lng: Number(station.lng) };
+            const marker = new google.maps.Marker({
+                position,
+                map: googleMapInstance,
+                title: `${station.brand || station.name || 'Benzinaio'} - ${formatFuelFinderPrice(station.price, fuelType)}`,
+                label: {
+                    text: buildFuelMarkerPriceLabel(station, fuelType),
+                    color: '#ffffff',
+                    fontSize: '11px',
+                    fontWeight: '700'
+                },
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 17,
+                    fillColor: '#dc2626',
+                    fillOpacity: 0.94,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 2
+                }
+            });
+            marker.addListener('click', () => {
+                googleFuelInfoWindow.setContent(buildFuelStationPopupHtml(station, fuelType));
+                googleFuelInfoWindow.open({
+                    map: googleMapInstance,
+                    anchor: marker
+                });
+            });
+            googleFuelMarkers.push(marker);
+            bounds.extend(position);
+        });
+
+        if (validStations.length > 1 || (validStations.length && targetCenter)) {
+            googleMapInstance.fitBounds(bounds);
+        } else if (validStations.length === 1) {
+            googleMapInstance.setCenter({ lat: Number(validStations[0].lat), lng: Number(validStations[0].lng) });
+            googleMapInstance.setZoom(14);
+        } else if (targetCenter) {
+            googleMapInstance.setCenter(targetCenter);
+            googleMapInstance.setZoom(13);
+        }
+        if (google.maps?.event) google.maps.event.trigger(googleMapInstance, 'resize');
+        scheduleGoogleErrorCheck(document.getElementById('map'));
+        return;
+    }
+
+    if (provider === 'leaflet' && leafletMapInstance) {
+        const boundsPoints = [];
+        if (targetCenter) {
+            if (!userLocationMarkerLeaflet) {
+                userLocationMarkerLeaflet = L.marker([targetCenter.lat, targetCenter.lng], {
+                    title: 'La tua posizione'
+                }).addTo(leafletMapInstance);
+            } else {
+                userLocationMarkerLeaflet.setLatLng([targetCenter.lat, targetCenter.lng]);
+            }
+            boundsPoints.push([targetCenter.lat, targetCenter.lng]);
+        }
+
+        validStations.forEach((station) => {
+            const lat = Number(station.lat);
+            const lng = Number(station.lng);
+            const label = escapeFuelPopupText(buildFuelMarkerPriceLabel(station, fuelType));
+            const marker = L.marker([lat, lng], {
+                title: `${station.brand || station.name || 'Benzinaio'} - ${formatFuelFinderPrice(station.price, fuelType)}`,
+                icon: L.divIcon({
+                    className: 'fuel-map-marker-wrapper',
+                    html: `<span class="fuel-map-marker">${label}</span>`,
+                    iconSize: [84, 30],
+                    iconAnchor: [42, 15]
+                })
+            }).addTo(leafletMapInstance);
+            marker.bindPopup(buildFuelStationPopupHtml(station, fuelType));
+            leafletFuelMarkers.push(marker);
+            boundsPoints.push([lat, lng]);
+        });
+
+        if (boundsPoints.length > 1) {
+            leafletMapInstance.fitBounds(boundsPoints, { padding: [28, 28] });
+        } else if (boundsPoints.length === 1) {
+            leafletMapInstance.setView(boundsPoints[0], 14);
+        }
+        leafletMapInstance.invalidateSize();
+    }
+}
+
 async function renderLeafletRouteOnMap(geometryCoords, startLatLng, endLatLng) {
     const ok = await ensureMapReady('leaflet');
     const mapSection = document.getElementById('mapSection');
@@ -564,6 +746,7 @@ async function renderLeafletRouteOnMap(geometryCoords, startLatLng, endLatLng) {
     mapSection.style.display = 'block';
     if (mapStatus) mapStatus.textContent = 'Mappa OpenStreetMap (fallback)';
     clearLeafletRoute();
+    clearLeafletFuelStations();
 
     if (!Array.isArray(geometryCoords) || !geometryCoords.length) return;
     const latLngs = geometryCoords.map(coord => [coord[1], coord[0]]);
@@ -4841,6 +5024,11 @@ let aiChatPending = false;
 let fuelFinderPending = false;
 let fuelFinderLastPosition = null;
 let fuelFinderLastResults = [];
+let fuelFinderLastMeta = {
+    fuelType: 'benzina',
+    radiusKm: 5,
+    freshnessMaxHours: 72
+};
 let shareSettings = {
     shareFavorites: true,
     shareMyCar: true,
@@ -6328,6 +6516,37 @@ function formatFuelFinderUpdatedAt(value) {
     });
 }
 
+function formatFuelFinderAgeMinutes(value) {
+    const minutes = Number(value);
+    if (!Number.isFinite(minutes) || minutes < 0) return '';
+    if (minutes <= 1) return 'adesso';
+    if (minutes < 60) return `${Math.round(minutes)} min fa`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours} h fa`;
+    const days = Math.round(hours / 24);
+    return `${days} g fa`;
+}
+
+function formatFuelFinderFreshnessText(station = {}) {
+    const ageLabel = formatFuelFinderAgeMinutes(station.ageMinutes);
+    if (ageLabel) {
+        const level = String(station.freshnessLevel || '').toLowerCase();
+        if (level === 'live') return `Tempo reale: ${ageLabel}`;
+        if (level === 'fresh') return `Aggiornato ${ageLabel}`;
+        if (level === 'recent') return `Dato recente: ${ageLabel}`;
+        return `Aggiornato ${ageLabel}`;
+    }
+    const fallback = formatFuelFinderUpdatedAt(station.lastUpdate);
+    return fallback !== '-' ? `Agg.: ${fallback}` : 'Aggiornamento non disponibile';
+}
+
+function getFuelFinderFreshnessClass(station = {}) {
+    const level = String(station.freshnessLevel || '').trim().toLowerCase();
+    if (level === 'live' || level === 'fresh') return 'is-fresh';
+    if (level === 'recent') return 'is-recent';
+    return 'is-unknown';
+}
+
 function setFuelFinderStatus(message = '') {
     if (!fuelFinderStatus) return;
     fuelFinderStatus.textContent = message || '';
@@ -6400,15 +6619,19 @@ function syncFuelFinderTypeFromTrip() {
 function renderFuelFinderResults(items = [], meta = {}) {
     if (!fuelStationsList || !fuelStationsEmpty || !fuelFinderSummary) return;
     const fuelType = normalizeFuelFinderType(meta.fuelType || fuelFinderFuelType?.value || 'benzina');
+    const freshnessMaxHours = Math.max(1, Number(meta.freshnessMaxHours || fuelFinderLastMeta?.freshnessMaxHours || 72));
     const sorted = Array.isArray(items)
         ? items
             .map((item) => ({
                 ...item,
                 price: Number(item.price)
             }))
-            .filter((item) => Number.isFinite(item.price) && item.price > 0)
+            .filter((item) => Number.isFinite(item.price) && item.price > 0 && item.isReliable !== false)
             .sort((a, b) => {
                 if (a.price !== b.price) return a.price - b.price;
+                const ageA = Number.isFinite(Number(a.ageMinutes)) ? Number(a.ageMinutes) : Number.MAX_SAFE_INTEGER;
+                const ageB = Number.isFinite(Number(b.ageMinutes)) ? Number(b.ageMinutes) : Number.MAX_SAFE_INTEGER;
+                if (ageA !== ageB) return ageA - ageB;
                 return Number(a.distanceKm || 0) - Number(b.distanceKm || 0);
             })
         : [];
@@ -6416,7 +6639,7 @@ function renderFuelFinderResults(items = [], meta = {}) {
     fuelStationsList.innerHTML = '';
     if (!sorted.length) {
         fuelStationsEmpty.style.display = 'block';
-        fuelStationsEmpty.textContent = "Nessun benzinaio con prezzo disponibile trovato in quest'area.";
+        fuelStationsEmpty.textContent = `Nessun benzinaio con prezzo affidabile (aggiornato max ${freshnessMaxHours}h) trovato in quest'area.`;
         fuelFinderSummary.style.display = 'none';
         return;
     }
@@ -6426,7 +6649,7 @@ function renderFuelFinderResults(items = [], meta = {}) {
     const totalCount = sorted.length;
     const radiusLabel = `${Number(meta.radiusKm || fuelFinderRadius?.value || 5)} km`;
     fuelFinderSummary.style.display = 'block';
-    fuelFinderSummary.textContent = `Miglior prezzo entro ${radiusLabel}: ${formatFuelFinderPrice(cheapest.price, fuelType)} da ${cheapest.brand || cheapest.name || 'benzinaio'} (${formatFuelFinderDistance(cheapest.distanceKm)}). Risultati ordinati dal piu economico (${totalCount} trovati).`;
+    fuelFinderSummary.textContent = `Miglior prezzo affidabile entro ${radiusLabel}: ${formatFuelFinderPrice(cheapest.price, fuelType)} da ${cheapest.brand || cheapest.name || 'benzinaio'} (${formatFuelFinderDistance(cheapest.distanceKm)}). Dati aggiornati max ${freshnessMaxHours}h (${totalCount} risultati).`;
 
     sorted.forEach((station) => {
         const li = document.createElement('li');
@@ -6470,9 +6693,20 @@ function renderFuelFinderResults(items = [], meta = {}) {
         }
 
         const updateChip = document.createElement('span');
-        updateChip.className = 'fuel-station-chip';
-        updateChip.textContent = `Agg.: ${formatFuelFinderUpdatedAt(station.lastUpdate)}`;
+        updateChip.className = `fuel-station-chip fuel-station-chip-freshness ${getFuelFinderFreshnessClass(station)}`;
+        updateChip.textContent = formatFuelFinderFreshnessText(station);
         chips.append(updateChip);
+
+        const updateAtChip = document.createElement('span');
+        updateAtChip.className = 'fuel-station-chip';
+        updateAtChip.textContent = `Agg.: ${formatFuelFinderUpdatedAt(station.lastUpdate)}`;
+        chips.append(updateAtChip);
+
+        const reliabilityChip = document.createElement('span');
+        reliabilityChip.className = 'fuel-station-chip fuel-station-chip-reliable';
+        reliabilityChip.textContent = 'Prezzo verificato';
+        chips.append(reliabilityChip);
+
         metaWrap.append(chips);
 
         const actions = document.createElement('div');
@@ -6539,21 +6773,34 @@ async function runFuelFinderSearch({ useLastKnown = false } = {}) {
         const payload = buildFuelFinderRequestPayload(position);
         const result = await apiRequest('/fuel-stations/nearby', 'POST', payload);
         const items = Array.isArray(result?.items) ? result.items : [];
+        const freshnessMaxHours = Math.max(1, Number(result?.freshnessMaxHours || 72));
         fuelFinderLastResults = items;
+        fuelFinderLastMeta = {
+            fuelType: payload.fuelType,
+            radiusKm: payload.radiusKm,
+            freshnessMaxHours
+        };
         renderFuelFinderResults(items, {
             fuelType: payload.fuelType,
-            radiusKm: payload.radiusKm
+            radiusKm: payload.radiusKm,
+            freshnessMaxHours
+        });
+        await renderFuelStationsOnMap(items, position, {
+            fuelType: payload.fuelType,
+            freshnessMaxHours
         });
 
         if (!items.length) {
-            setFuelFinderStatus('Nessun prezzo disponibile nel raggio selezionato. Aumenta il raggio e riprova.');
+            setFuelFinderStatus(`Nessun prezzo affidabile trovato (aggiornamento max ${freshnessMaxHours}h). Prova ad aumentare il raggio.`);
         } else {
-            setFuelFinderStatus(`Ricerca completata: ${items.length} risultati con prezzo disponibile.`);
+            setFuelFinderStatus(`Ricerca completata: ${items.length} benzinai affidabili mostrati anche sulla mappa.`);
         }
     } catch (err) {
+        clearFuelStationsOnMap();
         renderFuelFinderResults([], {
-            fuelType: fuelFinderFuelType?.value || 'benzina',
-            radiusKm: Number(fuelFinderRadius?.value || 5)
+            fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
+            radiusKm: Number(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
+            freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
         });
         setFuelFinderStatus(err?.message || 'Ricerca non disponibile al momento.');
     } finally {
@@ -6577,8 +6824,9 @@ function openFuelFinder() {
     setActiveMenu(fuelFinderBtn);
     if (fuelFinderLastResults.length) {
         renderFuelFinderResults(fuelFinderLastResults, {
-            fuelType: fuelFinderFuelType?.value || 'benzina',
-            radiusKm: Number(fuelFinderRadius?.value || 5)
+            fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
+            radiusKm: Number(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
+            freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
         });
         setFuelFinderStatus('Usa "Trova vicino a me" per aggiornare con la tua posizione attuale.');
     } else {

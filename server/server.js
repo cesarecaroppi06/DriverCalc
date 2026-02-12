@@ -44,6 +44,11 @@ const FUEL_ZONE_API_URL = 'https://carburanti.mise.gov.it/ospzApi/search/zone';
 const FUEL_STATION_MIN_RADIUS_KM = 1;
 const FUEL_STATION_MAX_RADIUS_KM = 20;
 const FUEL_STATION_MAX_RESULTS = 180;
+const FUEL_PRICE_MAX_AGE_HOURS_RAW = Number(process.env.FUEL_PRICE_MAX_AGE_HOURS);
+const FUEL_PRICE_MAX_AGE_HOURS = Number.isFinite(FUEL_PRICE_MAX_AGE_HOURS_RAW) && FUEL_PRICE_MAX_AGE_HOURS_RAW > 0
+    ? clampNumber(Math.round(FUEL_PRICE_MAX_AGE_HOURS_RAW), 6, 168)
+    : 72;
+const FUEL_PRICE_HIGH_CONFIDENCE_HOURS = Math.min(24, FUEL_PRICE_MAX_AGE_HOURS);
 
 function normalizeEmail(value = '') {
     return String(value || '').trim().toLowerCase();
@@ -435,6 +440,42 @@ function parseFuelTimestamp(value) {
     const dt = new Date(`${yyyy}-${mm}-${dd}T${hh}:${min}:00`);
     if (Number.isNaN(dt.getTime())) return null;
     return dt.toISOString();
+}
+
+function computeFuelFreshness(updatedAt, nowMs = Date.now()) {
+    if (!updatedAt) {
+        return {
+            updatedAt: null,
+            ageMinutes: null,
+            freshnessLevel: 'unknown',
+            isRecent: false
+        };
+    }
+
+    const parsedMs = Date.parse(updatedAt);
+    if (!Number.isFinite(parsedMs)) {
+        return {
+            updatedAt: null,
+            ageMinutes: null,
+            freshnessLevel: 'unknown',
+            isRecent: false
+        };
+    }
+
+    const safeAgeMinutes = Math.max(0, Math.round((nowMs - parsedMs) / 60000));
+    const ageHours = safeAgeMinutes / 60;
+
+    let freshnessLevel = 'stale';
+    if (ageHours <= 2) freshnessLevel = 'live';
+    else if (ageHours <= FUEL_PRICE_HIGH_CONFIDENCE_HOURS) freshnessLevel = 'fresh';
+    else if (ageHours <= FUEL_PRICE_MAX_AGE_HOURS) freshnessLevel = 'recent';
+
+    return {
+        updatedAt: new Date(parsedMs).toISOString(),
+        ageMinutes: safeAgeMinutes,
+        freshnessLevel,
+        isRecent: ageHours <= FUEL_PRICE_MAX_AGE_HOURS
+    };
 }
 
 function toRadians(value) {
@@ -1051,8 +1092,11 @@ app.post('/api/fuel-stations/nearby', async (req, res) => {
 
     try {
         const rows = await fetchFuelStationsFromMimit({ lat, lng, radiusKm });
+        const fetchedAt = Date.now();
         const dedupe = new Set();
         const items = [];
+        let droppedStale = 0;
+        let droppedMissingUpdate = 0;
 
         rows.forEach((row = {}) => {
             const coords = getStationLatLng(row);
@@ -1063,6 +1107,12 @@ app.post('/api/fuel-stations/nearby', async (req, res) => {
 
             const fuel = pickFuelCandidate(row, fuelType);
             if (!fuel || !Number.isFinite(fuel.price)) return;
+            const freshness = computeFuelFreshness(fuel.updatedAt, fetchedAt);
+            if (!freshness.isRecent) {
+                if (freshness.freshnessLevel === 'unknown') droppedMissingUpdate += 1;
+                else droppedStale += 1;
+                return;
+            }
 
             const stationId = String(row.id ?? row.idImpianto ?? row.stationId ?? '');
             const stationName = String(row.name || row.stationName || row.gestore || '').trim() || 'Benzinaio';
@@ -1083,12 +1133,18 @@ app.post('/api/fuel-stations/nearby', async (req, res) => {
                 price: Number(fuel.price.toFixed(3)),
                 fuelName: fuel.fuelName || fuelType,
                 isSelf: fuel.isSelf,
-                lastUpdate: fuel.updatedAt || null
+                lastUpdate: freshness.updatedAt,
+                ageMinutes: freshness.ageMinutes,
+                freshnessLevel: freshness.freshnessLevel,
+                isReliable: true
             });
         });
 
         items.sort((a, b) => {
             if (a.price !== b.price) return a.price - b.price;
+            const ageA = Number.isFinite(Number(a.ageMinutes)) ? Number(a.ageMinutes) : Number.MAX_SAFE_INTEGER;
+            const ageB = Number.isFinite(Number(b.ageMinutes)) ? Number(b.ageMinutes) : Number.MAX_SAFE_INTEGER;
+            if (ageA !== ageB) return ageA - ageB;
             if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
             return String(a.brand || a.name || '').localeCompare(String(b.brand || b.name || ''), 'it');
         });
@@ -1098,8 +1154,15 @@ app.post('/api/fuel-stations/nearby', async (req, res) => {
             center: { lat, lng },
             fuelType,
             radiusKm,
+            reliableOnly: true,
+            freshnessMaxHours: FUEL_PRICE_MAX_AGE_HOURS,
             items: items.slice(0, FUEL_STATION_MAX_RESULTS),
-            updatedAt: Date.now()
+            dropped: {
+                stale: droppedStale,
+                missingUpdate: droppedMissingUpdate
+            },
+            fetchedAt,
+            updatedAt: fetchedAt
         });
     } catch (err) {
         return res.status(502).json({ error: 'Ricerca benzinai temporaneamente non disponibile' });

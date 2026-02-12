@@ -889,6 +889,56 @@ select:focus, input:focus {
     font-size: 12px;
 }
 
+.fuel-station-chip-freshness.is-fresh {
+    border-color: rgba(16, 185, 129, 0.7);
+    background: rgba(16, 185, 129, 0.18);
+    color: #dcfce7;
+}
+
+.fuel-station-chip-freshness.is-recent {
+    border-color: rgba(251, 191, 36, 0.6);
+    background: rgba(251, 191, 36, 0.15);
+    color: #fef3c7;
+}
+
+.fuel-station-chip-freshness.is-unknown {
+    border-color: rgba(244, 63, 94, 0.5);
+    background: rgba(244, 63, 94, 0.12);
+    color: #ffe4e6;
+}
+
+.fuel-station-chip-reliable {
+    border-color: rgba(59, 130, 246, 0.56);
+    background: rgba(59, 130, 246, 0.14);
+    color: #dbeafe;
+}
+
+.fuel-map-marker-wrapper {
+    background: transparent;
+    border: 0;
+}
+
+.fuel-map-marker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+    color: #fff;
+    font-weight: 700;
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+    box-shadow: 0 8px 18px rgba(153, 27, 27, 0.34);
+    transform: translateY(-2px);
+    pointer-events: auto;
+}
+
 .modal-header {
     display: flex;
     justify-content: space-between;
@@ -1070,6 +1120,11 @@ select:focus, input:focus {
     }
     .fuel-stations-list {
         max-height: 42vh;
+    }
+    .fuel-map-marker {
+        min-width: 66px;
+        height: 28px;
+        font-size: 10px;
     }
 }
 
