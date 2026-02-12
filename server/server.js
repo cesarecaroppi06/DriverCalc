@@ -1506,27 +1506,91 @@ app.get('/api/health/google', async (req, res) => {
     }
 });
 
+function normalizeGoogleWaypoint(input) {
+    if (!input) return null;
+
+    if (typeof input === 'string') {
+        const address = input.trim();
+        return address ? { address, regionCode: 'IT' } : null;
+    }
+
+    if (typeof input === 'object') {
+        if (input.location && input.location.latLng) {
+            const latitude = Number(input.location.latLng.latitude);
+            const longitude = Number(input.location.latLng.longitude);
+            if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+                return {
+                    location: {
+                        latLng: {
+                            latitude,
+                            longitude
+                        }
+                    }
+                };
+            }
+        }
+
+        const latitude = Number(input.lat ?? input.latitude);
+        const longitude = Number(input.lng ?? input.lon ?? input.longitude);
+        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+            return {
+                location: {
+                    latLng: {
+                        latitude,
+                        longitude
+                    }
+                }
+            };
+        }
+
+        const address = String(input.address || input.label || '').trim();
+        if (address) {
+            return { address, regionCode: 'IT' };
+        }
+    }
+
+    return null;
+}
+
 app.post('/api/google/routes', async (req, res) => {
     if (!GOOGLE_MAPS_API_KEY) return res.status(500).json({ error: 'Google API key mancante' });
-    const { origin, destination } = req.body || {};
+    const incoming = req.body || {};
+    const origin = normalizeGoogleWaypoint(incoming.origin);
+    const destination = normalizeGoogleWaypoint(incoming.destination);
     if (!origin || !destination) return res.status(400).json({ error: 'Origin e destination obbligatori' });
+
+    const preferredRouting = String(incoming.routingPreference || '').trim().toUpperCase();
+    const allowedRoutingPreferences = new Set([
+        'TRAFFIC_AWARE',
+        'TRAFFIC_AWARE_OPTIMAL',
+        'TRAFFIC_UNAWARE'
+    ]);
+    const routingPreference = allowedRoutingPreferences.has(preferredRouting)
+        ? preferredRouting
+        : 'TRAFFIC_AWARE';
 
     try {
         const url = 'https://routes.googleapis.com/directions/v2:computeRoutes';
         const body = {
-            origin: { address: origin, regionCode: 'IT' },
-            destination: { address: destination, regionCode: 'IT' },
+            origin,
+            destination,
             travelMode: 'DRIVE',
-            routingPreference: 'TRAFFIC_UNAWARE',
+            routingPreference,
             computeAlternativeRoutes: false,
-            units: 'METRIC'
+            units: 'METRIC',
+            languageCode: 'it-IT',
+            routeModifiers: {
+                avoidTolls: false,
+                avoidHighways: false,
+                avoidFerries: false
+            }
         };
         const apiRes = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
-                'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.tollInfo,routes.polyline.encodedPolyline,routes.legs.startLocation,routes.legs.endLocation'
+                'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.tollInfo,routes.polyline.encodedPolyline,routes.legs.startLocation,routes.legs.endLocation,routes.legs.duration,routes.legs.staticDuration,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration,routes.legs.steps.navigationInstruction.instructions'
             },
             body: JSON.stringify(body)
         });

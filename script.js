@@ -274,6 +274,98 @@ function hasGoogleKey() {
     return GOOGLE_MAPS_API_KEY && GOOGLE_MAPS_API_KEY !== 'YOUR_GOOGLE_MAPS_API_KEY';
 }
 
+function parseDurationSeconds(rawValue) {
+    if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+        return Math.max(0, rawValue);
+    }
+    if (typeof rawValue !== 'string') return NaN;
+    const normalized = rawValue.trim();
+    if (!normalized) return NaN;
+    const directNumeric = Number(normalized);
+    if (Number.isFinite(directNumeric)) return Math.max(0, directNumeric);
+    const match = normalized.match(/^([0-9]+(?:\.[0-9]+)?)s$/i);
+    if (!match) return NaN;
+    const parsed = Number(match[1]);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : NaN;
+}
+
+function classifyRoadTypeFromInstruction(instruction = '') {
+    const text = String(instruction || '').trim().toLowerCase();
+    if (!text) return 'extra';
+
+    if (/\b(a|e)\s?\d+[a-z]?\b/i.test(text) || /autostrad|raccordo autostradale/.test(text)) {
+        return 'highway';
+    }
+    if (/\b(ss|ra)\s?\d+[a-z]?\b/i.test(text) || /superstrad|tangenzial|strada statale/.test(text)) {
+        return 'expressway';
+    }
+    if (/\bsp\s?\d+[a-z]?\b/i.test(text) || /strada provinciale/.test(text)) {
+        return 'extra';
+    }
+    if (/(via|viale|corso|piazza|largo|vicolo|lungomare|boulevard|avenue)/.test(text)) {
+        return 'urban';
+    }
+    return 'extra';
+}
+
+function inferSegmentsFromGoogleRoute(route = {}, totalDistanceKm = 0) {
+    const legs = Array.isArray(route.legs) ? route.legs : [];
+    if (!legs.length) return null;
+
+    const accum = {
+        highway: 0,
+        expressway: 0,
+        extra: 0,
+        urban: 0
+    };
+    let stepsDistanceKm = 0;
+
+    legs.forEach((leg) => {
+        const steps = Array.isArray(leg.steps) ? leg.steps : [];
+        steps.forEach((step) => {
+            const stepDistanceKm = Math.max(0, Number(step?.distanceMeters || 0) / 1000);
+            if (!Number.isFinite(stepDistanceKm) || stepDistanceKm <= 0) return;
+            stepsDistanceKm += stepDistanceKm;
+            const instruction = step?.navigationInstruction?.instructions || '';
+            const bucket = classifyRoadTypeFromInstruction(instruction);
+            if (!Object.prototype.hasOwnProperty.call(accum, bucket)) return;
+            accum[bucket] += stepDistanceKm;
+        });
+    });
+
+    if (stepsDistanceKm <= 0) return null;
+
+    const routedDistanceKm = Math.max(0, Number(totalDistanceKm) || 0);
+    const currentSum = accum.highway + accum.expressway + accum.extra + accum.urban;
+    if (routedDistanceKm > currentSum) {
+        accum.extra += (routedDistanceKm - currentSum);
+    }
+    return accum;
+}
+
+function getGoogleRouteDurationMinutes(route = {}) {
+    const routeSeconds = parseDurationSeconds(route.duration);
+    if (Number.isFinite(routeSeconds) && routeSeconds > 0) {
+        return routeSeconds / 60;
+    }
+
+    const legs = Array.isArray(route.legs) ? route.legs : [];
+    if (!legs.length) return NaN;
+
+    let totalLegSeconds = 0;
+    legs.forEach((leg) => {
+        const legDurationSeconds = parseDurationSeconds(leg.duration);
+        const legStaticSeconds = parseDurationSeconds(leg.staticDuration);
+        const picked = Number.isFinite(legDurationSeconds) && legDurationSeconds > 0
+            ? legDurationSeconds
+            : legStaticSeconds;
+        if (Number.isFinite(picked) && picked > 0) totalLegSeconds += picked;
+    });
+
+    if (totalLegSeconds <= 0) return NaN;
+    return totalLegSeconds / 60;
+}
+
 // Richiede distanza e pedaggi via HERE Routing v8 (se disponibile)
 async function fetchRouteFromHereAPI(from, to) {
     if (!hasHereKey()) return null;
@@ -302,11 +394,17 @@ async function fetchRouteFromHereAPI(from, to) {
     // Stima dei segmenti (HERE non fornisce breakdown per tipo di strada in questa chiamata)
     const estimatedHighway = totalDistanceKm * ESTIMATED_HIGHWAY_FRACTION;
     const estimatedExtra = Math.max(totalDistanceKm - estimatedHighway, 0);
+    const durationMinutes = Number(section.summary.duration || 0) / 60;
 
     return {
         totalDistance: totalDistanceKm,
         tollCost: tollCost,
-        segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 }
+        hasOfficialToll: true,
+        segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 },
+        durationMinutes: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : null,
+        durationSource: 'here-routing',
+        tollSource: 'here-routing',
+        segmentsSource: 'estimated'
     };
 }
 
@@ -941,13 +1039,41 @@ async function renderUserLocationOnMap() {
     }
 }
 
+function buildGoogleWaypointPayload(input) {
+    if (!input) return null;
+    if (typeof input === 'string') {
+        const address = input.trim();
+        return address ? { address } : null;
+    }
+
+    const lat = Number(input.lat ?? input.latitude);
+    const lng = Number(input.lng ?? input.lon ?? input.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return {
+            location: {
+                latLng: {
+                    latitude: lat,
+                    longitude: lng
+                }
+            }
+        };
+    }
+
+    const address = String(input.address || input.label || '').trim();
+    return address ? { address } : null;
+}
+
 async function fetchRouteFromGoogle(from, to) {
+    const originPayload = buildGoogleWaypointPayload(from);
+    const destinationPayload = buildGoogleWaypointPayload(to);
+    if (!originPayload || !destinationPayload) return null;
+
     let res = null;
     try {
         res = await fetch(`${getApiBase()}/google/routes`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ origin: from, destination: to })
+            body: JSON.stringify({ origin: originPayload, destination: destinationPayload })
         });
     } catch (err) {
         console.warn('[Google Routes] richiesta non riuscita:', err);
@@ -963,10 +1089,12 @@ async function fetchRouteFromGoogle(from, to) {
     const route = data.routes && data.routes[0];
     if (!route) return null;
 
-    const totalDistanceKm = (route.distanceMeters || 0) / 1000;
+    const totalDistanceKm = Math.max(0, Number(route.distanceMeters || 0) / 1000);
     const tolls = route.tollInfo && route.tollInfo.estimatedPrice ? route.tollInfo.estimatedPrice : [];
+    // La risposta proviene da Google Routes API: il pedaggio è considerato ufficiale anche quando è 0.
+    const hasOfficialToll = true;
     let tollCost = 0;
-    tolls.forEach(price => {
+    tolls.forEach((price) => {
         if (price.currencyCode === 'EUR') {
             tollCost += Number(price.units || 0) + Number(price.nanos || 0) / 1e9;
         }
@@ -975,16 +1103,23 @@ async function fetchRouteFromGoogle(from, to) {
     const encodedPolyline = route.polyline && route.polyline.encodedPolyline;
     const start = route.legs && route.legs[0] && route.legs[0].startLocation && route.legs[0].startLocation.latLng;
     const end = route.legs && route.legs[0] && route.legs[0].endLocation && route.legs[0].endLocation.latLng;
+    const googleSegments = inferSegmentsFromGoogleRoute(route, totalDistanceKm);
+    const durationMinutes = getGoogleRouteDurationMinutes(route);
 
     return {
         totalDistance: totalDistanceKm,
         tollCost: tollCost,
-        segments: {
+        hasOfficialToll,
+        tollSource: 'google-routes',
+        segments: googleSegments || {
             highway: totalDistanceKm * ESTIMATED_HIGHWAY_FRACTION,
             expressway: 0,
             extra: Math.max(totalDistanceKm - totalDistanceKm * ESTIMATED_HIGHWAY_FRACTION, 0),
             urban: 0
         },
+        segmentsSource: googleSegments ? 'google-steps' : 'estimated',
+        durationMinutes: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : null,
+        durationSource: Number.isFinite(durationMinutes) && durationMinutes > 0 ? 'google-routes' : 'estimated',
         googlePolyline: encodedPolyline,
         googleStart: start || null,
         googleEnd: end || null
@@ -1019,6 +1154,7 @@ async function fetchRouteFromORSCoords(start, end) {
     const summary = data.routes && data.routes[0] && data.routes[0].summary;
     if (!summary) throw new Error('No route summary');
     const totalDistanceKm = summary.distance / 1000; // meters -> km
+    const durationMinutes = Number(summary.duration || 0) / 60;
     const geometryCoords = data.routes && data.routes[0] && data.routes[0].geometry && data.routes[0].geometry.coordinates
         ? data.routes[0].geometry.coordinates
         : null;
@@ -1029,6 +1165,10 @@ async function fetchRouteFromORSCoords(start, end) {
         totalDistance: totalDistanceKm,
         tollCost: 0,
         segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 },
+        segmentsSource: 'estimated',
+        durationMinutes: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : null,
+        durationSource: Number.isFinite(durationMinutes) && durationMinutes > 0 ? 'ors-directions' : 'estimated',
+        tollSource: 'none',
         orsGeometry: geometryCoords,
         orsStart: { lat: start.lat, lng: start.lng },
         orsEnd: { lat: end.lat, lng: end.lng }
@@ -1049,12 +1189,17 @@ async function fetchRouteFromOSRMCoords(start, end) {
     const route = data.routes && data.routes[0];
     if (!route || !route.geometry || !route.geometry.coordinates) throw new Error('OSRM route geometry missing');
     const totalDistanceKm = (route.distance || 0) / 1000;
+    const durationMinutes = Number(route.duration || 0) / 60;
     const estimatedHighway = totalDistanceKm * ESTIMATED_HIGHWAY_FRACTION;
     const estimatedExtra = Math.max(totalDistanceKm - estimatedHighway, 0);
     return {
         totalDistance: totalDistanceKm,
         tollCost: 0,
         segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 },
+        segmentsSource: 'estimated',
+        durationMinutes: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : null,
+        durationSource: Number.isFinite(durationMinutes) && durationMinutes > 0 ? 'osrm' : 'estimated',
+        tollSource: 'none',
         orsGeometry: route.geometry.coordinates,
         orsStart: { lat: start.lat, lng: start.lng },
         orsEnd: { lat: end.lat, lng: end.lng }
@@ -3386,6 +3531,7 @@ const favoritesEmpty = document.getElementById('favoritesEmpty');
 const closeFavoritesBtn = document.getElementById('closeFavorites');
 const saveFavoriteBtn = document.getElementById('saveFavoriteBtn');
 const copySummaryBtn = document.getElementById('copySummaryBtn');
+const showTripFuelOnMapBtn = document.getElementById('showTripFuelOnMapBtn');
 const installAppBtn = document.getElementById('installAppBtn');
 const installAppQuickBtn = document.getElementById('installAppQuickBtn');
 const installAppButtons = [installAppBtn, installAppQuickBtn].filter(Boolean);
@@ -4085,26 +4231,25 @@ function syncFuelWithCarType() {
     updateFuelPriceUI();
 }
 
-// Ottiene le info complete della rotta: prima database locale, poi ORS se mancante
+// Ottiene le info complete della rotta: prima API live, poi fallback locale
 async function getRouteInfo(fromLoc, toLoc) {
     const fromLabel = fromLoc?.label || '';
     const toLabel = toLoc?.label || '';
     const useLocalDb = fromLoc?.kind === 'city' && toLoc?.kind === 'city';
     const key1 = useLocalDb ? `${fromLabel}-${toLabel}` : null;
     const key2 = useLocalDb ? `${toLabel}-${fromLabel}` : null;
+    const start = { lat: fromLoc.lat, lng: fromLoc.lng, label: fromLabel, address: fromLoc?.address || fromLabel };
+    const end = { lat: toLoc.lat, lng: toLoc.lng, label: toLabel, address: toLoc?.address || toLabel };
 
-    if (USE_GOOGLE_MAPS && hasGoogleKey() && useLocalDb) {
+    if (USE_GOOGLE_MAPS && hasGoogleKey()) {
         let googleRoute = null;
         try {
-            googleRoute = await fetchRouteFromGoogle(fromLabel, toLabel);
+            googleRoute = await fetchRouteFromGoogle(start, end);
         } catch (e) {
             googleRoute = null;
         }
         if (googleRoute) return googleRoute;
     }
-
-    if (useLocalDb && key1 && routeInfo[key1]) return routeInfo[key1];
-    if (useLocalDb && key2 && routeInfo[key2]) return routeInfo[key2];
 
     if (useLocalDb && hasHereKey()) {
         // Tentativo con HERE (include pedaggi se key presente)
@@ -4114,37 +4259,27 @@ async function getRouteInfo(fromLoc, toLoc) {
         } catch (e) {
             hereRoute = null;
         }
-        if (hereRoute) {
-            routeInfo[key1] = hereRoute; // cache in runtime
-            return hereRoute;
-        }
+        if (hereRoute) return hereRoute;
     }
-
-    // Routing con coordinate
-    const start = { lat: fromLoc.lat, lng: fromLoc.lng };
-    const end = { lat: toLoc.lat, lng: toLoc.lng };
 
     let route = null;
     try {
-        route = await fetchRouteFromORSCoords(start, end);
+        route = await fetchRouteFromORSCoords({ lat: start.lat, lng: start.lng }, { lat: end.lat, lng: end.lng });
     } catch (e) {
         route = null;
     }
-    if (route) {
-        if (useLocalDb && key1) routeInfo[key1] = route;
-        return route;
-    }
+    if (route) return route;
 
     let osrmRoute = null;
     try {
-        osrmRoute = await fetchRouteFromOSRMCoords(start, end);
+        osrmRoute = await fetchRouteFromOSRMCoords({ lat: start.lat, lng: start.lng }, { lat: end.lat, lng: end.lng });
     } catch (e) {
         osrmRoute = null;
     }
-    if (osrmRoute) {
-        if (useLocalDb && key1) routeInfo[key1] = osrmRoute;
-        return osrmRoute;
-    }
+    if (osrmRoute) return osrmRoute;
+
+    if (useLocalDb && key1 && routeInfo[key1]) return routeInfo[key1];
+    if (useLocalDb && key2 && routeInfo[key2]) return routeInfo[key2];
 
     // Ultima risorsa: distanza stimata con linea retta
     try {
@@ -4152,16 +4287,20 @@ async function getRouteInfo(fromLoc, toLoc) {
         const totalDistanceKm = airKm * 1.25; // stima strada
         const estimatedHighway = totalDistanceKm * ESTIMATED_HIGHWAY_FRACTION;
         const estimatedExtra = Math.max(totalDistanceKm - estimatedHighway, 0);
+        const durationMinutes = ((estimatedHighway / SPEEDS.highway) + (estimatedExtra / SPEEDS.extra)) * 60;
         const fallbackRoute = {
             totalDistance: totalDistanceKm,
             tollCost: 0,
             segments: { highway: estimatedHighway, expressway: 0, extra: estimatedExtra, urban: 0 },
+            segmentsSource: 'estimated',
+            durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : null,
+            durationSource: 'estimated',
+            tollSource: 'estimated',
             orsGeometry: [[start.lng, start.lat], [end.lng, end.lat]],
             orsStart: { lat: start.lat, lng: start.lng },
             orsEnd: { lat: end.lat, lng: end.lng },
             isApproximate: true
         };
-        if (useLocalDb && key1) routeInfo[key1] = fallbackRoute;
         return fallbackRoute;
     } catch (e) {
         // no-op
@@ -4853,8 +4992,13 @@ async function calculateTrip() {
         const extraDistance = Math.min(segments.extra, totalDistance - highwayDistance - expresswayDistance);
         const urbanDistance = Math.min(segments.urban, totalDistance - highwayDistance - expresswayDistance - extraDistance);
         const roadDistance = totalDistance - highwayDistance;
+        const segmentsSource = String(route.segmentsSource || (route.segments ? 'route' : 'estimated'));
         // Se è presente un pedaggio ufficiale nella rotta, usa quello; altrimenti stima al km
-        const hasOfficialToll = route.tollCost !== undefined && route.tollCost !== null && route.tollCost > 0;
+        const hasOfficialToll = route.hasOfficialToll === true || (
+            String(route.tollSource || '').startsWith('google') &&
+            route.tollCost !== undefined &&
+            route.tollCost !== null
+        );
         const isShortTrip = totalDistance < 30;
         const isLikelyUrban = directKm < 18 && totalDistance < 45;
         const tollEligible = !hasOfficialToll && !isShortTrip && !isLikelyUrban && highwayDistance >= 10;
@@ -4875,13 +5019,21 @@ async function calculateTrip() {
         const totalCost = fuelCost + tollCost + tollBoothsCost;
         const costPerKm = (totalCost / totalDistance).toFixed(2);
 
-        // Tempo stimato per segmenti
+        // Tempo percorso: usa durata API se disponibile, altrimenti stima per segmenti
         const timeHours = 
             (highwayDistance / SPEEDS.highway) +
             (expresswayDistance / SPEEDS.expressway) +
             (extraDistance / SPEEDS.extra) +
             (urbanDistance / SPEEDS.urban);
-        const estimatedTimeMinutes = Math.round(timeHours * 60);
+        const apiDurationMinutes = Number(route.durationMinutes);
+        const hasOfficialDuration = Number.isFinite(apiDurationMinutes) && apiDurationMinutes > 0;
+        const estimatedTimeMinutes = hasOfficialDuration
+            ? Math.round(apiDurationMinutes)
+            : Math.round(timeHours * 60);
+        const timeSource = hasOfficialDuration
+            ? String(route.durationSource || 'api')
+            : 'estimated';
+        const tollSource = String(route.tollSource || (hasOfficialToll ? 'official' : 'estimated'));
 
         const nowTs = Date.now();
         lastCalculatedTrip = {
@@ -4906,6 +5058,12 @@ async function calculateTrip() {
             totalCost: totalCost.toFixed(2),
             tollCost: (parseFloat(tollCost) + parseFloat(tollBoothsCost)).toFixed(2),
             fuelCost: fuelCost.toFixed(2),
+            highwayDistance: highwayDistance.toFixed(1),
+            otherRoadDistance: roadDistance.toFixed(1),
+            estimatedTimeMinutes,
+            timeSource,
+            tollSource,
+            segmentsSource,
             timestamp: nowTs,
             tripId: nowTs,
             completed: completedTripCheckbox?.checked || false,
@@ -4916,6 +5074,7 @@ async function calculateTrip() {
         displayResults({
             totalDistance: totalDistance.toFixed(0),
             highwayDistance: highwayDistance.toFixed(1),
+            otherRoadDistance: roadDistance.toFixed(1),
             roadDistance: roadDistance.toFixed(1),
             expresswayDistance: expresswayDistance.toFixed(1),
             extraDistance: extraDistance.toFixed(1),
@@ -4927,6 +5086,7 @@ async function calculateTrip() {
             tollBooths: tollBooths,
             tollBoothsCost: tollBoothsCost.toFixed(2),
             hasOfficialToll: hasOfficialToll,
+            tollSource: tollSource,
             isTollEligible: tollEligible,
             totalCost: totalCost.toFixed(2),
             costPerKm: costPerKm,
@@ -4937,7 +5097,9 @@ async function calculateTrip() {
             carBrandLabel: carBrandLabel,
             fuelType: fuelType,
             consumptionPer100: consumptionPer100,
-            estimatedTime: estimatedTimeMinutes
+            estimatedTime: estimatedTimeMinutes,
+            timeSource: timeSource,
+            segmentsSource: segmentsSource
         });
 
         runTravelAiAnalysis({
@@ -4968,6 +5130,31 @@ async function calculateTrip() {
 }
 
 // Mostra i risultati
+function getTimeSourceLabel(source = '') {
+    const normalized = String(source || '').toLowerCase();
+    if (normalized === 'google-routes') return 'Google Routes API';
+    if (normalized === 'here-routing') return 'HERE Routing API';
+    if (normalized === 'ors-directions') return 'OpenRouteService';
+    if (normalized === 'osrm') return 'OSRM';
+    return 'stima interna';
+}
+
+function getSegmentSourceLabel(source = '') {
+    const normalized = String(source || '').toLowerCase();
+    if (normalized === 'google-steps') return 'dettaglio percorso Google';
+    if (normalized === 'route') return 'dettaglio rotta';
+    if (normalized === 'estimated') return 'stima';
+    return normalized ? normalized : 'stima';
+}
+
+function getTollSourceLabel(source = '') {
+    const normalized = String(source || '').toLowerCase();
+    if (normalized === 'google-routes') return 'Google Routes API';
+    if (normalized === 'here-routing') return 'HERE Routing API';
+    if (normalized === 'none') return 'assenza pedaggi da API';
+    return 'stima interna';
+}
+
 function displayResults(data) {
     // Aggiorna valori
     document.getElementById('distanceResult').textContent = data.totalDistance;
@@ -4985,18 +5172,23 @@ function displayResults(data) {
     document.getElementById('carDetail').textContent = `${data.carBrandLabel} • ${data.carTypeLabel} • ${fuelLabel} (${roundedConsumption} ${data.fuelUnit}/100 km)`;
 
     // Dettagli
+    const segmentSourceLabel = getSegmentSourceLabel(data.segmentsSource);
     document.getElementById('routeDetail').textContent = 
-        `${data.departure} → ${data.arrival} (${data.totalDistance} km: ${data.highwayDistance} km autostrada, ${data.expresswayDistance} km superstrada, ${data.extraDistance} km extraurbane, ${data.urbanDistance} km urbano)`;
+        `${data.departure} → ${data.arrival} (${data.totalDistance} km: ${data.highwayDistance} km autostrada, ${data.otherRoadDistance} km altre strade; dettaglio ${segmentSourceLabel}: ${data.expresswayDistance} km superstrada, ${data.extraDistance} km extraurbane, ${data.urbanDistance} km urbano)`;
     
     const totalToll = (parseFloat(data.tollCost) + parseFloat(data.tollBoothsCost)).toFixed(2);
+    const tollSourceLabel = getTollSourceLabel(data.tollSource);
     document.getElementById('tollDetail').textContent = data.hasOfficialToll
-        ? `Pedaggi ufficiali: €${data.tollCost} (caselli inclusi)`
+        ? `Pedaggi ufficiali aggiornati (${tollSourceLabel}): €${data.tollCost} (caselli inclusi)`
         : (data.isTollEligible
-            ? `Pedaggi stimati: €${data.tollCost} + Caselli (${data.tollBooths} caselli × €${TOLL_BOOTH_COST} = €${data.tollBoothsCost}) = €${totalToll} totali`
+            ? `Pedaggi stimati (${tollSourceLabel}): €${data.tollCost} + Caselli (${data.tollBooths} caselli × €${TOLL_BOOTH_COST} = €${data.tollBoothsCost}) = €${totalToll} totali`
             : 'Pedaggi: non previsti (tratta urbana/locale)');
     
-    document.getElementById('timeDetail').textContent = 
-        `${Math.floor(data.estimatedTime / 60)}h ${data.estimatedTime % 60}min (velocità usate: autostrada ${SPEEDS.highway} km/h, superstrada ${SPEEDS.expressway} km/h, extraurbane ${SPEEDS.extra} km/h, urbano ${SPEEDS.urban} km/h)`;
+    const timeSourceLabel = getTimeSourceLabel(data.timeSource);
+    const isEstimatedTime = String(data.timeSource || '').toLowerCase() === 'estimated';
+    document.getElementById('timeDetail').textContent = isEstimatedTime
+        ? `${Math.floor(data.estimatedTime / 60)}h ${data.estimatedTime % 60}min (${timeSourceLabel}; velocità medie: autostrada ${SPEEDS.highway} km/h, superstrada ${SPEEDS.expressway} km/h, extraurbane ${SPEEDS.extra} km/h, urbano ${SPEEDS.urban} km/h)`
+        : `${Math.floor(data.estimatedTime / 60)}h ${data.estimatedTime % 60}min (${timeSourceLabel})`;
     
     // Mostra risultati
     resultsSection.style.display = 'block';
@@ -6680,6 +6872,86 @@ function buildFuelFinderRequestPayload(position) {
     };
 }
 
+function getTripFuelSearchCenter(trip = null) {
+    const activeTrip = trip || lastCalculatedTrip;
+    if (!activeTrip) return null;
+    const depLat = Number(activeTrip.departureLat);
+    const depLng = Number(activeTrip.departureLng);
+    const arrLat = Number(activeTrip.arrivalLat);
+    const arrLng = Number(activeTrip.arrivalLng);
+    if (!Number.isFinite(depLat) || !Number.isFinite(depLng) || !Number.isFinite(arrLat) || !Number.isFinite(arrLng)) {
+        return null;
+    }
+    return {
+        lat: (depLat + arrLat) / 2,
+        lng: (depLng + arrLng) / 2
+    };
+}
+
+function getTripFuelRadiusKm(trip = null) {
+    const km = Number((trip || lastCalculatedTrip)?.distance || 0);
+    if (!Number.isFinite(km) || km <= 0) return 8;
+    if (km < 40) return 5;
+    if (km < 120) return 8;
+    if (km < 250) return 12;
+    return 15;
+}
+
+async function showTripFuelStationsOnMap() {
+    if (!lastCalculatedTrip) {
+        setTripActionFeedback('Calcola prima una tratta per vedere i benzinai su mappa.');
+        return;
+    }
+
+    const center = getTripFuelSearchCenter(lastCalculatedTrip);
+    if (!center) {
+        setTripActionFeedback('Coordinate tratta non disponibili per la ricerca benzinai.');
+        return;
+    }
+
+    const payload = {
+        lat: Number(center.lat),
+        lng: Number(center.lng),
+        radiusKm: getTripFuelRadiusKm(lastCalculatedTrip),
+        fuelType: normalizeFuelFinderType(lastCalculatedTrip.fuelType || fuelTypeSelect?.value || 'benzina')
+    };
+
+    setTripActionFeedback('Ricerca benzinai affidabili lungo la tratta...');
+    try {
+        const result = await apiRequest('/fuel-stations/nearby', 'POST', payload);
+        const items = Array.isArray(result?.items) ? result.items : [];
+        const freshnessMaxHours = Math.max(1, Number(result?.freshnessMaxHours || 72));
+
+        fuelFinderLastResults = items;
+        fuelFinderLastMeta = {
+            fuelType: payload.fuelType,
+            radiusKm: payload.radiusKm,
+            freshnessMaxHours
+        };
+
+        await renderFuelStationsOnMap(items, center, {
+            fuelType: payload.fuelType,
+            freshnessMaxHours
+        });
+
+        if (fuelFinderOverlay && fuelFinderOverlay.style.display === 'flex') {
+            renderFuelFinderResults(items, {
+                fuelType: payload.fuelType,
+                radiusKm: payload.radiusKm,
+                freshnessMaxHours
+            });
+        }
+
+        if (items.length) {
+            setTripActionFeedback(`Mostrati ${items.length} benzinai affidabili direttamente sulla mappa della tratta.`);
+        } else {
+            setTripActionFeedback('Nessun benzinaio affidabile trovato nell’area centrale della tratta.');
+        }
+    } catch (err) {
+        setTripActionFeedback(err?.message || 'Ricerca benzinai non disponibile al momento.');
+    }
+}
+
 function syncFuelFinderTypeFromTrip() {
     const value = normalizeFuelFinderType(fuelTypeSelect?.value || '');
     if (!fuelFinderFuelType) return;
@@ -7469,6 +7741,9 @@ favoritesBtn?.addEventListener('click', openFavorites);
 closeFavoritesBtn?.addEventListener('click', closeFavorites);
 saveFavoriteBtn?.addEventListener('click', saveCurrentToFavorites);
 copySummaryBtn?.addEventListener('click', copyTripSummary);
+showTripFuelOnMapBtn?.addEventListener('click', () => {
+    showTripFuelStationsOnMap().catch(() => {});
+});
 companionsBtn?.addEventListener('click', openCompanions);
 friendRequestsBtn?.addEventListener('click', openFriendRequestsView);
 friendsBtn?.addEventListener('click', openFriendsView);

@@ -11,7 +11,7 @@
     <link rel="icon" type="image/png" href="logo.png?v=3">
     <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=10">
+    <link rel="stylesheet" href="style.css?v=11">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>
 <body>
@@ -421,7 +421,7 @@
                     <p><strong>Auto:</strong> <span id="carDetail">-</span></p>
                     <p><strong>Percorso:</strong> <span id="routeDetail">-</span></p>
                     <p><strong>Dettagli Pedaggi:</strong> <span id="tollDetail">-</span></p>
-                    <p><strong>Tempo Stimato:</strong> <span id="timeDetail">-</span> (a 100 km/h medi)</p>
+                    <p><strong>Tempo Viaggio:</strong> <span id="timeDetail">-</span></p>
                 </div>
 
                 <div id="travelAiPanel" class="travel-ai-panel" style="display:none;">
@@ -442,6 +442,7 @@
                 <div class="result-actions">
                     <button id="saveFavoriteBtn" class="favorite-btn">⭐ Salva nei preferiti</button>
                     <button id="copySummaryBtn" class="pill-btn" type="button">📋 Copia riepilogo</button>
+                    <button id="showTripFuelOnMapBtn" class="pill-btn" type="button">🗺️ Mostra benzinai su mappa</button>
                     <button id="resetBtn" class="reset-btn">🔄 Nuovo Calcolo</button>
                 </div>
                 <div id="tripActionFeedback" class="helper-text"></div>
@@ -483,8 +484,8 @@
                     <article class="info-card">
                         <h3>Come funziona il sito</h3>
                         <p>1) Scegli partenza, arrivo, marca/modello e tipo di alimentazione.</p>
-                        <p>2) Se la rotta è nel database usiamo le sue distanze e pedaggi; altrimenti chiediamo a ORS/HERE per ottenere la distanza.</p>
-                        <p>3) Stimiamo la quota di autostrada per calcolare pedaggi e il tempo di viaggio, sommando carburante + pedaggi + caselli per il costo totale.</p>
+                        <p>2) Prima interroghiamo Google Routes API per distanza, durata e pedaggi aggiornati; se non disponibile usiamo fallback ORS/OSRM.</p>
+                        <p>3) Calcoliamo carburante + pedaggi e mostriamo anche km autostrada e km su altre strade direttamente nel riepilogo.</p>
                     </article>
 
                     <article class="info-card">
@@ -900,6 +901,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="config.public.js?v=3"></script>
-    <script src="script.js?v=30"></script>
+    <script src="script.js?v=31"></script>
 </body>
 </html>
