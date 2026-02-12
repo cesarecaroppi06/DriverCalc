@@ -6243,8 +6243,19 @@ document.addEventListener('keypress', (e) => {
     }
 });
 
+async function registerServiceWorker() {
+    if (typeof window === 'undefined') return;
+    if (!('serviceWorker' in navigator)) return;
+    try {
+        await navigator.serviceWorker.register('./sw.js');
+    } catch (err) {
+        // Ignore: app works also without offline cache.
+    }
+}
+
 // Inizializza al caricamento
 document.addEventListener('DOMContentLoaded', async () => {
+    registerServiceWorker().catch(() => {});
     closeSettingsMenu();
     syncSettingsMenuCloseVisibility();
     window.addEventListener('resize', () => {
