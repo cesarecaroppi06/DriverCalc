@@ -125,8 +125,10 @@ const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImE0MDI
 const HERE_API_KEY = 'YOUR_HERE_API_KEY';
 // API key Google Maps (imposta la tua chiave in config.js)
 const GOOGLE_MAPS_API_KEY = typeof window !== 'undefined' ? (window.GOOGLE_MAPS_API_KEY || '') : '';
-// Forza OpenStreetMap/Leaflet (disabilita Google Maps UI)
-const USE_GOOGLE_MAPS = false;
+// Toggle Google Maps (true di default, disabilitabile da config.public.js)
+const USE_GOOGLE_MAPS = typeof window !== 'undefined'
+    ? (window.USE_GOOGLE_MAPS !== false)
+    : true;
 // Disabilita Photon (fallback su Nominatim)
 const USE_PHOTON = false;
 
@@ -780,7 +782,7 @@ async function renderRouteOnMap(route, from, to, fromLoc, toLoc) {
     const mapStatus = document.getElementById('mapStatus');
     if (!mapSection) return;
 
-    const preferred = 'leaflet';
+    const preferred = hasGoogleKey() ? 'google' : 'leaflet';
     let provider = await ensureMapReady(preferred);
 
     if (!provider) {
