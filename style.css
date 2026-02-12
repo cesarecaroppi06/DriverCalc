@@ -2176,3 +2176,135 @@ footer p {
         flex-direction: column;
     }
 }
+
+/* Mobile fit: Account + La mia auto */
+@media (max-width: 900px) {
+    .modal-overlay {
+        align-items: flex-start;
+        justify-content: center;
+        overflow-y: auto;
+        padding: 10px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .modal-card {
+        width: min(100%, 100%);
+        max-height: calc(100dvh - 20px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        margin: 0;
+    }
+
+    .account-card,
+    .mycar-card {
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .account-auth-grid,
+    .account-edit-grid,
+    .account-security-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .account-avatar {
+        width: 112px;
+        height: 112px;
+    }
+
+    .account-avatar-actions {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .account-avatar-actions .pill-btn {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .account-identity h4 {
+        font-size: 20px;
+    }
+
+    .account-chip {
+        display: block;
+        margin-right: 0;
+        margin-bottom: 6px;
+    }
+
+    .account-stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .mycar-form {
+        grid-template-columns: 1fr;
+    }
+
+    .mycar-preview {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 12px;
+    }
+
+    .mycar-image {
+        height: 170px;
+    }
+
+    .mycar-upload-btn {
+        inset: 10px;
+        font-size: 16px;
+    }
+
+    .mycar-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .mycar-actions .pill-btn {
+        width: 100%;
+    }
+
+    .mycar-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .mycar-stat {
+        padding: 10px 10px;
+    }
+
+    .mycar-stat strong {
+        font-size: 18px;
+    }
+}
+
+@media (max-width: 420px) {
+    .modal-overlay {
+        padding: 6px;
+    }
+
+    .modal-card {
+        max-height: calc(100dvh - 12px);
+        border-radius: 14px;
+        padding: 12px;
+    }
+
+    .modal-header h3 {
+        font-size: 18px;
+    }
+
+    .mycar-image {
+        height: 150px;
+    }
+
+    .mycar-upload-btn {
+        font-size: 14px;
+        letter-spacing: 0.4px;
+    }
+
+    .account-stats-grid,
+    .mycar-stats {
+        grid-template-columns: 1fr;
+    }
+}
