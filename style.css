@@ -194,6 +194,29 @@ header h1 {
     text-align: left;
 }
 
+.install-app-btn {
+    border: 1px solid rgba(252, 211, 77, 0.46);
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.95), rgba(34, 211, 238, 0.92));
+    color: #071126;
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 0.2px;
+    border-radius: 12px;
+    padding: 10px 14px;
+    cursor: pointer;
+    box-shadow: 0 12px 26px rgba(14, 165, 233, 0.25);
+    white-space: nowrap;
+}
+
+.install-app-btn:hover {
+    transform: translateY(-1px);
+}
+
+.install-app-btn[disabled] {
+    opacity: 0.65;
+    cursor: default;
+}
+
 .ferrari-container, .ferrari-icon { display: none; }
 
 main {
@@ -1429,6 +1452,11 @@ footer p {
 
     main {
         padding: 28px;
+    }
+
+    .install-app-btn {
+        width: 100%;
+        text-align: center;
     }
 }
 

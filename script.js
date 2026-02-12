@@ -3125,6 +3125,7 @@ const favoritesEmpty = document.getElementById('favoritesEmpty');
 const closeFavoritesBtn = document.getElementById('closeFavorites');
 const saveFavoriteBtn = document.getElementById('saveFavoriteBtn');
 const copySummaryBtn = document.getElementById('copySummaryBtn');
+const installAppBtn = document.getElementById('installAppBtn');
 const tripActionFeedback = document.getElementById('tripActionFeedback');
 const accountBtn = document.getElementById('accountBtn');
 const authOverlay = document.getElementById('authOverlay');
@@ -4280,6 +4281,7 @@ let outgoingFriendRequests = [];
 let selectedFriendId = '';
 let imagePreviewOverlay = null;
 let imagePreviewImage = null;
+let deferredInstallPrompt = null;
 let shareSettings = {
     shareFavorites: true,
     shareMyCar: true,
@@ -6253,9 +6255,88 @@ async function registerServiceWorker() {
     }
 }
 
+function isStandaloneApp() {
+    if (typeof window === 'undefined') return false;
+    const byDisplayMode = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    const byNavigator = window.navigator && window.navigator.standalone === true;
+    return !!(byDisplayMode || byNavigator);
+}
+
+function isIosSafariBrowser() {
+    if (typeof window === 'undefined') return false;
+    const ua = String(window.navigator.userAgent || '').toLowerCase();
+    const isIOSDevice = /iphone|ipad|ipod/.test(ua) || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+    const isSafari = /safari/.test(ua) && !/crios|fxios|edgios|chrome|android/.test(ua);
+    return isIOSDevice && isSafari;
+}
+
+function updateInstallButtonState() {
+    if (!installAppBtn) return;
+    if (isStandaloneApp()) {
+        installAppBtn.style.display = 'inline-flex';
+        installAppBtn.textContent = '✅ App installata';
+        installAppBtn.disabled = true;
+        return;
+    }
+
+    if (deferredInstallPrompt) {
+        installAppBtn.style.display = 'inline-flex';
+        installAppBtn.textContent = '📲 Scarica App';
+        installAppBtn.disabled = false;
+        return;
+    }
+
+    if (isIosSafariBrowser()) {
+        installAppBtn.style.display = 'inline-flex';
+        installAppBtn.textContent = '📲 Scarica App';
+        installAppBtn.disabled = false;
+        return;
+    }
+
+    installAppBtn.style.display = 'none';
+}
+
+async function handleInstallAppClick() {
+    if (!installAppBtn) return;
+    if (isStandaloneApp()) return;
+
+    if (deferredInstallPrompt) {
+        const promptEvent = deferredInstallPrompt;
+        deferredInstallPrompt = null;
+        try {
+            await promptEvent.prompt();
+            await promptEvent.userChoice;
+        } catch (err) {
+            // Ignore prompt errors/cancel.
+        } finally {
+            updateInstallButtonState();
+        }
+        return;
+    }
+
+    if (isIosSafariBrowser()) {
+        alert(
+            "Per installare l'app su iPhone/iPad:\n\n1) Tocca Condividi (quadrato con freccia)\n2) Seleziona 'Aggiungi a schermata Home'\n3) Conferma con 'Aggiungi'"
+        );
+    }
+}
+
 // Inizializza al caricamento
 document.addEventListener('DOMContentLoaded', async () => {
     registerServiceWorker().catch(() => {});
+    window.addEventListener('beforeinstallprompt', (event) => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        updateInstallButtonState();
+    });
+    window.addEventListener('appinstalled', () => {
+        deferredInstallPrompt = null;
+        updateInstallButtonState();
+    });
+    installAppBtn?.addEventListener('click', () => {
+        handleInstallAppClick().catch(() => {});
+    });
+    updateInstallButtonState();
     closeSettingsMenu();
     syncSettingsMenuCloseVisibility();
     window.addEventListener('resize', () => {
