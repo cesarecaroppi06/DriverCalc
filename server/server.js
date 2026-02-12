@@ -189,6 +189,65 @@ console.log(`[DriveCalc API] Database path: ${DB_PATH}`);
 app.use(cors(CORS_ORIGIN ? { origin: CORS_ORIGIN, credentials: true } : { origin: true, credentials: true }));
 app.use(express.json({ limit: '5mb' }));
 
+const WEB_ROOT = path.resolve(__dirname, '..');
+const WEB_INDEX_PATH = path.join(WEB_ROOT, 'index.html');
+const HAS_WEB_CLIENT = fs.existsSync(WEB_INDEX_PATH);
+
+function registerWebClientRoutes() {
+    if (!HAS_WEB_CLIENT) return;
+
+    const staticDirs = [
+        ['assets', path.join(WEB_ROOT, 'assets')],
+        ['models', path.join(WEB_ROOT, 'models')]
+    ];
+
+    staticDirs.forEach(([routePrefix, dirPath]) => {
+        if (!fs.existsSync(dirPath)) return;
+        app.use(`/${routePrefix}`, express.static(dirPath, { fallthrough: true }));
+    });
+
+    const staticFiles = [
+        'index.html',
+        'style.css',
+        'script.js',
+        'config.public.js',
+        'manifest.webmanifest',
+        'sw.js',
+        'car_models.json',
+        'logo.png',
+        'background-travel.jpg',
+        'header-hero.jpg',
+        'robots.txt',
+        'sitemap.xml'
+    ];
+
+    staticFiles.forEach((fileName) => {
+        const filePath = path.join(WEB_ROOT, fileName);
+        if (!fs.existsSync(filePath)) return;
+        app.get(`/${fileName}`, (_req, res) => res.sendFile(filePath));
+    });
+
+    app.get(/^\/google[0-9a-z]+\.html$/i, (req, res) => {
+        const fileName = path.basename(String(req.path || '').trim());
+        const filePath = path.join(WEB_ROOT, fileName);
+        if (!filePath.startsWith(WEB_ROOT) || !fs.existsSync(filePath)) {
+            return res.status(404).send('Not found');
+        }
+        return res.sendFile(filePath);
+    });
+
+    app.get('/', (_req, res) => res.sendFile(WEB_INDEX_PATH));
+
+    // SPA fallback for non-API routes without explicit file extension.
+    app.get(/^\/(?!api(?:\/|$)).+/, (req, res, next) => {
+        const pathname = String(req.path || '/');
+        if (path.extname(pathname)) return next();
+        return res.sendFile(WEB_INDEX_PATH);
+    });
+}
+
+registerWebClientRoutes();
+
 function parseCookies(headerValue = '') {
     const raw = String(headerValue || '').trim();
     if (!raw) return {};
