@@ -130,6 +130,19 @@ header {
     overflow: hidden;
 }
 
+.site-logo {
+    width: clamp(92px, 13vw, 152px);
+    height: clamp(92px, 13vw, 152px);
+    display: block;
+    margin: 0 auto 10px;
+    object-fit: cover;
+    object-position: center;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.42);
+    background: rgba(8, 14, 28, 0.88);
+    filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
+}
+
 .site-badge {
     display: inline-flex;
     align-items: center;
