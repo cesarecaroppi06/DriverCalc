@@ -745,6 +745,71 @@ select:focus, input:focus {
     width: min(760px, 100%);
 }
 
+.ai-chat-card {
+    width: min(760px, 100%);
+    max-height: min(86vh, 820px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ai-chat-messages {
+    min-height: 280px;
+    max-height: min(58vh, 520px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(7, 11, 26, 0.85);
+}
+
+.ai-chat-row {
+    display: flex;
+}
+
+.ai-chat-row.user {
+    justify-content: flex-end;
+}
+
+.ai-chat-row.assistant {
+    justify-content: flex-start;
+}
+
+.ai-chat-bubble {
+    max-width: min(88%, 620px);
+    padding: 10px 12px;
+    border-radius: 12px;
+    line-height: 1.45;
+    font-size: 14px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.ai-chat-row.user .ai-chat-bubble {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(34, 211, 238, 0.9));
+    color: #061324;
+    border: 1px solid rgba(147, 197, 253, 0.45);
+}
+
+.ai-chat-row.assistant .ai-chat-bubble {
+    background: rgba(255, 255, 255, 0.08);
+    color: #eef3ff;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ai-chat-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.ai-chat-actions input {
+    flex: 1;
+}
+
 .modal-header {
     display: flex;
     justify-content: space-between;
@@ -903,6 +968,20 @@ select:focus, input:focus {
     }
     .mycar-image {
         height: 200px;
+    }
+    .ai-chat-card {
+        max-height: 90vh;
+    }
+    .ai-chat-messages {
+        min-height: 240px;
+        max-height: 48vh;
+    }
+    .ai-chat-actions {
+        flex-direction: column;
+    }
+    .ai-chat-actions button,
+    .ai-chat-actions input {
+        width: 100%;
     }
 }
 

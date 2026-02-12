@@ -33,6 +33,13 @@ const OFFICIAL_MODELS_MAX_YEAR_SPAN = 26;
 const officialModelsCache = new Map();
 const officialModelsPending = new Map();
 const ACCOUNT_AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
+const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+const AI_CHAT_MAX_MESSAGE_CHARS = 340;
+const AI_CHAT_MAX_REPLY_CHARS = 900;
+const AI_CHAT_RATE_WINDOW_MS = 60 * 1000;
+const AI_CHAT_RATE_MAX_REQUESTS = 12;
+const aiChatRateBuckets = new Map();
 
 function normalizeEmail(value = '') {
     return String(value || '').trim().toLowerCase();
@@ -212,6 +219,163 @@ function clearAuthCookie(res) {
         sameSite: AUTH_COOKIE_SAMESITE,
         path: '/'
     });
+}
+
+function normalizeAiChatText(value = '', maxLen = AI_CHAT_MAX_MESSAGE_CHARS) {
+    return String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, Math.max(1, Number(maxLen) || AI_CHAT_MAX_MESSAGE_CHARS));
+}
+
+function formatMoney(value) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return '-';
+    return `€${amount.toFixed(2)}`;
+}
+
+function getRequestIp(req) {
+    const xff = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    return xff || req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function isAiChatRateLimited(req) {
+    const ip = getRequestIp(req);
+    const now = Date.now();
+    const bucket = aiChatRateBuckets.get(ip) || [];
+    const recent = bucket.filter((ts) => (now - Number(ts || 0)) <= AI_CHAT_RATE_WINDOW_MS);
+    if (recent.length >= AI_CHAT_RATE_MAX_REQUESTS) {
+        aiChatRateBuckets.set(ip, recent);
+        return true;
+    }
+    recent.push(now);
+    aiChatRateBuckets.set(ip, recent);
+
+    if (aiChatRateBuckets.size > 1200) {
+        const threshold = now - (AI_CHAT_RATE_WINDOW_MS * 2);
+        aiChatRateBuckets.forEach((arr, key) => {
+            const active = (arr || []).filter((ts) => Number(ts || 0) >= threshold);
+            if (!active.length) aiChatRateBuckets.delete(key);
+            else aiChatRateBuckets.set(key, active);
+        });
+    }
+    return false;
+}
+
+function buildLocalAiChatReply(message = '', context = {}) {
+    const q = normalizeAiChatText(message, AI_CHAT_MAX_MESSAGE_CHARS).toLowerCase();
+    const trip = context && typeof context === 'object' ? (context.trip || null) : null;
+    const travelAi = context && typeof context === 'object' ? (context.travelAi || null) : null;
+
+    if (q.includes('meteo')) {
+        if (travelAi && travelAi.weatherLine) {
+            return `${travelAi.weatherLine} ${travelAi.impactLine || ''}`.slice(0, AI_CHAT_MAX_REPLY_CHARS);
+        }
+        return 'Meteo non ancora disponibile. Calcola una tratta e poi chiedimi di nuovo il meteo sul percorso.';
+    }
+
+    if (q.includes('pedagg') || q.includes('autostrad')) {
+        if (trip) {
+            return `Pedaggi stimati: ${formatMoney(trip.tollCost)}. Totale tratta: ${formatMoney(trip.totalCost)}.`;
+        }
+        return 'Calcola prima una tratta e poi posso darti il peso preciso dei pedaggi sul costo totale.';
+    }
+
+    if (q.includes('consum') || q.includes('carbur')) {
+        if (trip) {
+            return `Stima attuale carburante: ${formatMoney(trip.fuelCost)} su ${Number(trip.distanceKm || 0).toFixed(0)} km.`;
+        }
+        return 'Posso stimare consumi e carburante appena calcoli una tratta.';
+    }
+
+    if (q.includes('conviene') || q.includes('risparm')) {
+        if (travelAi && travelAi.bestWindow && travelAi.bestWindow.timeIso) {
+            const dt = new Date(travelAi.bestWindow.timeIso);
+            const hhmm = Number.isNaN(dt.getTime())
+                ? '--:--'
+                : dt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+            return `Per risparmiare conviene partire verso le ${hhmm}: impatto meteo previsto circa ${Number(travelAi.bestWindow.impactPercent || 0).toFixed(1)}%.`;
+        }
+        return 'Per ridurre i costi: guida regolare, velocita costante, gomme alla pressione corretta e partenza fuori orari di punta.';
+    }
+
+    if (trip) {
+        return `Tratta attuale: ${trip.departure || '-'} -> ${trip.arrival || '-'} (${Number(trip.distanceKm || 0).toFixed(0)} km), totale stimato ${formatMoney(trip.totalCost)}. Dimmi cosa vuoi ottimizzare.`;
+    }
+
+    return 'Posso aiutarti su meteo, pedaggi, consumi, costi e orario migliore di partenza. Fai una domanda specifica e ti rispondo subito.';
+}
+
+async function requestOpenAiChatReply(message = '', history = [], context = {}) {
+    if (!OPENAI_API_KEY) return null;
+
+    const safeMessage = normalizeAiChatText(message, AI_CHAT_MAX_MESSAGE_CHARS);
+    if (!safeMessage) return null;
+
+    const safeHistory = Array.isArray(history)
+        ? history
+            .map((item) => ({
+                role: item && item.role === 'user' ? 'user' : 'assistant',
+                text: normalizeAiChatText(item && item.text, AI_CHAT_MAX_MESSAGE_CHARS)
+            }))
+            .filter((item) => item.text)
+            .slice(-8)
+        : [];
+
+    const contextJsonRaw = JSON.stringify(context || {});
+    const contextJson = contextJsonRaw.length > 2400 ? `${contextJsonRaw.slice(0, 2400)}...` : contextJsonRaw;
+    const messages = [
+        {
+            role: 'system',
+            content: 'Sei DriveCalc AI Assistant. Rispondi in italiano, chiaro e pratico, in max 6 frasi. Usa i dati del contesto se presenti. Se manca un dato, dichiaralo senza inventare numeri.'
+        },
+        {
+            role: 'system',
+            content: `Contesto app (JSON): ${contextJson}`
+        },
+        ...safeHistory.map((item) => ({
+            role: item.role,
+            content: item.text
+        })),
+        {
+            role: 'user',
+            content: safeMessage
+        }
+    ];
+
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = setTimeout(() => {
+        try {
+            controller && controller.abort();
+        } catch (e) {}
+    }, 9200);
+
+    try {
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${OPENAI_API_KEY}`
+            },
+            body: JSON.stringify({
+                model: OPENAI_MODEL,
+                temperature: 0.2,
+                messages
+            }),
+            signal: controller ? controller.signal : undefined
+        });
+
+        if (!res.ok) {
+            const detail = await res.text().catch(() => '');
+            throw new Error(detail || `OpenAI HTTP ${res.status}`);
+        }
+
+        const payload = await res.json();
+        const reply = normalizeAiChatText(payload?.choices?.[0]?.message?.content || '', AI_CHAT_MAX_REPLY_CHARS);
+        return reply || null;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 function readDbFromFile() {
@@ -708,6 +872,38 @@ app.delete('/api/mycar-photo/:modelId', authMiddleware, (req, res) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+app.post('/api/ai/chat', async (req, res) => {
+    const incoming = req.body || {};
+    const message = normalizeAiChatText(incoming.message, AI_CHAT_MAX_MESSAGE_CHARS);
+    const context = incoming && typeof incoming.context === 'object' && incoming.context ? incoming.context : {};
+    const history = Array.isArray(incoming.history) ? incoming.history : [];
+
+    if (!message) {
+        return res.status(400).json({ error: 'Messaggio obbligatorio' });
+    }
+
+    if (isAiChatRateLimited(req)) {
+        return res.status(429).json({ error: 'Troppi messaggi in poco tempo. Riprova tra qualche secondo.' });
+    }
+
+    try {
+        const remoteReply = await requestOpenAiChatReply(message, history, context);
+        if (remoteReply) {
+            return res.json({
+                reply: remoteReply,
+                source: 'openai'
+            });
+        }
+    } catch (err) {
+        // fallback locale sotto
+    }
+
+    return res.json({
+        reply: buildLocalAiChatReply(message, context),
+        source: 'local'
+    });
+});
 
 app.get('/api/share-settings', authMiddleware, (req, res) => {
     const db = readDb();

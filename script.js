@@ -3142,6 +3142,13 @@ const closeFriendRequestsBtn = document.getElementById('closeFriendRequests');
 const friendsBtn = document.getElementById('friendsBtn');
 const friendsOverlay = document.getElementById('friendsOverlay');
 const closeFriendsBtn = document.getElementById('closeFriends');
+const aiChatBtn = document.getElementById('aiChatBtn');
+const aiChatOverlay = document.getElementById('aiChatOverlay');
+const closeAiChatBtn = document.getElementById('closeAiChat');
+const aiChatMessages = document.getElementById('aiChatMessages');
+const aiChatInput = document.getElementById('aiChatInput');
+const aiChatSendBtn = document.getElementById('aiChatSendBtn');
+const aiChatStatus = document.getElementById('aiChatStatus');
 const authEmailInput = document.getElementById('authEmail');
 const authUsernameInput = document.getElementById('authUsername');
 const authPasswordInput = document.getElementById('authPassword');
@@ -4018,6 +4025,8 @@ const WEATHER_CODE_LABELS = {
 };
 
 const WEATHER_SEVERE_CODES = new Set([71, 73, 75, 77, 85, 86, 95, 96, 99]);
+const WEATHER_ROUTE_CACHE_TTL_MS = 10 * 60 * 1000;
+const WEATHER_ROUTE_MAX_CACHE_ITEMS = 120;
 
 function getWeatherCodeLabel(code) {
     const normalized = Number(code);
@@ -4028,6 +4037,45 @@ function formatEuro(value) {
     const amount = Number(value);
     if (!Number.isFinite(amount)) return '-';
     return `€${amount.toFixed(2)}`;
+}
+
+function getWeatherCacheKey(lat, lng) {
+    const safeLat = Number(lat);
+    const safeLng = Number(lng);
+    if (!Number.isFinite(safeLat) || !Number.isFinite(safeLng)) return '';
+    return `${safeLat.toFixed(3)}|${safeLng.toFixed(3)}`;
+}
+
+function readWeatherRouteCache(cacheKey = '') {
+    if (!cacheKey) return null;
+    const cached = weatherRouteCache.get(cacheKey);
+    if (!cached) return null;
+    if ((Date.now() - Number(cached.ts || 0)) > WEATHER_ROUTE_CACHE_TTL_MS) {
+        weatherRouteCache.delete(cacheKey);
+        return null;
+    }
+    return cached.data || null;
+}
+
+function writeWeatherRouteCache(cacheKey = '', data = null) {
+    if (!cacheKey || !data) return;
+    weatherRouteCache.set(cacheKey, {
+        ts: Date.now(),
+        data
+    });
+    if (weatherRouteCache.size <= WEATHER_ROUTE_MAX_CACHE_ITEMS) return;
+    const ordered = Array.from(weatherRouteCache.entries())
+        .sort((a, b) => Number(a[1]?.ts || 0) - Number(b[1]?.ts || 0));
+    while (weatherRouteCache.size > WEATHER_ROUTE_MAX_CACHE_ITEMS && ordered.length) {
+        const oldest = ordered.shift();
+        if (!oldest) break;
+        weatherRouteCache.delete(oldest[0]);
+    }
+}
+
+function waitMs(ms = 0) {
+    const timeout = Math.max(0, Number(ms) || 0);
+    return new Promise((resolve) => setTimeout(resolve, timeout));
 }
 
 function getNearestHourlyIndex(times = [], targetDate = new Date()) {
@@ -4113,33 +4161,85 @@ function calculateWeatherImpactPercent({ tempC = 20, windKmh = 0, precipitationM
 }
 
 async function fetchWeatherForRoute(lat, lng) {
+    const safeLat = Number(lat);
+    const safeLng = Number(lng);
+    if (!Number.isFinite(safeLat) || !Number.isFinite(safeLng)) {
+        throw new Error('invalid weather coordinates');
+    }
+
+    const cacheKey = getWeatherCacheKey(safeLat, safeLng);
+    const cachedPayload = readWeatherRouteCache(cacheKey);
+    if (cachedPayload) return cachedPayload;
+
     const query = new URLSearchParams({
-        latitude: String(lat),
-        longitude: String(lng),
+        latitude: String(safeLat),
+        longitude: String(safeLng),
         current: 'temperature_2m,precipitation,wind_speed_10m,weather_code',
         hourly: 'temperature_2m,precipitation_probability,precipitation,wind_speed_10m,weather_code',
         forecast_days: '2',
         timezone: 'auto'
     });
     const url = `https://api.open-meteo.com/v1/forecast?${query.toString()}`;
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timeoutId = setTimeout(() => {
+    const maxAttempts = 2;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timeoutId = setTimeout(() => {
+            try {
+                controller && controller.abort();
+            } catch (e) {}
+        }, 3800 + (attempt * 700));
+
         try {
-            controller && controller.abort();
-        } catch (e) {}
-    }, 4800);
-    try {
-        const res = await fetch(url, {
-            headers: { Accept: 'application/json' },
-            signal: controller ? controller.signal : undefined
-        });
-        if (!res.ok) {
-            throw new Error('weather api not available');
+            const res = await fetch(url, {
+                headers: { Accept: 'application/json' },
+                signal: controller ? controller.signal : undefined
+            });
+            if (!res.ok) {
+                throw new Error(`weather api ${res.status}`);
+            }
+            const payload = await res.json();
+            if (!payload || typeof payload !== 'object' || !payload.current || !payload.hourly) {
+                throw new Error('invalid weather payload');
+            }
+            writeWeatherRouteCache(cacheKey, payload);
+            return payload;
+        } catch (err) {
+            lastError = err;
+            if (attempt < maxAttempts) {
+                await waitMs(180 * attempt);
+            }
+        } finally {
+            clearTimeout(timeoutId);
         }
-        return await res.json();
-    } finally {
-        clearTimeout(timeoutId);
     }
+
+    throw lastError || new Error('weather api not available');
+}
+
+function computeTravelAiReliability({ validPoints = 0, totalPoints = 3, impactSpread = 0 } = {}) {
+    const coverage = clamp((Number(validPoints) / Math.max(1, Number(totalPoints))) * 100, 0, 100);
+    const spreadPenalty = clamp(Number(impactSpread) * 2.5, 0, 25);
+    const score = clamp(Math.round((coverage * 0.75) + (25 - spreadPenalty)), 0, 100);
+    if (score >= 78) return { score, label: 'alta' };
+    if (score >= 54) return { score, label: 'media' };
+    return { score, label: 'bassa' };
+}
+
+function extractWeatherSnapshot(payload = {}) {
+    if (!payload || !payload.current || !payload.hourly) return null;
+    const current = payload.current || {};
+    const hourly = payload.hourly || {};
+    const nearestIdx = getNearestHourlyIndex(hourly.time || [], current.time || new Date());
+    const precipitationProb = nearestIdx >= 0
+        ? Number(hourly.precipitation_probability?.[nearestIdx] || 0)
+        : 0;
+    return {
+        current,
+        hourly,
+        precipitationProb
+    };
 }
 
 function buildBaseTravelAiTips(base = {}) {
@@ -4201,37 +4301,111 @@ async function runTravelAiAnalysis(base = {}) {
         tips: baseTips
     });
 
-    const midLat = (Number(base.fromLat) + Number(base.toLat)) / 2;
-    const midLng = (Number(base.fromLng) + Number(base.toLng)) / 2;
-    let weatherPayload = null;
-    try {
-        weatherPayload = await fetchWeatherForRoute(midLat, midLng);
-    } catch (err) {
-        weatherPayload = null;
-    }
+    const fromLat = Number(base.fromLat);
+    const fromLng = Number(base.fromLng);
+    const toLat = Number(base.toLat);
+    const toLng = Number(base.toLng);
 
-    if (requestId !== travelAiRequestId) return;
-
-    if (!weatherPayload || !weatherPayload.current || !weatherPayload.hourly) {
+    if (!Number.isFinite(fromLat) || !Number.isFinite(fromLng) || !Number.isFinite(toLat) || !Number.isFinite(toLng)) {
+        if (requestId !== travelAiRequestId) return;
+        const fallbackTips = [...baseTips, 'Coordinate percorso non valide: impossibile analizzare meteo in tempo reale.'];
+        const dedupTips = Array.from(new Set(fallbackTips)).slice(0, 6);
+        lastTravelAiSnapshot = {
+            weatherLine: 'Meteo sul percorso non disponibile (coordinate mancanti).',
+            impactLine: 'Impatto consumi meteo: uso stima base.',
+            impactPercent: null,
+            reliability: 'bassa',
+            confidenceScore: 0,
+            adjustedTotalCost: null,
+            deltaTotal: null,
+            tips: dedupTips,
+            updatedAt: Date.now()
+        };
         renderTravelAiPanel({
-            weatherLine: 'Meteo sul percorso non disponibile in tempo reale. Uso stima standard.',
-            impactLine: 'Impatto consumi meteo: non calcolabile ora.',
-            tips: baseTips
+            weatherLine: lastTravelAiSnapshot.weatherLine,
+            impactLine: lastTravelAiSnapshot.impactLine,
+            tips: dedupTips
         });
         return;
     }
 
-    const current = weatherPayload.current || {};
-    const hourly = weatherPayload.hourly || {};
-    const nearestIdx = getNearestHourlyIndex(hourly.time || [], current.time || new Date());
-    const currentProb = nearestIdx >= 0 ? Number(hourly.precipitation_probability?.[nearestIdx] || 0) : 0;
-    const currentImpact = calculateWeatherImpactPercent({
-        tempC: Number(current.temperature_2m || 20),
-        windKmh: Number(current.wind_speed_10m || 0),
-        precipitationMm: Number(current.precipitation || 0),
-        precipitationProb: currentProb,
-        weatherCode: Number(current.weather_code || 0)
+    const midLat = (fromLat + toLat) / 2;
+    const midLng = (fromLng + toLng) / 2;
+    const routePoints = [
+        { id: 'start', lat: fromLat, lng: fromLng, weight: 1 },
+        { id: 'mid', lat: midLat, lng: midLng, weight: 2 },
+        { id: 'end', lat: toLat, lng: toLng, weight: 1 }
+    ];
+    const settledWeather = await Promise.allSettled(
+        routePoints.map((point) => fetchWeatherForRoute(point.lat, point.lng))
+    );
+    if (requestId !== travelAiRequestId) return;
+
+    const pointSnapshots = [];
+    settledWeather.forEach((result, idx) => {
+        if (result.status !== 'fulfilled') return;
+        const snapshot = extractWeatherSnapshot(result.value);
+        if (!snapshot) return;
+        pointSnapshots.push({
+            id: routePoints[idx].id,
+            weight: routePoints[idx].weight,
+            ...snapshot
+        });
     });
+
+    if (!pointSnapshots.length) {
+        const fallbackTips = [...baseTips, 'Rete meteo non disponibile ora: riprova tra poco per affinare la stima.'];
+        const dedupTips = Array.from(new Set(fallbackTips)).slice(0, 6);
+        lastTravelAiSnapshot = {
+            weatherLine: 'Meteo sul percorso non disponibile in tempo reale.',
+            impactLine: 'Impatto consumi meteo: non calcolabile ora.',
+            impactPercent: null,
+            reliability: 'bassa',
+            confidenceScore: 0,
+            adjustedTotalCost: null,
+            deltaTotal: null,
+            tips: dedupTips,
+            updatedAt: Date.now()
+        };
+        renderTravelAiPanel({
+            weatherLine: lastTravelAiSnapshot.weatherLine,
+            impactLine: lastTravelAiSnapshot.impactLine,
+            tips: dedupTips
+        });
+        return;
+    }
+
+    const pointsWithImpact = pointSnapshots.map((item) => {
+        const current = item.current || {};
+        const impact = calculateWeatherImpactPercent({
+            tempC: Number(current.temperature_2m || 20),
+            windKmh: Number(current.wind_speed_10m || 0),
+            precipitationMm: Number(current.precipitation || 0),
+            precipitationProb: Number(item.precipitationProb || 0),
+            weatherCode: Number(current.weather_code || 0)
+        });
+        return {
+            ...item,
+            impact
+        };
+    });
+
+    const totalWeight = pointsWithImpact.reduce((sum, item) => sum + Number(item.weight || 0), 0) || 1;
+    const weightedImpact = pointsWithImpact.reduce(
+        (sum, item) => sum + (Number(item.impact.impactPercent || 0) * Number(item.weight || 0)),
+        0
+    ) / totalWeight;
+    const impactValues = pointsWithImpact.map((item) => Number(item.impact.impactPercent || 0));
+    const maxImpact = impactValues.length ? Math.max(...impactValues) : 0;
+    const minImpact = impactValues.length ? Math.min(...impactValues) : 0;
+    const impactSpread = Math.max(0, maxImpact - minImpact);
+    const reliability = computeTravelAiReliability({
+        validPoints: pointsWithImpact.length,
+        totalPoints: routePoints.length,
+        impactSpread
+    });
+    const referencePoint = pointsWithImpact.find((item) => item.id === 'mid') || pointsWithImpact[0];
+    const referenceCurrent = referencePoint.current || {};
 
     const baseTotalDistance = Number(base.totalDistance) || 0;
     const baseFuelCost = Number(base.baseFuelCost) || 0;
@@ -4240,7 +4414,7 @@ async function runTravelAiAnalysis(base = {}) {
     const baseConsumption = Number(base.consumptionPer100) || 0;
     const fuelPrice = Number(base.fuelPrice) || 0;
 
-    const adjustedConsumption = baseConsumption * (1 + (currentImpact.impactPercent / 100));
+    const adjustedConsumption = baseConsumption * (1 + (weightedImpact / 100));
     const adjustedFuelCost = (baseTotalDistance * adjustedConsumption / 100) * fuelPrice;
     const adjustedTotalCost = adjustedFuelCost + tollTotal;
     const deltaTotal = adjustedTotalCost - baseTotalCost;
@@ -4249,6 +4423,7 @@ async function runTravelAiAnalysis(base = {}) {
     const nowTs = Date.now();
     const nextWindowTs = nowTs + (12 * 60 * 60 * 1000);
     let bestWindow = null;
+    const hourly = referencePoint.hourly || {};
     const times = Array.isArray(hourly.time) ? hourly.time : [];
     for (let i = 0; i < times.length; i += 1) {
         const ts = new Date(times[i]).getTime();
@@ -4269,18 +4444,19 @@ async function runTravelAiAnalysis(base = {}) {
         }
     }
 
-    const weatherLabel = getWeatherCodeLabel(Number(current.weather_code || 0));
-    const weatherLine = `Meteo sul percorso: ${weatherLabel}, ${Number(current.temperature_2m || 0).toFixed(0)}°C, vento ${Number(current.wind_speed_10m || 0).toFixed(0)} km/h.`;
+    const weatherLabel = getWeatherCodeLabel(Number(referenceCurrent.weather_code || 0));
+    const weatherLine = `Meteo sul percorso: ${weatherLabel}, ${Number(referenceCurrent.temperature_2m || 0).toFixed(0)}°C, vento ${Number(referenceCurrent.wind_speed_10m || 0).toFixed(0)} km/h (copertura ${pointsWithImpact.length}/3 punti).`;
 
     let impactLine = '';
     const deltaTotalLabel = `${deltaTotal >= 0 ? '+' : '-'}${formatEuro(Math.abs(deltaTotal))}`;
-    if (currentImpact.impactPercent > 0.2) {
-        impactLine = `Impatto stimato meteo: +${currentImpact.impactPercent.toFixed(1)}% consumi. Totale aggiornato: ${formatEuro(adjustedTotalCost)} (${deltaTotalLabel} rispetto alla stima base).`;
-    } else if (currentImpact.impactPercent < -0.2) {
-        impactLine = `Condizioni favorevoli: ${currentImpact.impactPercent.toFixed(1)}% consumi. Totale aggiornato: ${formatEuro(adjustedTotalCost)}.`;
+    if (weightedImpact > 0.2) {
+        impactLine = `Impatto meteo stimato: +${weightedImpact.toFixed(1)}% consumi. Totale aggiornato: ${formatEuro(adjustedTotalCost)} (${deltaTotalLabel} rispetto alla stima base).`;
+    } else if (weightedImpact < -0.2) {
+        impactLine = `Condizioni favorevoli: ${weightedImpact.toFixed(1)}% consumi. Totale aggiornato: ${formatEuro(adjustedTotalCost)}.`;
     } else {
         impactLine = `Impatto meteo quasi neutro. Totale aggiornato: ${formatEuro(adjustedTotalCost)}.`;
     }
+    impactLine += ` Affidabilita stima: ${reliability.label} (${reliability.score}%).`;
 
     const tips = [...baseTips];
     if (deltaFuel > 0.5) {
@@ -4289,18 +4465,40 @@ async function runTravelAiAnalysis(base = {}) {
         tips.unshift(`Le condizioni meteo possono farti risparmiare circa ${formatEuro(Math.abs(deltaFuel))} sul carburante.`);
     }
 
-    if (bestWindow && (currentImpact.impactPercent - bestWindow.impactPercent) >= 1.2) {
+    if (bestWindow && (weightedImpact - bestWindow.impactPercent) >= 1.2) {
         tips.push(`Partendo verso le ${formatHourFromIso(bestWindow.timeIso)} l'impatto meteo scende a circa ${bestWindow.impactPercent.toFixed(1)}% sui consumi.`);
     }
 
-    if (currentImpact.reasons.length) {
-        tips.push(`Fattori meteo rilevati: ${currentImpact.reasons.slice(0, 2).join(', ')}.`);
+    const aggregatedReasons = Array.from(new Set(pointsWithImpact.flatMap((item) => item.impact.reasons || []))).slice(0, 3);
+    if (aggregatedReasons.length) {
+        tips.push(`Fattori meteo rilevati: ${aggregatedReasons.join(', ')}.`);
     }
+    if (pointsWithImpact.length < 3) {
+        tips.push('Mancano alcuni punti meteo del percorso: la stima resta utile ma meno precisa del normale.');
+    }
+
+    const dedupTips = Array.from(new Set(tips.filter(Boolean))).slice(0, 6);
+    lastTravelAiSnapshot = {
+        weatherLine,
+        impactLine,
+        impactPercent: Number(weightedImpact.toFixed(2)),
+        reliability: reliability.label,
+        confidenceScore: reliability.score,
+        adjustedTotalCost: Number(adjustedTotalCost.toFixed(2)),
+        deltaTotal: Number(deltaTotal.toFixed(2)),
+        baseTotalCost: Number(baseTotalCost.toFixed(2)),
+        bestWindow: bestWindow ? {
+            timeIso: bestWindow.timeIso,
+            impactPercent: Number(bestWindow.impactPercent.toFixed(2))
+        } : null,
+        tips: dedupTips,
+        updatedAt: Date.now()
+    };
 
     renderTravelAiPanel({
         weatherLine,
         impactLine,
-        tips
+        tips: dedupTips
     });
 }
 
@@ -4556,6 +4754,7 @@ const FAVORITES_KEY = 'drivecalc_favorites_v1';
 const COMPANIONS_KEY = 'drivecalc_companions_v1';
 const COMPLETED_KEY = 'drivecalc_completed_v1';
 const MYCAR_PHOTOS_KEY = 'drivecalc_mycar_photos_v1';
+const AI_CHAT_HISTORY_KEY = 'drivecalc_ai_chat_history_v1';
 const LOCAL_API_BASE = 'http://localhost:3001/api';
 const CLOUD_API_BASES = ['https://drivercalc.onrender.com/api', 'https://drivecalc.onrender.com/api'];
 
@@ -4624,6 +4823,10 @@ let imagePreviewOverlay = null;
 let imagePreviewImage = null;
 let deferredInstallPrompt = null;
 let travelAiRequestId = 0;
+let lastTravelAiSnapshot = null;
+const weatherRouteCache = new Map();
+let aiChatHistory = [];
+let aiChatPending = false;
 let shareSettings = {
     shareFavorites: true,
     shareMyCar: true,
@@ -5835,6 +6038,243 @@ function closeFriendsView() {
     setActiveMenu(homeBtn);
 }
 
+function normalizeAiChatText(value = '') {
+    return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 320);
+}
+
+function getAiChatFallbackGreeting() {
+    if (!lastCalculatedTrip) {
+        return 'Ciao! Posso aiutarti su costi viaggio, pedaggi, consumi, meteo e ottimizzazione del percorso. Calcola una tratta per risposte ancora piu precise.';
+    }
+    return `Hai una tratta attiva: ${lastCalculatedTrip.departure || '-'} -> ${lastCalculatedTrip.arrival || '-'} (${lastCalculatedTrip.distance || '-'} km). Chiedimi pure come ottimizzarla.`;
+}
+
+function persistAiChatHistory() {
+    try {
+        const trimmed = Array.isArray(aiChatHistory) ? aiChatHistory.slice(-18) : [];
+        localStorage.setItem(AI_CHAT_HISTORY_KEY, JSON.stringify(trimmed));
+    } catch (e) {}
+}
+
+function loadAiChatHistory() {
+    try {
+        const raw = localStorage.getItem(AI_CHAT_HISTORY_KEY);
+        if (!raw) {
+            aiChatHistory = [];
+            return;
+        }
+        const parsed = JSON.parse(raw);
+        aiChatHistory = Array.isArray(parsed)
+            ? parsed
+                .map((item) => ({
+                    role: item?.role === 'user' ? 'user' : 'assistant',
+                    text: normalizeAiChatText(item?.text || ''),
+                    timestamp: Number(item?.timestamp) || Date.now()
+                }))
+                .filter((item) => item.text)
+                .slice(-18)
+            : [];
+    } catch (e) {
+        aiChatHistory = [];
+    }
+}
+
+function setAiChatStatus(message = '') {
+    if (!aiChatStatus) return;
+    aiChatStatus.textContent = message || '';
+}
+
+function renderAiChatHistory() {
+    if (!aiChatMessages) return;
+    aiChatMessages.innerHTML = '';
+    const items = aiChatHistory.length
+        ? aiChatHistory
+        : [{ role: 'assistant', text: getAiChatFallbackGreeting(), timestamp: Date.now() }];
+
+    items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = `ai-chat-row ${item.role === 'user' ? 'user' : 'assistant'}`;
+        const bubble = document.createElement('div');
+        bubble.className = 'ai-chat-bubble';
+        bubble.textContent = item.text || '';
+        row.appendChild(bubble);
+        aiChatMessages.appendChild(row);
+    });
+    aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
+}
+
+function pushAiChatMessage(role = 'assistant', text = '') {
+    const normalizedText = normalizeAiChatText(text);
+    if (!normalizedText) return;
+    aiChatHistory.push({
+        role: role === 'user' ? 'user' : 'assistant',
+        text: normalizedText,
+        timestamp: Date.now()
+    });
+    if (aiChatHistory.length > 18) aiChatHistory = aiChatHistory.slice(-18);
+    persistAiChatHistory();
+    renderAiChatHistory();
+}
+
+function setAiChatBusy(isBusy) {
+    aiChatPending = !!isBusy;
+    if (aiChatSendBtn) aiChatSendBtn.disabled = aiChatPending;
+    if (aiChatInput) aiChatInput.disabled = aiChatPending;
+}
+
+function buildAiChatContextPayload() {
+    const trip = lastCalculatedTrip
+        ? {
+            departure: lastCalculatedTrip.departure || '',
+            arrival: lastCalculatedTrip.arrival || '',
+            distanceKm: Number(lastCalculatedTrip.distance || 0),
+            fuelCost: Number(lastCalculatedTrip.fuelCost || 0),
+            tollCost: Number(lastCalculatedTrip.tollCost || 0),
+            totalCost: Number(lastCalculatedTrip.totalCost || 0),
+            fuelType: lastCalculatedTrip.fuelType || '',
+            carLabel: lastCalculatedTrip.carLabel || '',
+            completed: !!lastCalculatedTrip.completed
+        }
+        : null;
+
+    const travelAi = lastTravelAiSnapshot
+        ? {
+            weatherLine: lastTravelAiSnapshot.weatherLine || '',
+            impactLine: lastTravelAiSnapshot.impactLine || '',
+            impactPercent: Number(lastTravelAiSnapshot.impactPercent || 0),
+            reliability: lastTravelAiSnapshot.reliability || 'bassa',
+            confidenceScore: Number(lastTravelAiSnapshot.confidenceScore || 0),
+            adjustedTotalCost: Number(lastTravelAiSnapshot.adjustedTotalCost || 0),
+            deltaTotal: Number(lastTravelAiSnapshot.deltaTotal || 0),
+            bestWindow: lastTravelAiSnapshot.bestWindow || null,
+            tips: Array.isArray(lastTravelAiSnapshot.tips) ? lastTravelAiSnapshot.tips.slice(0, 5) : []
+        }
+        : null;
+
+    return {
+        nowIso: new Date().toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Rome',
+        trip,
+        travelAi
+    };
+}
+
+function buildLocalAiChatFallback(question = '') {
+    const q = String(question || '').toLowerCase();
+    const trip = lastCalculatedTrip;
+    const weather = lastTravelAiSnapshot;
+
+    if (q.includes('meteo')) {
+        if (weather) {
+            return `${weather.weatherLine} ${weather.impactLine}`;
+        }
+        return 'Non ho ancora dati meteo aggiornati. Calcola una tratta e poi chiedimi di nuovo il meteo sul percorso.';
+    }
+
+    if (q.includes('pedagg') || q.includes('autostrad')) {
+        if (!trip) return 'Calcola prima una tratta: poi posso dirti subito quanto pesa il pedaggio e dove puoi ottimizzare.';
+        return `Sulla tratta attuale il pedaggio stimato e: €${Number(trip.tollCost || 0).toFixed(2)} su un totale di €${Number(trip.totalCost || 0).toFixed(2)}.`;
+    }
+
+    if (q.includes('consum') || q.includes('carbur')) {
+        if (!trip) return 'Calcola prima una tratta per darti una stima concreta di consumi e carburante.';
+        return `Stima attuale: carburante €${Number(trip.fuelCost || 0).toFixed(2)} su ${Number(trip.distance || 0).toFixed(0)} km. Posso anche consigliarti orario e velocita per ridurre i costi.`;
+    }
+
+    if (q.includes('conviene') || q.includes('risparm')) {
+        if (weather?.bestWindow?.timeIso) {
+            return `Per risparmiare conviene partire verso le ${formatHourFromIso(weather.bestWindow.timeIso)}: l'impatto meteo previsto scende a circa ${Number(weather.bestWindow.impactPercent || 0).toFixed(1)}%.`;
+        }
+        return 'Per risparmiare: velocita costante, pressione gomme corretta e partenza fuori picchi di traffico 7:30-9:30 e 17:30-19:30.';
+    }
+
+    return 'Posso aiutarti su meteo, consumi, pedaggi, orario di partenza e ottimizzazione del viaggio. Fai una domanda specifica e ti rispondo subito.';
+}
+
+async function requestAiChatReply(question = '') {
+    const message = normalizeAiChatText(question);
+    if (!message) return '';
+    const history = aiChatHistory.slice(-8).map((item) => ({
+        role: item.role === 'user' ? 'user' : 'assistant',
+        text: item.text
+    }));
+
+    try {
+        const response = await apiRequest('/ai/chat', 'POST', {
+            message,
+            history,
+            context: buildAiChatContextPayload()
+        });
+        const reply = normalizeAiChatText(response?.reply || response?.message || '');
+        if (reply) return reply;
+    } catch (e) {
+        // fallback below
+    }
+
+    return buildLocalAiChatFallback(message);
+}
+
+async function sendAiChatMessage() {
+    if (aiChatPending) return;
+    const message = normalizeAiChatText(aiChatInput?.value || '');
+    if (!message) {
+        setAiChatStatus('Scrivi una domanda prima di inviare.');
+        return;
+    }
+
+    pushAiChatMessage('user', message);
+    if (aiChatInput) aiChatInput.value = '';
+    setAiChatBusy(true);
+    setAiChatStatus('AI in elaborazione...');
+
+    const typingRow = document.createElement('div');
+    typingRow.className = 'ai-chat-row assistant';
+    typingRow.dataset.typing = '1';
+    const typingBubble = document.createElement('div');
+    typingBubble.className = 'ai-chat-bubble';
+    typingBubble.textContent = 'Sto analizzando la tua richiesta...';
+    typingRow.appendChild(typingBubble);
+    aiChatMessages?.appendChild(typingRow);
+    if (aiChatMessages) aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
+
+    try {
+        const answer = await requestAiChatReply(message);
+        if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
+        pushAiChatMessage('assistant', answer || 'Non ho trovato una risposta utile. Riprova con una domanda piu specifica.');
+        setAiChatStatus('Risposta pronta.');
+    } catch (e) {
+        if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
+        pushAiChatMessage('assistant', buildLocalAiChatFallback(message));
+        setAiChatStatus('Risposta fornita in modalita locale.');
+    } finally {
+        setAiChatBusy(false);
+        aiChatInput?.focus();
+    }
+}
+
+function openAiChat() {
+    if (!aiChatOverlay) return;
+    if (authOverlay) authOverlay.style.display = 'none';
+    if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
+    if (friendsOverlay) friendsOverlay.style.display = 'none';
+    if (favoritesOverlay) favoritesOverlay.style.display = 'none';
+    if (companionsOverlay) companionsOverlay.style.display = 'none';
+    if (budgetOverlay) budgetOverlay.style.display = 'none';
+    if (myCarOverlay) myCarOverlay.style.display = 'none';
+
+    aiChatOverlay.style.display = 'flex';
+    setActiveMenu(aiChatBtn);
+    renderAiChatHistory();
+    setAiChatStatus('Pronto. Scrivi la tua domanda.');
+    aiChatInput?.focus();
+}
+
+function closeAiChat() {
+    if (aiChatOverlay) aiChatOverlay.style.display = 'none';
+    setAiChatStatus('');
+    setActiveMenu(homeBtn);
+}
+
 async function copyTripSummary() {
     if (!lastCalculatedTrip) {
         setTripActionFeedback('Calcola prima una tratta da copiare.');
@@ -6322,6 +6762,11 @@ function resetCalculator() {
     updateFuelPriceUI();
     hideError();
     setTripActionFeedback('');
+    lastTravelAiSnapshot = null;
+    if (travelAiPanel) travelAiPanel.style.display = 'none';
+    if (travelAiWeather) travelAiWeather.textContent = '';
+    if (travelAiImpact) travelAiImpact.textContent = '';
+    if (travelAiTips) travelAiTips.innerHTML = '';
     updateMyCarPreview();
 }
 
@@ -6388,8 +6833,10 @@ copySummaryBtn?.addEventListener('click', copyTripSummary);
 companionsBtn?.addEventListener('click', openCompanions);
 friendRequestsBtn?.addEventListener('click', openFriendRequestsView);
 friendsBtn?.addEventListener('click', openFriendsView);
+aiChatBtn?.addEventListener('click', openAiChat);
 closeFriendRequestsBtn?.addEventListener('click', closeFriendRequestsView);
 closeFriendsBtn?.addEventListener('click', closeFriendsView);
+closeAiChatBtn?.addEventListener('click', closeAiChat);
 closeCompanionsBtn?.addEventListener('click', closeCompanions);
 addCompanionBtn?.addEventListener('click', addCompanion);
 saveCompanionTripBtn?.addEventListener('click', saveCompanionTrip);
@@ -6516,6 +6963,14 @@ friendSearchInput?.addEventListener('keypress', (e) => {
 shareFavoritesToggle?.addEventListener('change', saveShareSettings);
 shareMyCarToggle?.addEventListener('change', saveShareSettings);
 shareCompanionsToggle?.addEventListener('change', saveShareSettings);
+aiChatSendBtn?.addEventListener('click', () => {
+    sendAiChatMessage().catch(() => {});
+});
+aiChatInput?.addEventListener('keypress', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    sendAiChatMessage().catch(() => {});
+});
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -6551,6 +7006,9 @@ document.addEventListener('keydown', (e) => {
         }
         if (friendsOverlay && friendsOverlay.style.display === 'flex') {
             closeFriendsView();
+        }
+        if (aiChatOverlay && aiChatOverlay.style.display === 'flex') {
+            closeAiChat();
         }
     }
 });
@@ -6705,6 +7163,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateInstallButtonState();
     closeSettingsMenu();
     syncSettingsMenuCloseVisibility();
+    loadAiChatHistory();
     window.addEventListener('resize', () => {
         syncSettingsMenuCloseVisibility();
         if (!window.matchMedia('(max-width: 768px)').matches) {
