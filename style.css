@@ -810,6 +810,85 @@ select:focus, input:focus {
     flex: 1;
 }
 
+.fuel-finder-card {
+    width: min(860px, 100%);
+    max-height: min(88vh, 900px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.fuel-finder-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(170px, 1fr)) auto;
+    gap: 10px;
+    align-items: end;
+}
+
+.fuel-finder-toolbar .form-group {
+    margin: 0;
+}
+
+.fuel-finder-toolbar .form-group label {
+    text-transform: none;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    letter-spacing: 0;
+    margin-bottom: 6px;
+}
+
+.fuel-finder-summary {
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(52, 211, 153, 0.38);
+    background: linear-gradient(145deg, rgba(16, 185, 129, 0.2), rgba(59, 130, 246, 0.14));
+    color: #eafff7;
+    line-height: 1.4;
+}
+
+.fuel-stations-list {
+    max-height: min(48vh, 460px);
+}
+
+.fuel-station-item {
+    align-items: flex-start;
+}
+
+.fuel-station-item .favorite-meta {
+    gap: 6px;
+}
+
+.fuel-station-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.fuel-station-price {
+    font-size: 20px;
+    font-weight: 700;
+    color: #fde68a;
+}
+
+.fuel-station-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.fuel-station-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.06);
+    color: #deebff;
+    font-size: 12px;
+}
+
 .modal-header {
     display: flex;
     justify-content: space-between;
@@ -982,6 +1061,15 @@ select:focus, input:focus {
     .ai-chat-actions button,
     .ai-chat-actions input {
         width: 100%;
+    }
+    .fuel-finder-toolbar {
+        grid-template-columns: 1fr;
+    }
+    .fuel-finder-toolbar button {
+        width: 100%;
+    }
+    .fuel-stations-list {
+        max-height: 42vh;
     }
 }
 

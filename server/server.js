@@ -40,6 +40,10 @@ const AI_CHAT_MAX_REPLY_CHARS = 900;
 const AI_CHAT_RATE_WINDOW_MS = 60 * 1000;
 const AI_CHAT_RATE_MAX_REQUESTS = 12;
 const aiChatRateBuckets = new Map();
+const FUEL_ZONE_API_URL = 'https://carburanti.mise.gov.it/ospzApi/search/zone';
+const FUEL_STATION_MIN_RADIUS_KM = 1;
+const FUEL_STATION_MAX_RADIUS_KM = 20;
+const FUEL_STATION_MAX_RESULTS = 180;
 
 function normalizeEmail(value = '') {
     return String(value || '').trim().toLowerCase();
@@ -373,6 +377,163 @@ async function requestOpenAiChatReply(message = '', history = [], context = {}) 
         const payload = await res.json();
         const reply = normalizeAiChatText(payload?.choices?.[0]?.message?.content || '', AI_CHAT_MAX_REPLY_CHARS);
         return reply || null;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+function clampNumber(value, min, max) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return min;
+    return Math.min(max, Math.max(min, numeric));
+}
+
+function normalizeFuelSearchType(value = '') {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return 'benzina';
+    if (raw === 'diesel' || raw === 'gasolio' || raw === 'ibrido-elettrico-diesel') return 'diesel';
+    if (raw === 'gpl') return 'gpl';
+    if (raw === 'metano' || raw === 'gnc' || raw === 'gnl' || raw === 'metano-benzina') return 'metano';
+    return 'benzina';
+}
+
+function fuelNameMatchesType(fuelName = '', targetType = 'benzina') {
+    const name = String(fuelName || '').trim().toLowerCase();
+    if (!name) return false;
+    const target = normalizeFuelSearchType(targetType);
+    if (target === 'diesel') return name.includes('gasolio') || name.includes('diesel');
+    if (target === 'gpl') return name.includes('gpl');
+    if (target === 'metano') return name.includes('metano') || name.includes('gnc') || name.includes('gnl');
+    return name.includes('benzina') || name.includes('super');
+}
+
+function parseFuelPrice(value) {
+    if (value === null || value === undefined) return null;
+    const normalized = String(value).replace(',', '.').trim();
+    const amount = Number(normalized);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    return Number(amount.toFixed(3));
+}
+
+function parseFuelIsSelf(value) {
+    if (typeof value === 'boolean') return value;
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return null;
+    if (raw === '1' || raw === 'true' || raw === 'self' || raw === 'self-service' || raw === 'self service') return true;
+    if (raw === '0' || raw === 'false' || raw === 'servito' || raw === 'service') return false;
+    return null;
+}
+
+function parseFuelTimestamp(value) {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+    const normalized = String(value).trim();
+    const match = normalized.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+    if (!match) return null;
+    const [, dd, mm, yyyy, hh = '00', min = '00'] = match;
+    const dt = new Date(`${yyyy}-${mm}-${dd}T${hh}:${min}:00`);
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt.toISOString();
+}
+
+function toRadians(value) {
+    return (Number(value) * Math.PI) / 180;
+}
+
+function haversineDistanceKm(lat1, lng1, lat2, lng2) {
+    const phi1 = toRadians(lat1);
+    const phi2 = toRadians(lat2);
+    const dPhi = toRadians(Number(lat2) - Number(lat1));
+    const dLambda = toRadians(Number(lng2) - Number(lng1));
+    const a = Math.sin(dPhi / 2) ** 2
+        + (Math.cos(phi1) * Math.cos(phi2) * (Math.sin(dLambda / 2) ** 2));
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return 6371 * c;
+}
+
+function getStationLatLng(row = {}) {
+    const location = row.location && typeof row.location === 'object' ? row.location : {};
+    const lat = Number(location.lat ?? location.latitude ?? row.lat ?? row.latitude);
+    const lng = Number(location.lng ?? location.lon ?? location.longitude ?? row.lng ?? row.lon ?? row.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+}
+
+function buildStationAddress(row = {}) {
+    if (typeof row.address === 'string' && row.address.trim()) return row.address.trim();
+    const location = row.location && typeof row.location === 'object' ? row.location : {};
+    if (typeof location.address === 'string' && location.address.trim()) return location.address.trim();
+
+    const street = row.street || row.via || location.street || location.via || '';
+    const houseNumber = row.houseNumber || row.civic || location.houseNumber || location.civic || '';
+    const city = row.city || row.comune || row.town || location.city || location.comune || location.town || '';
+    const province = row.province || location.province || '';
+    const parts = [
+        `${String(street || '').trim()} ${String(houseNumber || '').trim()}`.trim(),
+        String(city || '').trim(),
+        String(province || '').trim()
+    ].filter(Boolean);
+    return parts.join(', ');
+}
+
+function pickFuelCandidate(row = {}, fuelType = 'benzina') {
+    const fuels = Array.isArray(row.fuels) ? row.fuels : [];
+    if (!fuels.length) return null;
+
+    const matches = fuels
+        .filter((fuel) => fuelNameMatchesType(fuel.name || fuel.fuel || '', fuelType))
+        .map((fuel) => ({
+            fuelName: String(fuel.name || fuel.fuel || '').trim(),
+            price: parseFuelPrice(fuel.price ?? fuel.prezzo ?? fuel.amount),
+            isSelf: parseFuelIsSelf(fuel.isSelf ?? fuel.self ?? fuel.isSelfService ?? fuel.service),
+            updatedAt: parseFuelTimestamp(fuel.updateDate || fuel.insertDate || fuel.date || row.insertDate || row.updateDate),
+            raw: fuel
+        }))
+        .filter((fuel) => Number.isFinite(fuel.price));
+
+    if (!matches.length) return null;
+    matches.sort((a, b) => a.price - b.price);
+    return matches[0];
+}
+
+async function fetchFuelStationsFromMimit({ lat, lng, radiusKm }) {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = setTimeout(() => {
+        try {
+            controller && controller.abort();
+        } catch (e) {}
+    }, 9500);
+
+    try {
+        const payload = {
+            points: [{ lat: Number(lat), lng: Number(lng) }],
+            radius: Number(radiusKm)
+        };
+        const apiRes = await fetch(FUEL_ZONE_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+            },
+            body: JSON.stringify(payload),
+            signal: controller ? controller.signal : undefined
+        });
+
+        if (!apiRes.ok) {
+            const detail = await apiRes.text().catch(() => '');
+            throw new Error(detail || `Fuel zone API HTTP ${apiRes.status}`);
+        }
+
+        const data = await apiRes.json();
+        const rows = Array.isArray(data?.results)
+            ? data.results
+            : Array.isArray(data?.items)
+                ? data.items
+                : Array.isArray(data)
+                    ? data
+                    : [];
+        return rows;
     } finally {
         clearTimeout(timeoutId);
     }
@@ -872,6 +1033,78 @@ app.delete('/api/mycar-photo/:modelId', authMiddleware, (req, res) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+app.post('/api/fuel-stations/nearby', async (req, res) => {
+    const incoming = req.body || {};
+    const lat = Number(incoming.lat);
+    const lng = Number(incoming.lng);
+    const fuelType = normalizeFuelSearchType(incoming.fuelType || 'benzina');
+    const radiusKm = clampNumber(
+        Number(incoming.radiusKm || 5),
+        FUEL_STATION_MIN_RADIUS_KM,
+        FUEL_STATION_MAX_RADIUS_KM
+    );
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return res.status(400).json({ error: 'Coordinate non valide' });
+    }
+
+    try {
+        const rows = await fetchFuelStationsFromMimit({ lat, lng, radiusKm });
+        const dedupe = new Set();
+        const items = [];
+
+        rows.forEach((row = {}) => {
+            const coords = getStationLatLng(row);
+            if (!coords) return;
+
+            const distanceKm = haversineDistanceKm(lat, lng, coords.lat, coords.lng);
+            if (!Number.isFinite(distanceKm) || distanceKm > (radiusKm + 0.8)) return;
+
+            const fuel = pickFuelCandidate(row, fuelType);
+            if (!fuel || !Number.isFinite(fuel.price)) return;
+
+            const stationId = String(row.id ?? row.idImpianto ?? row.stationId ?? '');
+            const stationName = String(row.name || row.stationName || row.gestore || '').trim() || 'Benzinaio';
+            const stationBrand = String(row.brand || row.marca || '').trim();
+            const address = buildStationAddress(row) || 'Indirizzo non disponibile';
+            const dedupeKey = stationId || `${stationName.toLowerCase()}|${coords.lat.toFixed(5)}|${coords.lng.toFixed(5)}|${fuel.price}`;
+            if (dedupe.has(dedupeKey)) return;
+            dedupe.add(dedupeKey);
+
+            items.push({
+                id: stationId || dedupeKey,
+                name: stationName,
+                brand: stationBrand || stationName,
+                address,
+                lat: Number(coords.lat.toFixed(6)),
+                lng: Number(coords.lng.toFixed(6)),
+                distanceKm: Number(distanceKm.toFixed(2)),
+                price: Number(fuel.price.toFixed(3)),
+                fuelName: fuel.fuelName || fuelType,
+                isSelf: fuel.isSelf,
+                lastUpdate: fuel.updatedAt || null
+            });
+        });
+
+        items.sort((a, b) => {
+            if (a.price !== b.price) return a.price - b.price;
+            if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
+            return String(a.brand || a.name || '').localeCompare(String(b.brand || b.name || ''), 'it');
+        });
+
+        return res.json({
+            source: 'mimit-ospz',
+            center: { lat, lng },
+            fuelType,
+            radiusKm,
+            items: items.slice(0, FUEL_STATION_MAX_RESULTS),
+            updatedAt: Date.now()
+        });
+    } catch (err) {
+        return res.status(502).json({ error: 'Ricerca benzinai temporaneamente non disponibile' });
+    }
+});
 
 app.post('/api/ai/chat', async (req, res) => {
     const incoming = req.body || {};
