@@ -695,7 +695,7 @@ async function renderUserLocationOnMap() {
 }
 
 async function fetchRouteFromGoogle(from, to) {
-    const res = await fetch(`${API_BASE}/google/routes`, {
+    const res = await fetch(`${getApiBase()}/google/routes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ origin: from, destination: to })
@@ -805,7 +805,7 @@ async function fetchRouteFromOSRMCoords(start, end) {
 }
 
 async function reverseGeocodeGoogle(lat, lng) {
-    const res = await fetch(`${API_BASE}/google/reverse-geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
+    const res = await fetch(`${getApiBase()}/google/reverse-geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
     if (!res.ok) return null;
     const data = await res.json();
     const result = data.results && data.results[0];
@@ -2380,7 +2380,7 @@ async function fetchOfficialModelNames(brandKey = '', brandLabel = '', yearHint 
     const make = resolveOfficialMakeName(brandKey, brandLabel);
     const params = new URLSearchParams({ make });
     if (normalizedYear) params.set('year', String(normalizedYear));
-    const endpoint = `${API_BASE}/official-models?${params.toString()}`;
+    const endpoint = `${getApiBase()}/official-models?${params.toString()}`;
 
     const request = fetch(endpoint, { headers: { Accept: 'application/json' } })
         .then(async (res) => {
@@ -2426,7 +2426,7 @@ async function fetchOfficialModelVariantsByYear(brandKey = '', brandLabel = '', 
         yearFrom: String(yearFrom),
         yearTo: String(yearTo)
     });
-    const endpoint = `${API_BASE}/official-models?${params.toString()}`;
+    const endpoint = `${getApiBase()}/official-models?${params.toString()}`;
 
     const request = fetch(endpoint, { headers: { Accept: 'application/json' } })
         .then(async (res) => {
@@ -4168,9 +4168,11 @@ const API_BASE = (() => {
     if (typeof window === 'undefined') return 'https://drivercalc.onrender.com/api';
     const configuredBase = String(window.DRIVECALC_API_BASE || '').trim().replace(/\/+$/, '');
     if (configuredBase) return configuredBase;
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
     return isLocal ? 'http://localhost:3001/api' : 'https://drivercalc.onrender.com/api';
 })();
+const LOCAL_API_BASE = 'http://localhost:3001/api';
+let apiBaseRuntime = API_BASE;
 
 let favorites = [];
 let lastCalculatedTrip = null;
@@ -4209,48 +4211,88 @@ function buildAuthHeaders() {
     return {};
 }
 
+function getApiBase() {
+    return apiBaseRuntime || API_BASE;
+}
+
+function isLocalPageContext() {
+    if (typeof window === 'undefined') return false;
+    const host = String(window.location.hostname || '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || window.location.protocol === 'file:';
+}
+
+function canFallbackToLocalApi() {
+    if (!isLocalPageContext()) return false;
+    return getApiBase() !== LOCAL_API_BASE;
+}
+
 async function apiRequest(path, method = 'GET', body) {
-    let res;
-    try {
-        res = await fetch(`${API_BASE}${path}`, {
-            method,
-            headers: {
-                'Content-Type': 'application/json',
-                ...buildAuthHeaders()
-            },
-            credentials: 'include',
-            body: body ? JSON.stringify(body) : undefined
-        });
-    } catch (e) {
-        throw new Error('Server API non raggiungibile');
+    const requestOptions = {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
+            ...buildAuthHeaders()
+        },
+        credentials: 'include',
+        body: body ? JSON.stringify(body) : undefined
+    };
+
+    const endpoints = [getApiBase()];
+    if (canFallbackToLocalApi()) {
+        endpoints.push(LOCAL_API_BASE);
     }
 
-    if (!res.ok) {
-        const rawText = await res.text().catch(() => '');
-        let err = {};
+    let lastError = null;
+    for (let i = 0; i < endpoints.length; i += 1) {
+        const base = endpoints[i];
+        let res;
         try {
-            err = rawText ? JSON.parse(rawText) : {};
+            res = await fetch(`${base}${path}`, requestOptions);
         } catch (e) {
-            err = {};
+            lastError = new Error('Server API non raggiungibile');
+            continue;
         }
 
-        if (res.status === 401) {
-            throw new Error(err.error || 'Sessione scaduta, rifai login');
-        }
-        if (res.status === 404 && path.startsWith('/friends') && !err.error) {
-            throw new Error('Funzione amici non disponibile sul server (deploy non aggiornato)');
-        }
-        if (res.status === 404 && path.startsWith('/share-settings') && !err.error) {
-            throw new Error('Impostazioni condivisione non disponibili sul server');
-        }
-        if (res.status === 404 && path.startsWith('/auth/') && !err.error) {
-            throw new Error('Funzione account non disponibile sul server (deploy non aggiornato)');
+        if (!res.ok) {
+            const rawText = await res.text().catch(() => '');
+            let err = {};
+            try {
+                err = rawText ? JSON.parse(rawText) : {};
+            } catch (e) {
+                err = {};
+            }
+
+            const shouldTryLocalFallback =
+                i < endpoints.length - 1 &&
+                (res.status >= 500 || (res.status === 404 && path.startsWith('/auth/')));
+            if (shouldTryLocalFallback) {
+                lastError = new Error(err.error || `Errore API (${res.status})`);
+                continue;
+            }
+
+            if (res.status === 401) {
+                throw new Error(err.error || 'Sessione scaduta, rifai login');
+            }
+            if (res.status === 404 && path.startsWith('/friends') && !err.error) {
+                throw new Error('Funzione amici non disponibile sul server (deploy non aggiornato)');
+            }
+            if (res.status === 404 && path.startsWith('/share-settings') && !err.error) {
+                throw new Error('Impostazioni condivisione non disponibili sul server');
+            }
+            if (res.status === 404 && path.startsWith('/auth/') && !err.error) {
+                throw new Error('Funzione account non disponibile sul server (deploy non aggiornato)');
+            }
+
+            throw new Error(err.error || `Errore API (${res.status})`);
         }
 
-        throw new Error(err.error || `Errore API (${res.status})`);
+        if (apiBaseRuntime !== base) {
+            apiBaseRuntime = base;
+        }
+        return res.json().catch(() => ({}));
     }
 
-    return res.json().catch(() => ({}));
+    throw lastError || new Error('Server API non raggiungibile');
 }
 
 function setAuthFeedback(message = '', type = 'info') {
@@ -4434,7 +4476,7 @@ async function fetchFriendSearchSuggestions(query = '') {
     friendSearchAbortController = new AbortController();
 
     try {
-        const res = await fetch(`${API_BASE}/friends/search?q=${encodeURIComponent(q)}`, {
+        const res = await fetch(`${getApiBase()}/friends/search?q=${encodeURIComponent(q)}`, {
             headers: {
                 Accept: 'application/json',
                 ...buildAuthHeaders()
@@ -4890,7 +4932,7 @@ async function clearAuth({ remote = true } = {}) {
 
     if (remote) {
         try {
-            await fetch(`${API_BASE}/auth/logout`, {
+            await fetch(`${getApiBase()}/auth/logout`, {
                 method: 'POST',
                 headers,
                 credentials: 'include'
@@ -4919,12 +4961,8 @@ async function loadAccountProfile() {
 
 async function restoreAuthSession() {
     try {
-        const res = await fetch(`${API_BASE}/auth/me`, {
-            method: 'GET',
-            credentials: 'include'
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok || !payload?.user) return false;
+        const payload = await apiRequest('/auth/me');
+        if (!payload?.user) return false;
         authToken = 'cookie-session';
         currentUser = payload.user;
         accountProfile = payload.user;
