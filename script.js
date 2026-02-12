@@ -4164,15 +4164,49 @@ const FAVORITES_KEY = 'drivecalc_favorites_v1';
 const COMPANIONS_KEY = 'drivecalc_companions_v1';
 const COMPLETED_KEY = 'drivecalc_completed_v1';
 const MYCAR_PHOTOS_KEY = 'drivecalc_mycar_photos_v1';
-const API_BASE = (() => {
-    if (typeof window === 'undefined') return 'https://drivercalc.onrender.com/api';
-    const configuredBase = String(window.DRIVECALC_API_BASE || '').trim().replace(/\/+$/, '');
-    if (configuredBase) return configuredBase;
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
-    return isLocal ? 'http://localhost:3001/api' : 'https://drivercalc.onrender.com/api';
-})();
 const LOCAL_API_BASE = 'http://localhost:3001/api';
-let apiBaseRuntime = API_BASE;
+const CLOUD_API_BASES = ['https://drivercalc.onrender.com/api', 'https://drivecalc.onrender.com/api'];
+
+function normalizeApiBase(value = '') {
+    return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function isLocalPageContext() {
+    if (typeof window === 'undefined') return false;
+    const host = String(window.location.hostname || '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || window.location.protocol === 'file:';
+}
+
+function buildApiBaseCandidates() {
+    if (typeof window === 'undefined') {
+        return [...CLOUD_API_BASES];
+    }
+
+    const configuredBase = normalizeApiBase(window.DRIVECALC_API_BASE);
+    const isLocalPage = isLocalPageContext();
+    const sameOriginApi = normalizeApiBase(`${window.location.origin}/api`);
+    const candidates = [];
+    const pushCandidate = (value) => {
+        const normalized = normalizeApiBase(value);
+        if (!normalized) return;
+        if (candidates.includes(normalized)) return;
+        candidates.push(normalized);
+    };
+
+    pushCandidate(configuredBase);
+
+    if (isLocalPage) {
+        pushCandidate(LOCAL_API_BASE);
+    } else {
+        pushCandidate(sameOriginApi);
+    }
+
+    CLOUD_API_BASES.forEach(pushCandidate);
+    return candidates.length ? candidates : [LOCAL_API_BASE];
+}
+
+const API_BASES = buildApiBaseCandidates();
+let apiBaseRuntime = API_BASES[0];
 
 let favorites = [];
 let lastCalculatedTrip = null;
@@ -4212,18 +4246,7 @@ function buildAuthHeaders() {
 }
 
 function getApiBase() {
-    return apiBaseRuntime || API_BASE;
-}
-
-function isLocalPageContext() {
-    if (typeof window === 'undefined') return false;
-    const host = String(window.location.hostname || '').toLowerCase();
-    return host === 'localhost' || host === '127.0.0.1' || window.location.protocol === 'file:';
-}
-
-function canFallbackToLocalApi() {
-    if (!isLocalPageContext()) return false;
-    return getApiBase() !== LOCAL_API_BASE;
+    return apiBaseRuntime || API_BASES[0] || LOCAL_API_BASE;
 }
 
 async function apiRequest(path, method = 'GET', body) {
@@ -4237,10 +4260,8 @@ async function apiRequest(path, method = 'GET', body) {
         body: body ? JSON.stringify(body) : undefined
     };
 
-    const endpoints = [getApiBase()];
-    if (canFallbackToLocalApi()) {
-        endpoints.push(LOCAL_API_BASE);
-    }
+    const currentBase = getApiBase();
+    const endpoints = [currentBase, ...API_BASES.filter((base) => base !== currentBase)];
 
     let lastError = null;
     for (let i = 0; i < endpoints.length; i += 1) {
