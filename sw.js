@@ -1,9 +1,9 @@
-const CACHE_VERSION = 'drivecalc-cache-v2';
+const CACHE_VERSION = 'drivecalc-cache-v3';
 const APP_SHELL = [
   './',
   'index.html',
-  'style.css?v=5',
-  'script.js?v=23',
+  'style.css?v=6',
+  'script.js?v=24',
   'config.public.js?v=1',
   'car_models.json',
   'background-travel.jpg',

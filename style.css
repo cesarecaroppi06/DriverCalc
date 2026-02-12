@@ -570,6 +570,39 @@ select:focus, input:focus {
     color: #c8d7ff;
 }
 
+.travel-ai-panel {
+    margin-bottom: 16px;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    background: linear-gradient(145deg, rgba(59, 130, 246, 0.16), rgba(16, 185, 129, 0.08));
+}
+
+.travel-ai-panel h3 {
+    color: #dbeafe;
+    margin-bottom: 8px;
+    font-size: 18px;
+}
+
+.travel-ai-weather,
+.travel-ai-impact {
+    color: #e9ecf5;
+    margin-bottom: 6px;
+    line-height: 1.5;
+}
+
+.travel-ai-tips {
+    margin: 4px 0 0 0;
+    padding-left: 18px;
+    color: #e2e8f0;
+    display: grid;
+    gap: 6px;
+}
+
+.travel-ai-tips li {
+    line-height: 1.45;
+}
+
 .completed-row {
     display: flex;
     align-items: flex-start;

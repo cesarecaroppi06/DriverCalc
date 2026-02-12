@@ -11,7 +11,7 @@
     <link rel="icon" type="image/png" href="logo.png?v=3">
     <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=5">
+    <link rel="stylesheet" href="style.css?v=6">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>
 <body>
@@ -420,6 +420,13 @@
                     <p><strong>Percorso:</strong> <span id="routeDetail">-</span></p>
                     <p><strong>Dettagli Pedaggi:</strong> <span id="tollDetail">-</span></p>
                     <p><strong>Tempo Stimato:</strong> <span id="timeDetail">-</span> (a 100 km/h medi)</p>
+                </div>
+
+                <div id="travelAiPanel" class="travel-ai-panel" style="display:none;">
+                    <h3>🤖 Assistente Viaggio AI</h3>
+                    <p id="travelAiWeather" class="travel-ai-weather">Analisi meteo in corso...</p>
+                    <p id="travelAiImpact" class="travel-ai-impact"></p>
+                    <ul id="travelAiTips" class="travel-ai-tips"></ul>
                 </div>
 
                 <div class="completed-row">
@@ -838,6 +845,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="config.public.js?v=1"></script>
-    <script src="script.js?v=23"></script>
+    <script src="script.js?v=24"></script>
 </body>
 </html>

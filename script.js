@@ -3107,6 +3107,10 @@ const calculateBtn = document.getElementById('calculateBtn');
 const resetBtn = document.getElementById('resetBtn');
 const resultsSection = document.getElementById('results');
 const errorDiv = document.getElementById('error');
+const travelAiPanel = document.getElementById('travelAiPanel');
+const travelAiWeather = document.getElementById('travelAiWeather');
+const travelAiImpact = document.getElementById('travelAiImpact');
+const travelAiTips = document.getElementById('travelAiTips');
 const homeBtn = document.getElementById('homeBtn');
 const infoBtn = document.getElementById('infoBtn');
 const infoPage = document.getElementById('infoPage');
@@ -3982,6 +3986,324 @@ function getSegmentDistances(route, context = {}) {
     return buildSegmentDistribution(totalDistance, estimatedHighway);
 }
 
+const WEATHER_CODE_LABELS = {
+    0: 'cielo sereno',
+    1: 'prevalentemente sereno',
+    2: 'parzialmente nuvoloso',
+    3: 'coperto',
+    45: 'nebbia',
+    48: 'nebbia intensa',
+    51: 'pioviggine leggera',
+    53: 'pioviggine moderata',
+    55: 'pioviggine intensa',
+    56: 'pioviggine gelata',
+    57: 'pioviggine gelata intensa',
+    61: 'pioggia debole',
+    63: 'pioggia moderata',
+    65: 'pioggia intensa',
+    66: 'pioggia gelata',
+    67: 'pioggia gelata intensa',
+    71: 'neve debole',
+    73: 'neve moderata',
+    75: 'neve intensa',
+    77: 'nevischio',
+    80: 'rovesci deboli',
+    81: 'rovesci moderati',
+    82: 'rovesci forti',
+    85: 'rovesci di neve',
+    86: 'rovesci di neve forti',
+    95: 'temporale',
+    96: 'temporale con grandine',
+    99: 'temporale forte con grandine'
+};
+
+const WEATHER_SEVERE_CODES = new Set([71, 73, 75, 77, 85, 86, 95, 96, 99]);
+
+function getWeatherCodeLabel(code) {
+    const normalized = Number(code);
+    return WEATHER_CODE_LABELS[normalized] || 'condizioni variabili';
+}
+
+function formatEuro(value) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return '-';
+    return `€${amount.toFixed(2)}`;
+}
+
+function getNearestHourlyIndex(times = [], targetDate = new Date()) {
+    if (!Array.isArray(times) || !times.length) return -1;
+    const targetTs = targetDate instanceof Date ? targetDate.getTime() : new Date(targetDate).getTime();
+    if (!Number.isFinite(targetTs)) return -1;
+    let bestIdx = -1;
+    let bestDiff = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < times.length; i += 1) {
+        const ts = new Date(times[i]).getTime();
+        if (!Number.isFinite(ts)) continue;
+        const diff = Math.abs(ts - targetTs);
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
+}
+
+function formatHourFromIso(isoString = '') {
+    const dt = new Date(isoString);
+    if (Number.isNaN(dt.getTime())) return '--:--';
+    return dt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+}
+
+function calculateWeatherImpactPercent({ tempC = 20, windKmh = 0, precipitationMm = 0, precipitationProb = 0, weatherCode = 0 } = {}) {
+    let impact = 0;
+    const reasons = [];
+
+    if (tempC <= 0) {
+        impact += 10;
+        reasons.push('temperature vicine o sotto zero');
+    } else if (tempC < 8) {
+        impact += 6;
+        reasons.push('aria fredda');
+    } else if (tempC < 15) {
+        impact += 3;
+    } else if (tempC > 34) {
+        impact += 8;
+        reasons.push('caldo intenso con clima acceso');
+    } else if (tempC > 29) {
+        impact += 5;
+        reasons.push('temperature elevate');
+    }
+
+    if (windKmh >= 40) {
+        impact += 8;
+        reasons.push('vento forte');
+    } else if (windKmh >= 28) {
+        impact += 5;
+    } else if (windKmh >= 18) {
+        impact += 2;
+    }
+
+    if (precipitationMm >= 2) {
+        impact += 8;
+        reasons.push('pioggia significativa');
+    } else if (precipitationMm >= 0.6) {
+        impact += 5;
+    } else if (precipitationProb >= 70) {
+        impact += 4;
+    } else if (precipitationProb >= 40) {
+        impact += 2;
+    }
+
+    if (WEATHER_SEVERE_CODES.has(Number(weatherCode))) {
+        impact += 7;
+        reasons.push(getWeatherCodeLabel(weatherCode));
+    }
+
+    const isFavorable = tempC >= 16 && tempC <= 24 && windKmh < 12 && precipitationMm === 0 && precipitationProb < 20 && !WEATHER_SEVERE_CODES.has(Number(weatherCode));
+    if (isFavorable) {
+        impact -= 2;
+        reasons.push('condizioni meteo favorevoli');
+    }
+
+    const normalizedImpact = clamp(Number(impact.toFixed(1)), -3, 28);
+    return {
+        impactPercent: normalizedImpact,
+        reasons
+    };
+}
+
+async function fetchWeatherForRoute(lat, lng) {
+    const query = new URLSearchParams({
+        latitude: String(lat),
+        longitude: String(lng),
+        current: 'temperature_2m,precipitation,wind_speed_10m,weather_code',
+        hourly: 'temperature_2m,precipitation_probability,precipitation,wind_speed_10m,weather_code',
+        forecast_days: '2',
+        timezone: 'auto'
+    });
+    const url = `https://api.open-meteo.com/v1/forecast?${query.toString()}`;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = setTimeout(() => {
+        try {
+            controller && controller.abort();
+        } catch (e) {}
+    }, 4800);
+    try {
+        const res = await fetch(url, {
+            headers: { Accept: 'application/json' },
+            signal: controller ? controller.signal : undefined
+        });
+        if (!res.ok) {
+            throw new Error('weather api not available');
+        }
+        return await res.json();
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+function buildBaseTravelAiTips(base = {}) {
+    const tips = [];
+    const totalDistance = Number(base.totalDistance) || 0;
+    const highwayDistance = Number(base.highwayDistance) || 0;
+    const urbanDistance = Number(base.urbanDistance) || 0;
+    const baseFuelCost = Number(base.baseFuelCost) || 0;
+    const tollTotal = Number(base.tollTotal) || 0;
+
+    if (highwayDistance >= 80) {
+        const estimatedSaving = baseFuelCost * 0.07;
+        tips.push(`In autostrada, mantenere 110-120 km/h può farti risparmiare circa ${formatEuro(estimatedSaving)} di carburante.`);
+    }
+
+    if (tollTotal >= 15) {
+        const possibleSaving = Math.max(tollTotal * 0.65, 6);
+        const extraMinutes = Math.max(15, Math.round((highwayDistance / SPEEDS.highway) * 35));
+        tips.push(`Se non hai urgenza, valuta percorso con meno pedaggi: risparmio potenziale ${formatEuro(possibleSaving)} con circa +${extraMinutes} min.`);
+    }
+
+    if (urbanDistance >= 12) {
+        tips.push('Per ridurre consumo urbano e stop-and-go, prova a evitare le fasce 7:30-9:30 e 17:30-19:30.');
+    }
+
+    if (totalDistance >= 320) {
+        tips.push('Tratta lunga: pianifica una pausa tecnica a metà viaggio per mantenere guida fluida e consumo stabile.');
+    }
+
+    if (!tips.length) {
+        tips.push('Percorso bilanciato: mantieni accelerazioni progressive e pressione gomme corretta per ottimizzare i consumi.');
+    }
+
+    return tips;
+}
+
+function renderTravelAiPanel({ weatherLine = '', impactLine = '', tips = [] } = {}) {
+    if (!travelAiPanel || !travelAiWeather || !travelAiImpact || !travelAiTips) return;
+    travelAiPanel.style.display = 'block';
+    travelAiWeather.textContent = weatherLine;
+    travelAiImpact.textContent = impactLine;
+    travelAiTips.innerHTML = '';
+    const items = Array.isArray(tips) ? tips : [];
+    items.slice(0, 5).forEach((tip) => {
+        if (!tip) return;
+        const li = document.createElement('li');
+        li.textContent = tip;
+        travelAiTips.appendChild(li);
+    });
+}
+
+async function runTravelAiAnalysis(base = {}) {
+    if (!travelAiPanel) return;
+    const requestId = ++travelAiRequestId;
+    const baseTips = buildBaseTravelAiTips(base);
+    renderTravelAiPanel({
+        weatherLine: 'Meteo sul percorso: analisi in corso...',
+        impactLine: 'Valutazione impatto consumi in tempo reale...',
+        tips: baseTips
+    });
+
+    const midLat = (Number(base.fromLat) + Number(base.toLat)) / 2;
+    const midLng = (Number(base.fromLng) + Number(base.toLng)) / 2;
+    let weatherPayload = null;
+    try {
+        weatherPayload = await fetchWeatherForRoute(midLat, midLng);
+    } catch (err) {
+        weatherPayload = null;
+    }
+
+    if (requestId !== travelAiRequestId) return;
+
+    if (!weatherPayload || !weatherPayload.current || !weatherPayload.hourly) {
+        renderTravelAiPanel({
+            weatherLine: 'Meteo sul percorso non disponibile in tempo reale. Uso stima standard.',
+            impactLine: 'Impatto consumi meteo: non calcolabile ora.',
+            tips: baseTips
+        });
+        return;
+    }
+
+    const current = weatherPayload.current || {};
+    const hourly = weatherPayload.hourly || {};
+    const nearestIdx = getNearestHourlyIndex(hourly.time || [], current.time || new Date());
+    const currentProb = nearestIdx >= 0 ? Number(hourly.precipitation_probability?.[nearestIdx] || 0) : 0;
+    const currentImpact = calculateWeatherImpactPercent({
+        tempC: Number(current.temperature_2m || 20),
+        windKmh: Number(current.wind_speed_10m || 0),
+        precipitationMm: Number(current.precipitation || 0),
+        precipitationProb: currentProb,
+        weatherCode: Number(current.weather_code || 0)
+    });
+
+    const baseTotalDistance = Number(base.totalDistance) || 0;
+    const baseFuelCost = Number(base.baseFuelCost) || 0;
+    const baseTotalCost = Number(base.baseTotalCost) || 0;
+    const tollTotal = Number(base.tollTotal) || 0;
+    const baseConsumption = Number(base.consumptionPer100) || 0;
+    const fuelPrice = Number(base.fuelPrice) || 0;
+
+    const adjustedConsumption = baseConsumption * (1 + (currentImpact.impactPercent / 100));
+    const adjustedFuelCost = (baseTotalDistance * adjustedConsumption / 100) * fuelPrice;
+    const adjustedTotalCost = adjustedFuelCost + tollTotal;
+    const deltaTotal = adjustedTotalCost - baseTotalCost;
+    const deltaFuel = adjustedFuelCost - baseFuelCost;
+
+    const nowTs = Date.now();
+    const nextWindowTs = nowTs + (12 * 60 * 60 * 1000);
+    let bestWindow = null;
+    const times = Array.isArray(hourly.time) ? hourly.time : [];
+    for (let i = 0; i < times.length; i += 1) {
+        const ts = new Date(times[i]).getTime();
+        if (!Number.isFinite(ts)) continue;
+        if (ts < nowTs + (30 * 60 * 1000) || ts > nextWindowTs) continue;
+        const hourlyImpact = calculateWeatherImpactPercent({
+            tempC: Number(hourly.temperature_2m?.[i] || 20),
+            windKmh: Number(hourly.wind_speed_10m?.[i] || 0),
+            precipitationMm: Number(hourly.precipitation?.[i] || 0),
+            precipitationProb: Number(hourly.precipitation_probability?.[i] || 0),
+            weatherCode: Number(hourly.weather_code?.[i] || 0)
+        });
+        if (!bestWindow || hourlyImpact.impactPercent < bestWindow.impactPercent) {
+            bestWindow = {
+                timeIso: times[i],
+                impactPercent: hourlyImpact.impactPercent
+            };
+        }
+    }
+
+    const weatherLabel = getWeatherCodeLabel(Number(current.weather_code || 0));
+    const weatherLine = `Meteo sul percorso: ${weatherLabel}, ${Number(current.temperature_2m || 0).toFixed(0)}°C, vento ${Number(current.wind_speed_10m || 0).toFixed(0)} km/h.`;
+
+    let impactLine = '';
+    const deltaTotalLabel = `${deltaTotal >= 0 ? '+' : '-'}${formatEuro(Math.abs(deltaTotal))}`;
+    if (currentImpact.impactPercent > 0.2) {
+        impactLine = `Impatto stimato meteo: +${currentImpact.impactPercent.toFixed(1)}% consumi. Totale aggiornato: ${formatEuro(adjustedTotalCost)} (${deltaTotalLabel} rispetto alla stima base).`;
+    } else if (currentImpact.impactPercent < -0.2) {
+        impactLine = `Condizioni favorevoli: ${currentImpact.impactPercent.toFixed(1)}% consumi. Totale aggiornato: ${formatEuro(adjustedTotalCost)}.`;
+    } else {
+        impactLine = `Impatto meteo quasi neutro. Totale aggiornato: ${formatEuro(adjustedTotalCost)}.`;
+    }
+
+    const tips = [...baseTips];
+    if (deltaFuel > 0.5) {
+        tips.unshift(`Con il meteo attuale il carburante può costare circa ${formatEuro(deltaFuel)} in più su questa tratta.`);
+    } else if (deltaFuel < -0.5) {
+        tips.unshift(`Le condizioni meteo possono farti risparmiare circa ${formatEuro(Math.abs(deltaFuel))} sul carburante.`);
+    }
+
+    if (bestWindow && (currentImpact.impactPercent - bestWindow.impactPercent) >= 1.2) {
+        tips.push(`Partendo verso le ${formatHourFromIso(bestWindow.timeIso)} l'impatto meteo scende a circa ${bestWindow.impactPercent.toFixed(1)}% sui consumi.`);
+    }
+
+    if (currentImpact.reasons.length) {
+        tips.push(`Fattori meteo rilevati: ${currentImpact.reasons.slice(0, 2).join(', ')}.`);
+    }
+
+    renderTravelAiPanel({
+        weatherLine,
+        impactLine,
+        tips
+    });
+}
+
 // Calcola il costo del viaggio
 async function calculateTrip() {
     if (isCalculatingTrip) return;
@@ -4152,6 +4474,23 @@ async function calculateTrip() {
             consumptionPer100: consumptionPer100,
             estimatedTime: estimatedTimeMinutes
         });
+
+        runTravelAiAnalysis({
+            departure,
+            arrival,
+            totalDistance,
+            highwayDistance,
+            urbanDistance,
+            tollTotal: parseFloat(tollCost) + parseFloat(tollBoothsCost),
+            baseFuelCost: fuelCost,
+            baseTotalCost: totalCost,
+            consumptionPer100,
+            fuelPrice,
+            fromLat: fromLocation.lat,
+            fromLng: fromLocation.lng,
+            toLat: toLocation.lat,
+            toLng: toLocation.lng
+        }).catch(() => {});
         
         hideError();
         setTripActionFeedback('Calcolo completato. Puoi salvare o copiare il riepilogo.');
@@ -4284,6 +4623,7 @@ let selectedFriendId = '';
 let imagePreviewOverlay = null;
 let imagePreviewImage = null;
 let deferredInstallPrompt = null;
+let travelAiRequestId = 0;
 let shareSettings = {
     shareFavorites: true,
     shareMyCar: true,
