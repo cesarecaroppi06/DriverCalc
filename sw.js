@@ -1,9 +1,9 @@
-const CACHE_VERSION = 'drivecalc-cache-v5';
+const CACHE_VERSION = 'drivecalc-cache-v6';
 const APP_SHELL = [
   './',
   'index.html',
-  'style.css?v=8',
-  'script.js?v=26',
+  'style.css?v=9',
+  'script.js?v=27',
   'config.public.js?v=1',
   'car_models.json',
   'background-travel.jpg',
@@ -35,6 +35,27 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+
+  const isNavigationRequest = request.mode === 'navigate';
+  const isIndexRequest =
+    url.pathname === '/' ||
+    url.pathname.endsWith('/index.html') ||
+    url.pathname === '/index.html';
+
+  if (isNavigationRequest || isIndexRequest) {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_VERSION).then((cache) => {
+            cache.put('index.html', responseClone).catch(() => {});
+          });
+          return networkResponse;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('index.html')))
+    );
+    return;
+  }
 
   const isApi = url.pathname.startsWith('/api/');
   if (isApi) {

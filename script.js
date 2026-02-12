@@ -7388,7 +7388,8 @@ async function registerServiceWorker() {
     if (typeof window === 'undefined') return;
     if (!('serviceWorker' in navigator)) return;
     try {
-        await navigator.serviceWorker.register('./sw.js');
+        const registration = await navigator.serviceWorker.register('./sw.js');
+        registration.update().catch(() => {});
     } catch (err) {
         // Ignore: app works also without offline cache.
     }
