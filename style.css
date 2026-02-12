@@ -1080,8 +1080,8 @@ select:focus, input:focus {
 }
 
 .friend-card-avatar {
-    width: 44px;
-    height: 44px;
+    width: 52px;
+    height: 52px;
     border-radius: 12px;
     object-fit: cover;
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -1117,13 +1117,20 @@ select:focus, input:focus {
 }
 
 .friend-profile-avatar {
-    width: 62px;
-    height: 62px;
+    width: 96px;
+    height: 96px;
     border-radius: 15px;
     object-fit: cover;
     border: 1px solid rgba(255, 255, 255, 0.26);
     background: rgba(255, 255, 255, 0.08);
     flex-shrink: 0;
+    cursor: zoom-in;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.friend-profile-avatar:hover {
+    transform: scale(1.03);
+    border-color: rgba(254, 202, 202, 0.8);
 }
 
 .friend-profile-meta {
@@ -1149,12 +1156,69 @@ select:focus, input:focus {
 }
 
 .friend-shared-photo {
-    width: 130px;
-    height: 86px;
+    width: 220px;
+    height: 144px;
     object-fit: cover;
     border-radius: 12px;
     border: 1px solid rgba(125, 211, 252, 0.28);
     background: rgba(255, 255, 255, 0.04);
+    cursor: zoom-in;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.friend-shared-photo:hover {
+    transform: scale(1.02);
+    border-color: rgba(252, 165, 165, 0.82);
+}
+
+.image-preview-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 8, 18, 0.88);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1300;
+    padding: 20px;
+}
+
+.image-preview-image {
+    max-width: min(92vw, 1100px);
+    max-height: 86vh;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+    background: rgba(15, 23, 42, 0.8);
+}
+
+.image-preview-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(15, 23, 42, 0.85);
+    color: #f8fafc;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+body.no-scroll {
+    overflow: hidden;
+}
+
+@media (max-width: 760px) {
+    .friend-profile-avatar {
+        width: 78px;
+        height: 78px;
+    }
+
+    .friend-shared-photo {
+        width: 178px;
+        height: 116px;
+    }
 }
 
 .info-inline {

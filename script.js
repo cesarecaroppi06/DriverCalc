@@ -509,9 +509,9 @@ async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
     const path = google.maps.geometry.encoding.decodePath(polyline);
     googleRoutePolyline = new google.maps.Polyline({
         path,
-        strokeColor: '#f59e0b',
-        strokeOpacity: 0.9,
-        strokeWeight: 4
+        strokeColor: '#ef4444',
+        strokeOpacity: 0.95,
+        strokeWeight: 6
     });
     googleRoutePolyline.setMap(googleMapInstance);
 
@@ -568,9 +568,9 @@ async function renderLeafletRouteOnMap(geometryCoords, startLatLng, endLatLng) {
     if (!Array.isArray(geometryCoords) || !geometryCoords.length) return;
     const latLngs = geometryCoords.map(coord => [coord[1], coord[0]]);
     leafletRouteLayer = L.polyline(latLngs, {
-        color: '#f59e0b',
-        weight: 4,
-        opacity: 0.9
+        color: '#ef4444',
+        weight: 6,
+        opacity: 0.95
     }).addTo(leafletMapInstance);
 
     const start = startLatLng || { lat: latLngs[0][0], lng: latLngs[0][1] };
@@ -4228,6 +4228,8 @@ let friends = [];
 let incomingFriendRequests = [];
 let outgoingFriendRequests = [];
 let selectedFriendId = '';
+let imagePreviewOverlay = null;
+let imagePreviewImage = null;
 let shareSettings = {
     shareFavorites: true,
     shareMyCar: true,
@@ -4564,6 +4566,52 @@ function getFriendDisplayName(friend = {}) {
     return (friend.username || friend.email || 'Amico').trim();
 }
 
+function ensureImagePreviewOverlay() {
+    if (imagePreviewOverlay) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'image-preview-overlay';
+    overlay.style.display = 'none';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'image-preview-close';
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', 'Chiudi anteprima immagine');
+    closeBtn.textContent = '✖';
+
+    const image = document.createElement('img');
+    image.className = 'image-preview-image';
+    image.alt = 'Anteprima immagine';
+
+    overlay.append(closeBtn, image);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay || event.target === closeBtn) {
+            closeImagePreview();
+        }
+    });
+
+    imagePreviewOverlay = overlay;
+    imagePreviewImage = image;
+}
+
+function openImagePreview(src = '', alt = 'Anteprima immagine') {
+    if (!src) return;
+    ensureImagePreviewOverlay();
+    if (!imagePreviewOverlay || !imagePreviewImage) return;
+    imagePreviewImage.src = src;
+    imagePreviewImage.alt = alt || 'Anteprima immagine';
+    imagePreviewOverlay.style.display = 'flex';
+    document.body.classList.add('no-scroll');
+}
+
+function closeImagePreview() {
+    if (!imagePreviewOverlay || !imagePreviewImage) return;
+    imagePreviewOverlay.style.display = 'none';
+    imagePreviewImage.src = '';
+    document.body.classList.remove('no-scroll');
+}
+
 function appendFriendSharedItem(title, subtitle = '', meta = '', imageSrc = '') {
     if (!friendSharedList) return;
     const li = document.createElement('li');
@@ -4593,6 +4641,17 @@ function appendFriendSharedItem(title, subtitle = '', meta = '', imageSrc = '') 
         image.className = 'friend-shared-photo';
         image.src = imageSrc;
         image.alt = title;
+        image.loading = 'lazy';
+        image.tabIndex = 0;
+        image.setAttribute('role', 'button');
+        image.setAttribute('aria-label', `Apri immagine grande: ${title}`);
+        image.title = 'Clicca per ingrandire';
+        image.addEventListener('click', () => openImagePreview(imageSrc, title));
+        image.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            openImagePreview(imageSrc, title);
+        });
         li.append(image);
     }
 
@@ -4625,6 +4684,16 @@ function renderFriendSharedData(shared) {
     avatar.className = 'friend-profile-avatar';
     avatar.src = friendAvatar;
     avatar.alt = `Profilo di ${friendName}`;
+    avatar.tabIndex = 0;
+    avatar.setAttribute('role', 'button');
+    avatar.setAttribute('aria-label', `Apri foto profilo di ${friendName}`);
+    avatar.title = 'Clicca per ingrandire';
+    avatar.addEventListener('click', () => openImagePreview(friendAvatar, `Profilo di ${friendName}`));
+    avatar.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openImagePreview(friendAvatar, `Profilo di ${friendName}`);
+    });
 
     const profileMeta = document.createElement('div');
     profileMeta.className = 'friend-profile-meta';
@@ -6021,6 +6090,9 @@ shareCompanionsToggle?.addEventListener('change', saveShareSettings);
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+        if (imagePreviewOverlay && imagePreviewOverlay.style.display === 'flex') {
+            closeImagePreview();
+        }
         if (favoritesOverlay && favoritesOverlay.style.display === 'flex') {
             closeFavorites();
         }
