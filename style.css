@@ -33,6 +33,10 @@ body {
     display: none;
 }
 
+.mobile-top-actions {
+    display: none;
+}
+
 .settings-menu {
     width: 230px;
     padding: 18px 16px;
@@ -227,6 +231,10 @@ header h1 {
     line-height: 1;
     border-radius: 10px;
     font-family: 'Space Grotesk', sans-serif;
+}
+
+.mobile-install-btn {
+    display: none;
 }
 
 .ferrari-container, .ferrari-icon { display: none; }
@@ -1591,6 +1599,13 @@ footer p {
 }
 
 @media (max-width: 768px) {
+    .mobile-top-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 4px;
+    }
+
     .mobile-menu-toggle {
         display: inline-flex;
         align-items: center;
@@ -1604,6 +1619,14 @@ footer p {
         border-radius: 10px;
         font-weight: 700;
         cursor: pointer;
+    }
+
+    .mobile-install-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 12px;
+        font-size: 13px;
     }
 
     .settings-menu {

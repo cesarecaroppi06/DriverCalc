@@ -3126,6 +3126,8 @@ const closeFavoritesBtn = document.getElementById('closeFavorites');
 const saveFavoriteBtn = document.getElementById('saveFavoriteBtn');
 const copySummaryBtn = document.getElementById('copySummaryBtn');
 const installAppBtn = document.getElementById('installAppBtn');
+const installAppQuickBtn = document.getElementById('installAppQuickBtn');
+const installAppButtons = [installAppBtn, installAppQuickBtn].filter(Boolean);
 const tripActionFeedback = document.getElementById('tripActionFeedback');
 const accountBtn = document.getElementById('accountBtn');
 const authOverlay = document.getElementById('authOverlay');
@@ -6277,37 +6279,37 @@ function isIosDevice() {
 }
 
 function updateInstallButtonState() {
-    if (!installAppBtn) return;
-    installAppBtn.style.display = 'inline-flex';
+    if (!installAppButtons.length) return;
+
+    const setButtonState = (label, disabled, title) => {
+        installAppButtons.forEach((btn) => {
+            btn.style.display = 'inline-flex';
+            btn.textContent = label;
+            btn.disabled = !!disabled;
+            btn.title = title || '';
+        });
+    };
 
     if (isStandaloneApp()) {
-        installAppBtn.textContent = '✅ App installata';
-        installAppBtn.disabled = true;
-        installAppBtn.title = 'Applicazione già installata su questo dispositivo';
+        setButtonState('✅ App installata', true, 'Applicazione già installata su questo dispositivo');
         return;
     }
 
     if (deferredInstallPrompt) {
-        installAppBtn.textContent = '📲 Installa App';
-        installAppBtn.disabled = false;
-        installAppBtn.title = 'Installa l’app su questo dispositivo';
+        setButtonState('📲 Installa App', false, 'Installa l’app su questo dispositivo');
         return;
     }
 
     if (isIosDevice()) {
-        installAppBtn.textContent = '📲 Installa App';
-        installAppBtn.disabled = false;
-        installAppBtn.title = 'Installa con Aggiungi a schermata Home';
+        setButtonState('📲 Installa App', false, 'Installa con Aggiungi a schermata Home');
         return;
     }
 
-    installAppBtn.textContent = '📲 Installa App';
-    installAppBtn.disabled = false;
-    installAppBtn.title = 'Apri in Chrome/Edge mobile per installare la PWA';
+    setButtonState('📲 Installa App', false, 'Apri in Chrome/Edge mobile per installare la PWA');
 }
 
 async function handleInstallAppClick() {
-    if (!installAppBtn) return;
+    if (!installAppButtons.length) return;
     if (isStandaloneApp()) return;
 
     if (deferredInstallPrompt) {
@@ -6355,8 +6357,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         deferredInstallPrompt = null;
         updateInstallButtonState();
     });
-    installAppBtn?.addEventListener('click', () => {
-        handleInstallAppClick().catch(() => {});
+    installAppButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            handleInstallAppClick().catch(() => {});
+        });
     });
     updateInstallButtonState();
     closeSettingsMenu();
