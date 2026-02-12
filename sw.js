@@ -1,10 +1,9 @@
-const CACHE_VERSION = 'drivecalc-cache-v8';
+const CACHE_VERSION = 'drivecalc-cache-v9';
 const APP_SHELL = [
   './',
   'index.html',
   'style.css?v=10',
-  'script.js?v=29',
-  'config.public.js?v=2',
+  'script.js?v=30',
   'car_models.json',
   'background-travel.jpg',
   'header-hero.jpg',
@@ -41,6 +40,14 @@ self.addEventListener('fetch', (event) => {
     url.pathname === '/' ||
     url.pathname.endsWith('/index.html') ||
     url.pathname === '/index.html';
+  const isRuntimeConfigRequest = url.pathname === '/config.public.js' || url.pathname.endsWith('/config.public.js');
+
+  if (isRuntimeConfigRequest) {
+    event.respondWith(
+      fetch(request, { cache: 'no-store' }).catch(() => caches.match(request))
+    );
+    return;
+  }
 
   if (isNavigationRequest || isIndexRequest) {
     event.respondWith(

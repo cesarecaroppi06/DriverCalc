@@ -1450,6 +1450,62 @@ app.get('/api/official-models', async (req, res) => {
     }
 });
 
+app.get('/api/health/google', async (req, res) => {
+    const hasGoogleKey = !!GOOGLE_MAPS_API_KEY;
+    const shouldCheckUpstream = ['1', 'true', 'yes', 'on'].includes(
+        String(req.query?.check || '').trim().toLowerCase()
+    );
+    const keyPreview = hasGoogleKey
+        ? `${GOOGLE_MAPS_API_KEY.slice(0, 6)}...${GOOGLE_MAPS_API_KEY.slice(-4)}`
+        : '';
+    const payload = {
+        ok: hasGoogleKey,
+        timestamp: new Date().toISOString(),
+        hasGoogleMapsApiKey: hasGoogleKey,
+        googleMapsApiKeyPreview: keyPreview,
+        requiredGoogleApis: [
+            'Maps JavaScript API',
+            'Routes API',
+            'Geocoding API'
+        ],
+        upstreamChecked: false
+    };
+
+    if (!hasGoogleKey) {
+        return res.status(503).json({
+            ...payload,
+            error: 'GOOGLE_MAPS_API_KEY non configurata sul server'
+        });
+    }
+
+    if (!shouldCheckUpstream) {
+        return res.json(payload);
+    }
+
+    try {
+        const testUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent('Roma')}&language=it&region=IT&key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
+        const apiRes = await fetch(testUrl);
+        const data = await apiRes.json().catch(() => ({}));
+        const geocodingStatus = String(data.status || '').toUpperCase();
+        const isUpstreamOk = apiRes.ok && geocodingStatus === 'OK';
+
+        return res.status(isUpstreamOk ? 200 : 502).json({
+            ...payload,
+            ok: isUpstreamOk,
+            upstreamChecked: true,
+            geocodingStatus: geocodingStatus || 'UNKNOWN',
+            geocodingErrorMessage: data.error_message || ''
+        });
+    } catch (err) {
+        return res.status(502).json({
+            ...payload,
+            ok: false,
+            upstreamChecked: true,
+            error: 'Errore nel test upstream Google Geocoding API'
+        });
+    }
+});
+
 app.post('/api/google/routes', async (req, res) => {
     if (!GOOGLE_MAPS_API_KEY) return res.status(500).json({ error: 'Google API key mancante' });
     const { origin, destination } = req.body || {};

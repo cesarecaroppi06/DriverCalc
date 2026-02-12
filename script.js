@@ -123,11 +123,13 @@ const cities = [
 const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImE0MDIxYTVkMjA4NzRhODY4MjAwMDg1YzhhMTRjMWQ2IiwiaCI6Im11cm11cjY0In0=';
 // API key HERE Routing v8 (imposta la tua chiave)
 const HERE_API_KEY = 'YOUR_HERE_API_KEY';
-// API key Google Maps (imposta la tua chiave in config.js)
-const GOOGLE_MAPS_API_KEY = typeof window !== 'undefined' ? (window.GOOGLE_MAPS_API_KEY || '') : '';
+// API key Google Maps (imposta la tua chiave in config.public.js)
+const GOOGLE_MAPS_API_KEY = typeof window !== 'undefined'
+    ? String(window.GOOGLE_MAPS_API_KEY || '').trim()
+    : '';
 // Toggle Google Maps (true di default, disabilitabile da config.public.js)
 const USE_GOOGLE_MAPS = typeof window !== 'undefined'
-    ? (window.USE_GOOGLE_MAPS !== false)
+    ? !['false', '0', 'off'].includes(String(window.USE_GOOGLE_MAPS).toLowerCase())
     : true;
 // Disabilita Photon (fallback su Nominatim)
 const USE_PHOTON = false;
@@ -506,36 +508,54 @@ function clearGoogleFuelStations() {
     }
 }
 
-async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
-    const ok = await ensureMapReady('google');
-    const mapSection = document.getElementById('mapSection');
-    const mapStatus = document.getElementById('mapStatus');
-    if (!mapSection) return;
-    if (ok !== 'google') {
-        mapSection.style.display = 'none';
-        return;
-    }
+function normalizeGooglePoint(value) {
+    if (!value) return null;
+    const latRaw = typeof value.lat === 'function' ? value.lat() : value.lat;
+    const lngRaw = typeof value.lng === 'function' ? value.lng() : value.lng;
+    const lat = Number(latRaw);
+    const lng = Number(lngRaw);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+}
 
-    mapSection.style.display = 'block';
-    if (mapStatus) mapStatus.textContent = route?.isApproximate ? 'Percorso stimato (linea d’aria)' : '';
+function buildGooglePathFromGeometry(geometryCoords = []) {
+    if (!Array.isArray(geometryCoords)) return [];
+    return geometryCoords
+        .map((coord) => {
+            if (!Array.isArray(coord) || coord.length < 2) return null;
+            const lng = Number(coord[0]);
+            const lat = Number(coord[1]);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+            return { lat, lng };
+        })
+        .filter(Boolean);
+}
+
+function renderGooglePathOnMap(path = [], startLatLng = null, endLatLng = null) {
+    if (!window.google || !google.maps || !googleMapInstance) return false;
+
+    const points = Array.isArray(path) ? path : [];
+    if (!points.length) return false;
+
     clearGoogleRoute();
     clearGoogleFuelStations();
 
-    if (!polyline || !window.google || !google.maps?.geometry?.encoding) return;
-    const path = google.maps.geometry.encoding.decodePath(polyline);
     googleRoutePolyline = new google.maps.Polyline({
-        path,
+        path: points,
         strokeColor: '#ef4444',
         strokeOpacity: 0.95,
         strokeWeight: 6
     });
     googleRoutePolyline.setMap(googleMapInstance);
 
-    if (startLatLng) {
-        googleRouteMarkers.push(new google.maps.Marker({ position: startLatLng, map: googleMapInstance }));
+    const start = normalizeGooglePoint(startLatLng) || normalizeGooglePoint(points[0]);
+    const end = normalizeGooglePoint(endLatLng) || normalizeGooglePoint(points[points.length - 1]);
+
+    if (start) {
+        googleRouteMarkers.push(new google.maps.Marker({ position: start, map: googleMapInstance }));
     }
-    if (endLatLng) {
-        googleRouteMarkers.push(new google.maps.Marker({ position: endLatLng, map: googleMapInstance }));
+    if (end) {
+        googleRouteMarkers.push(new google.maps.Marker({ position: end, map: googleMapInstance }));
     }
     if (lastUserLocation) {
         if (!userLocationMarkerGoogle) {
@@ -551,11 +571,45 @@ async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
     }
 
     const bounds = new google.maps.LatLngBounds();
-    path.forEach(p => bounds.extend(p));
+    points.forEach((point) => bounds.extend(point));
     if (lastUserLocation) bounds.extend(lastUserLocation);
     googleMapInstance.fitBounds(bounds);
     if (google.maps?.event) google.maps.event.trigger(googleMapInstance, 'resize');
     scheduleGoogleErrorCheck(document.getElementById('map'));
+    return true;
+}
+
+async function renderGoogleRouteOnMap(polyline, startLatLng, endLatLng) {
+    const ok = await ensureMapReady('google');
+    const mapSection = document.getElementById('mapSection');
+    const mapStatus = document.getElementById('mapStatus');
+    if (!mapSection) return;
+    if (ok !== 'google') {
+        mapSection.style.display = 'none';
+        return;
+    }
+
+    mapSection.style.display = 'block';
+    if (mapStatus) mapStatus.textContent = '';
+
+    if (!polyline || !window.google || !google.maps?.geometry?.encoding) return;
+    const path = google.maps.geometry.encoding.decodePath(polyline);
+    renderGooglePathOnMap(path, startLatLng, endLatLng);
+}
+
+async function renderGoogleGeometryRouteOnMap(geometryCoords, startLatLng, endLatLng) {
+    const ok = await ensureMapReady('google');
+    const mapSection = document.getElementById('mapSection');
+    const mapStatus = document.getElementById('mapStatus');
+    if (!mapSection) return false;
+    if (ok !== 'google') {
+        mapSection.style.display = 'none';
+        return false;
+    }
+
+    mapSection.style.display = 'block';
+    if (mapStatus) mapStatus.textContent = 'Percorso su mappa Google (fallback ORS)';
+    return renderGooglePathOnMap(buildGooglePathFromGeometry(geometryCoords), startLatLng, endLatLng);
 }
 
 function clearLeafletRoute() {
@@ -829,6 +883,14 @@ async function renderRouteOnMap(route, from, to, fromLoc, toLoc) {
     }
 
     if (geometryRoute?.orsGeometry) {
+        if (provider === 'google') {
+            const renderedOnGoogle = await renderGoogleGeometryRouteOnMap(
+                geometryRoute.orsGeometry,
+                geometryRoute.orsStart,
+                geometryRoute.orsEnd
+            );
+            if (renderedOnGoogle) return;
+        }
         if (provider !== 'leaflet') {
             provider = await ensureMapReady('leaflet');
         }
@@ -880,13 +942,23 @@ async function renderUserLocationOnMap() {
 }
 
 async function fetchRouteFromGoogle(from, to) {
-    const res = await fetch(`${getApiBase()}/google/routes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ origin: from, destination: to })
-    });
+    let res = null;
+    try {
+        res = await fetch(`${getApiBase()}/google/routes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ origin: from, destination: to })
+        });
+    } catch (err) {
+        console.warn('[Google Routes] richiesta non riuscita:', err);
+        return null;
+    }
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        console.warn(`[Google Routes] ${res.status} ${res.statusText}${detail ? ` - ${detail.slice(0, 240)}` : ''}`);
+        return null;
+    }
     const data = await res.json();
     const route = data.routes && data.routes[0];
     if (!route) return null;
