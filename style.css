@@ -83,7 +83,7 @@ body {
     display: block;
 }
 
-.settings-menu button {
+.settings-menu ul button {
     width: 100%;
     text-align: left;
     padding: 14px 14px;
@@ -102,14 +102,14 @@ body {
     gap: 8px;
 }
 
-.settings-menu button:hover {
+.settings-menu ul button:hover {
     background: rgba(255, 255, 255, 0.12);
     border-color: rgba(255, 255, 255, 0.18);
     transform: translateY(-2px);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
-.settings-menu button.active {
+.settings-menu ul button.active {
     background: linear-gradient(135deg, #3b82f6 0%, #22d3ee 100%);
     color: #0b1021;
     border-color: rgba(255, 255, 255, 0.3);
@@ -215,6 +215,18 @@ header h1 {
 .install-app-btn[disabled] {
     opacity: 0.65;
     cursor: default;
+}
+
+.settings-install-btn {
+    width: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1;
+    border-radius: 10px;
+    font-family: 'Space Grotesk', sans-serif;
 }
 
 .ferrari-container, .ferrari-icon { display: none; }
@@ -1454,10 +1466,7 @@ footer p {
         padding: 28px;
     }
 
-    .install-app-btn {
-        width: 100%;
-        text-align: center;
-    }
+    .settings-install-btn { width: auto; }
 }
 
 @media (max-width: 480px) {
@@ -1507,7 +1516,7 @@ footer p {
         gap: 8px;
     }
 
-    .settings-menu button {
+    .settings-menu ul button {
         justify-content: center;
         text-align: center;
     }
@@ -1551,7 +1560,7 @@ footer p {
         flex: 0 0 auto;
     }
 
-    .settings-menu button {
+    .settings-menu ul button {
         min-width: 150px;
         font-size: 14px;
         padding: 10px;
@@ -1627,7 +1636,7 @@ footer p {
         overflow: visible !important;
     }
 
-    .settings-menu button {
+    .settings-menu ul button {
         min-width: 0 !important;
         justify-content: flex-start !important;
         text-align: left !important;
@@ -1753,7 +1762,7 @@ header h1 {
     letter-spacing: 0.8px;
 }
 
-.settings-menu button {
+.settings-menu ul button {
     border-radius: 12px;
     border: 1px solid rgba(164, 184, 218, 0.22);
     background: rgba(255, 255, 255, 0.04);
@@ -1764,13 +1773,13 @@ header h1 {
     letter-spacing: 0.1px;
 }
 
-.settings-menu button:hover {
+.settings-menu ul button:hover {
     transform: translateY(-2px) scale(1.01);
     border-color: rgba(251, 191, 36, 0.45);
     background: rgba(251, 191, 36, 0.1);
 }
 
-.settings-menu button.active {
+.settings-menu ul button.active {
     background: linear-gradient(135deg, rgba(251, 191, 36, 0.9), rgba(45, 212, 191, 0.95));
     color: #0b1324;
     border-color: rgba(255, 255, 255, 0.5);
@@ -2186,7 +2195,7 @@ footer p {
         padding-bottom: 6px;
     }
 
-    .settings-menu button {
+    .settings-menu ul button {
         min-width: 172px;
         justify-content: center;
     }

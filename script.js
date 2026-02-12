@@ -6278,28 +6278,32 @@ function isIosDevice() {
 
 function updateInstallButtonState() {
     if (!installAppBtn) return;
+    installAppBtn.style.display = 'inline-flex';
+
     if (isStandaloneApp()) {
-        installAppBtn.style.display = 'inline-flex';
         installAppBtn.textContent = '✅ App installata';
         installAppBtn.disabled = true;
+        installAppBtn.title = 'Applicazione già installata su questo dispositivo';
         return;
     }
 
     if (deferredInstallPrompt) {
-        installAppBtn.style.display = 'inline-flex';
-        installAppBtn.textContent = '📲 Scarica App';
+        installAppBtn.textContent = '📲 Installa App';
         installAppBtn.disabled = false;
+        installAppBtn.title = 'Installa l’app su questo dispositivo';
         return;
     }
 
     if (isIosDevice()) {
-        installAppBtn.style.display = 'inline-flex';
-        installAppBtn.textContent = '📲 Scarica App';
+        installAppBtn.textContent = '📲 Installa App';
         installAppBtn.disabled = false;
+        installAppBtn.title = 'Installa con Aggiungi a schermata Home';
         return;
     }
 
-    installAppBtn.style.display = 'none';
+    installAppBtn.textContent = '📲 Installa App';
+    installAppBtn.disabled = false;
+    installAppBtn.title = 'Apri in Chrome/Edge mobile per installare la PWA';
 }
 
 async function handleInstallAppClick() {
@@ -6331,7 +6335,12 @@ async function handleInstallAppClick() {
         alert(
             "Per installare su iPhone/iPad devi usare Safari.\n\n1) Apri questo sito in Safari (menu del browser -> Apri in Safari)\n2) In Safari tocca Condividi\n3) Seleziona 'Aggiungi a schermata Home'"
         );
+        return;
     }
+
+    alert(
+        "Installazione non disponibile in questo browser.\n\nPer installare l'app usa Chrome o Edge (Android/Desktop) e premi di nuovo 'Installa App'."
+    );
 }
 
 // Inizializza al caricamento
