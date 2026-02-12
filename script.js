@@ -4947,14 +4947,11 @@ async function handleAuth(isRegister) {
     }
     try {
         const endpoint = isRegister ? '/auth/register' : '/auth/login';
-        const data = await fetch(`${API_BASE}${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(isRegister ? { email, password, username } : { email, password })
-        });
-        const json = await data.json();
-        if (!data.ok) throw new Error(json.error || 'Errore di autenticazione');
+        const json = await apiRequest(
+            endpoint,
+            'POST',
+            isRegister ? { email, password, username } : { email, password }
+        );
         setAuth(json.token || 'cookie-session', json.user);
         accountProfile = json.user || accountProfile;
         accountStats = json.stats || accountStats;
