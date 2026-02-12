@@ -6270,6 +6270,12 @@ function isIosSafariBrowser() {
     return isIOSDevice && isSafari;
 }
 
+function isIosDevice() {
+    if (typeof window === 'undefined') return false;
+    const ua = String(window.navigator.userAgent || '').toLowerCase();
+    return /iphone|ipad|ipod/.test(ua) || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+}
+
 function updateInstallButtonState() {
     if (!installAppBtn) return;
     if (isStandaloneApp()) {
@@ -6286,7 +6292,7 @@ function updateInstallButtonState() {
         return;
     }
 
-    if (isIosSafariBrowser()) {
+    if (isIosDevice()) {
         installAppBtn.style.display = 'inline-flex';
         installAppBtn.textContent = '📲 Scarica App';
         installAppBtn.disabled = false;
@@ -6317,6 +6323,13 @@ async function handleInstallAppClick() {
     if (isIosSafariBrowser()) {
         alert(
             "Per installare l'app su iPhone/iPad:\n\n1) Tocca Condividi (quadrato con freccia)\n2) Seleziona 'Aggiungi a schermata Home'\n3) Conferma con 'Aggiungi'"
+        );
+        return;
+    }
+
+    if (isIosDevice()) {
+        alert(
+            "Per installare su iPhone/iPad devi usare Safari.\n\n1) Apri questo sito in Safari (menu del browser -> Apri in Safari)\n2) In Safari tocca Condividi\n3) Seleziona 'Aggiungi a schermata Home'"
         );
     }
 }
