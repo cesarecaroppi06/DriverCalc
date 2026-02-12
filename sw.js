@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'drivecalc-cache-v1';
+const CACHE_VERSION = 'drivecalc-cache-v2';
 const APP_SHELL = [
   './',
   'index.html',
@@ -8,7 +8,7 @@ const APP_SHELL = [
   'car_models.json',
   'background-travel.jpg',
   'header-hero.jpg',
-  'logo.png?v=2',
+  'logo.png?v=3',
   'assets/icons/icon-192.png',
   'assets/icons/icon-512.png',
   'assets/icons/apple-touch-icon.png'
