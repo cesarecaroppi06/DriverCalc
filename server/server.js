@@ -208,6 +208,9 @@ function registerWebClientRoutes() {
 
     const staticFiles = [
         'index.html',
+        'guida-costo-viaggio-auto.html',
+        'guida-pedaggi-autostrada-italia.html',
+        'guida-risparmio-carburante-viaggio.html',
         'style.css',
         'script.js',
         'config.public.js',

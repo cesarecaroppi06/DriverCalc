@@ -2637,3 +2637,141 @@ footer p {
         grid-template-columns: 1fr;
     }
 }
+
+/* SEO content blocks */
+.seo-content,
+.seo-faq {
+    margin-top: 22px;
+    padding: 22px;
+    border-radius: 16px;
+    border: 1px solid var(--line-soft);
+    background: linear-gradient(155deg, rgba(8, 16, 34, 0.88), rgba(9, 18, 39, 0.8));
+    box-shadow: var(--shadow-sm);
+}
+
+.seo-content h2,
+.seo-faq h2 {
+    color: #fde68a;
+    margin-bottom: 10px;
+    font-size: clamp(22px, 3vw, 30px);
+}
+
+.seo-intro {
+    color: #dbe8ff;
+    margin-bottom: 16px;
+}
+
+.seo-guides-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.seo-guide-card {
+    border-radius: 14px;
+    border: 1px solid var(--line-soft);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 14px;
+}
+
+.seo-guide-card h3 {
+    margin-bottom: 8px;
+    font-size: 17px;
+    line-height: 1.3;
+}
+
+.seo-guide-card a {
+    color: #bde8ff;
+    text-decoration: none;
+}
+
+.seo-guide-card a:hover {
+    color: #ffe29a;
+    text-decoration: underline;
+}
+
+.seo-guide-card p {
+    color: #dbe8ff;
+    line-height: 1.5;
+}
+
+.seo-faq details {
+    border-radius: 12px;
+    border: 1px solid var(--line-soft);
+    background: rgba(255, 255, 255, 0.03);
+    padding: 12px 14px;
+    margin-top: 10px;
+}
+
+.seo-faq summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: #cbe6ff;
+}
+
+.seo-faq p {
+    margin-top: 8px;
+    color: #e4edff;
+    line-height: 1.5;
+}
+
+.seo-page-container {
+    padding-top: 8px;
+    padding-bottom: 20px;
+}
+
+.seo-header {
+    margin-bottom: 22px;
+}
+
+.seo-cta {
+    display: inline-flex;
+    margin-top: 14px;
+    text-decoration: none;
+}
+
+.seo-article {
+    padding: 30px;
+}
+
+.seo-article h2 {
+    color: #fde68a;
+    margin-top: 18px;
+    margin-bottom: 10px;
+    font-size: clamp(24px, 3vw, 32px);
+}
+
+.seo-article p {
+    color: #e2ecff;
+    line-height: 1.7;
+    margin-bottom: 10px;
+}
+
+.seo-article ul,
+.seo-article ol {
+    padding-left: 18px;
+    margin: 8px 0 14px;
+    color: #d5e2ff;
+    line-height: 1.6;
+}
+
+.seo-article a {
+    color: #bde8ff;
+}
+
+@media (max-width: 900px) {
+    .seo-guides-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 560px) {
+    .seo-content,
+    .seo-faq {
+        padding: 16px;
+    }
+
+    .seo-article {
+        padding: 20px;
+    }
+}

@@ -26,7 +26,7 @@
     <link rel="icon" type="image/png" href="logo.png?v=3">
     <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=11">
+    <link rel="stylesheet" href="style.css?v=12">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <script type="application/ld+json">
         {
@@ -38,6 +38,38 @@
             "operatingSystem": "Web",
             "inLanguage": "it-IT",
             "description": "Calcolatore costi di viaggio con pedaggi, carburante, tempo percorso e km su autostrade e strade ordinarie."
+        }
+    </script>
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": "Come si calcola il costo totale di un viaggio in auto?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Il costo totale include carburante, pedaggi autostradali e altre spese opzionali. DriveCalc combina distanza, consumo medio, prezzo carburante e stima pedaggi per fornire un totale rapido."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "I pedaggi mostrati sono aggiornati?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "DriveCalc usa in priorita dati live di routing quando disponibili e mostra sempre la fonte del pedaggio per distinguere importi ufficiali da eventuali stime fallback."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Posso vedere i km fatti in autostrada e i km su altre strade?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Si. Nel risultato del percorso trovi la suddivisione chilometrica tra autostrade e altre strade, insieme al tempo totale di viaggio."
+                    }
+                }
+            ]
         }
     </script>
 </head>
@@ -918,6 +950,41 @@
                 </div>
             </div>
         </div>
+
+        <section class="seo-content" aria-labelledby="seoGuidesTitle">
+            <h2 id="seoGuidesTitle">Guide utili per ridurre il costo viaggio</h2>
+            <p class="seo-intro">Risorse rapide per stimare pedaggi, carburante e tempi in modo piu preciso prima di partire.</p>
+            <div class="seo-guides-grid">
+                <article class="seo-guide-card">
+                    <h3><a href="guida-costo-viaggio-auto.html">Come calcolare il costo viaggio auto nel 2026</a></h3>
+                    <p>Metodo pratico per sommare carburante, pedaggi e costo medio a km, con esempi reali su tratte italiane.</p>
+                </article>
+                <article class="seo-guide-card">
+                    <h3><a href="guida-pedaggi-autostrada-italia.html">Pedaggi autostradali in Italia: cosa incide davvero</a></h3>
+                    <p>Panoramica su classi veicolo, tratte, caselli e differenze tra costo pedaggio ufficiale e stima.</p>
+                </article>
+                <article class="seo-guide-card">
+                    <h3><a href="guida-risparmio-carburante-viaggio.html">Strategie per spendere meno carburante nei viaggi lunghi</a></h3>
+                    <p>Consigli concreti su velocita, carico, soste e scelta distributore per ridurre la spesa totale.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="seo-faq" aria-labelledby="seoFaqTitle">
+            <h2 id="seoFaqTitle">FAQ costo viaggio</h2>
+            <details>
+                <summary>Come viene stimato il costo carburante?</summary>
+                <p>Il calcolo usa km del percorso, consumo medio del veicolo e prezzo carburante inserito da te, con aggiornamento immediato del totale.</p>
+            </details>
+            <details>
+                <summary>Il tempo di viaggio e affidabile?</summary>
+                <p>Quando disponibili, vengono usati provider live di routing. In fallback viene mostrata una stima, indicata chiaramente nel dettaglio risultato.</p>
+            </details>
+            <details>
+                <summary>Posso confrontare rapidamente tratte diverse?</summary>
+                <p>Si. Calcola piu percorsi e salva i risultati nei preferiti per confrontare km, pedaggi, carburante e costo totale.</p>
+            </details>
+        </section>
 
         <footer>
             <p>💡 Calcoli basati su dati reali di pedaggi autostradali italiani e consumi medi per categoria auto</p>

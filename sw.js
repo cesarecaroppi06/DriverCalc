@@ -1,8 +1,8 @@
-const CACHE_VERSION = 'drivecalc-cache-v10';
+const CACHE_VERSION = 'drivecalc-cache-v11';
 const APP_SHELL = [
   './',
   'index.html',
-  'style.css?v=11',
+  'style.css?v=12',
   'script.js?v=31',
   'car_models.json',
   'background-travel.jpg',
@@ -55,7 +55,8 @@ self.addEventListener('fetch', (event) => {
         .then((networkResponse) => {
           const responseClone = networkResponse.clone();
           caches.open(CACHE_VERSION).then((cache) => {
-            cache.put('index.html', responseClone).catch(() => {});
+            const cacheTarget = isIndexRequest ? 'index.html' : request;
+            cache.put(cacheTarget, responseClone).catch(() => {});
           });
           return networkResponse;
         })
