@@ -3110,9 +3110,14 @@ const errorDiv = document.getElementById('error');
 const homeBtn = document.getElementById('homeBtn');
 const infoBtn = document.getElementById('infoBtn');
 const infoPage = document.getElementById('infoPage');
+const closeInfoViewBtn = document.getElementById('closeInfoView');
 const backToCalculatorBtn = document.getElementById('backToCalculator');
 const mainPanel = document.querySelector('main');
-const settingsMenuButtons = Array.from(document.querySelectorAll('.settings-menu button'));
+const settingsMenu = document.getElementById('settingsMenu');
+const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+const mobileMenuBackdrop = document.getElementById('mobileMenuBackdrop');
+const closeSettingsMenuBtn = document.getElementById('closeSettingsMenu');
+const settingsMenuButtons = Array.from(document.querySelectorAll('#settingsMenu ul button'));
 const favoritesBtn = document.getElementById('favoritesBtn');
 const favoritesOverlay = document.getElementById('favoritesOverlay');
 const favoritesList = document.getElementById('favoritesList');
@@ -3889,29 +3894,69 @@ function calculateTollBooths(highwayDistance) {
     return Math.ceil(highwayDistance / HIGHWAY_KM_PER_TOLL_BOOTH);
 }
 
-// Restituisce distanze per tipo di strada; se non specificate, usa autostrada + extraurbano
-function getSegmentDistances(route) {
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function estimateHighwayFraction(totalDistance = 0, directDistance = 0) {
+    let fraction = ESTIMATED_HIGHWAY_FRACTION;
+    if (totalDistance < 25) fraction = 0.06;
+    else if (totalDistance < 60) fraction = 0.2;
+    else if (totalDistance < 120) fraction = 0.35;
+    else if (totalDistance < 220) fraction = 0.5;
+    else if (totalDistance < 400) fraction = 0.62;
+    else fraction = 0.74;
+
+    if (directDistance > 0) {
+        const ratio = totalDistance / directDistance;
+        if (ratio > 1.35) fraction -= 0.12;
+        else if (ratio < 1.15) fraction += 0.06;
+    }
+
+    return clamp(fraction, 0.05, 0.85);
+}
+
+function buildSegmentDistribution(totalDistance = 0, highwayDistance = 0) {
+    const safeTotal = Math.max(0, Number(totalDistance) || 0);
+    const safeHighway = clamp(Number(highwayDistance) || 0, 0, safeTotal);
+    const remaining = Math.max(0, safeTotal - safeHighway);
+    if (!remaining) {
+        return { highway: safeHighway, expressway: 0, extra: 0, urban: 0 };
+    }
+
+    const urbanCap = safeTotal < 50 ? 8 : 14;
+    const urban = Math.min(urbanCap, remaining * 0.2);
+    const afterUrban = Math.max(0, remaining - urban);
+    const expresswayRatio = safeTotal >= 120 ? 0.35 : 0.22;
+    const expressway = afterUrban * expresswayRatio;
+    const extra = Math.max(0, afterUrban - expressway);
+    return { highway: safeHighway, expressway, extra, urban };
+}
+
+// Restituisce distanze per tipo di strada; se non specificate, stima autostrada/non autostrada
+function getSegmentDistances(route, context = {}) {
+    const totalDistance = Math.max(0, Number(route?.totalDistance) || 0);
+    const directDistance = Math.max(0, Number(context?.directDistance) || 0);
+    const rawTollCost = Math.max(0, Number(route?.tollCost) || 0);
+
     if (route.segments) {
-        const highway = route.segments.highway || 0;
-        const expressway = route.segments.expressway || 0;
-        const extra = route.segments.extra || 0;
-        const urban = route.segments.urban || 0;
+        const highway = Math.max(0, Number(route.segments.highway) || 0);
+        const expressway = Math.max(0, Number(route.segments.expressway) || 0);
+        const extra = Math.max(0, Number(route.segments.extra) || 0);
+        const urban = Math.max(0, Number(route.segments.urban) || 0);
         const totalFromSegments = highway + expressway + extra + urban;
-        // Se i segmenti sommano meno del totale, aggiungi il residuo a extra
-        const residual = Math.max(route.totalDistance - totalFromSegments, 0);
+        const residual = Math.max(totalDistance - totalFromSegments, 0);
         const normalizedExtra = extra + residual;
         const onlyExtra = highway === 0 && expressway === 0 && urban === 0 && normalizedExtra > 0;
-        const shouldEstimateHighway = onlyExtra && route.totalDistance >= 80 && (!route.tollCost || route.tollCost === 0);
-        if (shouldEstimateHighway) {
-            const estimatedHighway = route.totalDistance * ESTIMATED_HIGHWAY_FRACTION;
-            const estimatedExtra = Math.max(route.totalDistance - estimatedHighway, 0);
-            return {
-                highway: estimatedHighway,
-                expressway: 0,
-                extra: estimatedExtra,
-                urban: 0
-            };
+        if (onlyExtra) {
+            if (rawTollCost > 0) {
+                const inferredHighwayFromToll = clamp(rawTollCost / TOLL_RATE_EUR_PER_KM, 0, totalDistance * 0.95);
+                return buildSegmentDistribution(totalDistance, inferredHighwayFromToll);
+            }
+            const estimatedHighway = totalDistance * estimateHighwayFraction(totalDistance, directDistance);
+            return buildSegmentDistribution(totalDistance, estimatedHighway);
         }
+
         return {
             highway,
             expressway,
@@ -3919,14 +3964,19 @@ function getSegmentDistances(route) {
             urban
         };
     }
-    // Fallback euristico: autostrada = highwayDistance, urbano 10 km (5+5) se c'è spazio, il resto split 40% superstrada e 60% extraurbano
-    const highway = route.highwayDistance || 0;
-    const remaining = Math.max(route.totalDistance - highway, 0);
-    const urban = Math.min(10, remaining);
-    const afterUrban = remaining - urban;
-    const expressway = afterUrban * 0.4;
-    const extra = afterUrban - expressway;
-    return { highway, expressway, extra, urban };
+
+    const explicitHighway = Math.max(0, Number(route.highwayDistance) || 0);
+    if (explicitHighway > 0) {
+        return buildSegmentDistribution(totalDistance, explicitHighway);
+    }
+
+    if (rawTollCost > 0) {
+        const inferredHighwayFromToll = clamp(rawTollCost / TOLL_RATE_EUR_PER_KM, 0, totalDistance * 0.95);
+        return buildSegmentDistribution(totalDistance, inferredHighwayFromToll);
+    }
+
+    const estimatedHighway = totalDistance * estimateHighwayFraction(totalDistance, directDistance);
+    return buildSegmentDistribution(totalDistance, estimatedHighway);
 }
 
 // Calcola il costo del viaggio
@@ -4004,9 +4054,10 @@ async function calculateTrip() {
             // Se il rendering mappa fallisce, non bloccare il calcolo costi.
         }
 
+        const directKm = haversineKm(fromLocation.lat, fromLocation.lng, toLocation.lat, toLocation.lng);
         // Normalizza distanze e pedaggi
         const totalDistance = Math.max(route.totalDistance, 0);
-        const segments = getSegmentDistances(route);
+        const segments = getSegmentDistances(route, { directDistance: directKm });
         const highwayDistance = Math.min(segments.highway, totalDistance);
         const expresswayDistance = Math.min(segments.expressway, totalDistance - highwayDistance);
         const extraDistance = Math.min(segments.extra, totalDistance - highwayDistance - expresswayDistance);
@@ -4014,7 +4065,6 @@ async function calculateTrip() {
         const roadDistance = totalDistance - highwayDistance;
         // Se è presente un pedaggio ufficiale nella rotta, usa quello; altrimenti stima al km
         const hasOfficialToll = route.tollCost !== undefined && route.tollCost !== null && route.tollCost > 0;
-        const directKm = haversineKm(fromLocation.lat, fromLocation.lng, toLocation.lat, toLocation.lng);
         const isShortTrip = totalDistance < 30;
         const isLikelyUrban = directKm < 18 && totalDistance < 45;
         const tollEligible = !hasOfficialToll && !isShortTrip && !isLikelyUrban && highwayDistance >= 10;
@@ -5845,6 +5895,31 @@ function setActiveMenu(button) {
     if (button) {
         button.classList.add('active');
     }
+    if (window.matchMedia('(max-width: 768px)').matches) {
+        closeSettingsMenu();
+    }
+}
+
+function openSettingsMenu() {
+    if (!settingsMenu) return;
+    document.body.classList.add('mobile-menu-open');
+    if (mobileMenuBackdrop) mobileMenuBackdrop.style.display = 'block';
+    if (mobileMenuToggle) mobileMenuToggle.setAttribute('aria-expanded', 'true');
+}
+
+function closeSettingsMenu() {
+    document.body.classList.remove('mobile-menu-open');
+    if (mobileMenuBackdrop) mobileMenuBackdrop.style.display = 'none';
+    if (mobileMenuToggle) mobileMenuToggle.setAttribute('aria-expanded', 'false');
+}
+
+function toggleSettingsMenu() {
+    const isOpen = document.body.classList.contains('mobile-menu-open');
+    if (isOpen) {
+        closeSettingsMenu();
+    } else {
+        openSettingsMenu();
+    }
 }
 
 function showCalculatorView() {
@@ -5952,6 +6027,10 @@ carTypeSearchInput?.addEventListener('input', (e) => {
 infoBtn?.addEventListener('click', showInfoView);
 homeBtn?.addEventListener('click', showCalculatorView);
 backToCalculatorBtn?.addEventListener('click', showCalculatorView);
+closeInfoViewBtn?.addEventListener('click', showCalculatorView);
+mobileMenuToggle?.addEventListener('click', toggleSettingsMenu);
+closeSettingsMenuBtn?.addEventListener('click', closeSettingsMenu);
+mobileMenuBackdrop?.addEventListener('click', closeSettingsMenu);
 favoritesBtn?.addEventListener('click', openFavorites);
 closeFavoritesBtn?.addEventListener('click', closeFavorites);
 saveFavoriteBtn?.addEventListener('click', saveCurrentToFavorites);
@@ -6090,6 +6169,12 @@ shareCompanionsToggle?.addEventListener('change', saveShareSettings);
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+        if (document.body.classList.contains('mobile-menu-open')) {
+            closeSettingsMenu();
+        }
+        if (infoPage && infoPage.style.display === 'block') {
+            showCalculatorView();
+        }
         if (imagePreviewOverlay && imagePreviewOverlay.style.display === 'flex') {
             closeImagePreview();
         }
@@ -6154,6 +6239,12 @@ document.addEventListener('keypress', (e) => {
 
 // Inizializza al caricamento
 document.addEventListener('DOMContentLoaded', async () => {
+    closeSettingsMenu();
+    window.addEventListener('resize', () => {
+        if (!window.matchMedia('(max-width: 768px)').matches) {
+            closeSettingsMenu();
+        }
+    });
     initializeCities();
     const mapSection = document.getElementById('mapSection');
     if (mapSection) mapSection.style.display = 'none';

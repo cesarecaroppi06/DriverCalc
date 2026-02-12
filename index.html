@@ -17,8 +17,15 @@
         </header>
 
         <div class="layout-body">
-            <nav class="settings-menu">
-                <h3>Impostazioni</h3>
+            <button id="mobileMenuToggle" class="mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="settingsMenu">
+                ☰ Impostazioni
+            </button>
+            <div id="mobileMenuBackdrop" class="mobile-menu-backdrop" style="display:none;"></div>
+            <nav id="settingsMenu" class="settings-menu">
+                <div class="settings-menu-header">
+                    <h3>Impostazioni</h3>
+                    <button id="closeSettingsMenu" class="close-btn settings-menu-close" type="button">✖</button>
+                </div>
                 <ul>
                     <li><button id="homeBtn" class="active">🏠 Home</button></li>
                     <li><button id="budgetBtn">📊 Bilancio</button></li>
@@ -433,6 +440,7 @@
             <section id="infoPage" class="info-page" style="display: none;">
                 <div class="info-header">
                     <h2>ℹ️ Come calcoliamo</h2>
+                    <button id="closeInfoView" class="close-btn" type="button" aria-label="Chiudi pagina info">✖</button>
                     <p>Trovi qui le formule che usiamo per stimare carburante, pedaggi e il funzionamento generale di DriveCalc.</p>
                 </div>
 

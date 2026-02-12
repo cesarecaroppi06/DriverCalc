@@ -29,6 +29,10 @@ body {
     align-items: flex-start;
 }
 
+.mobile-menu-toggle {
+    display: none;
+}
+
 .settings-menu {
     width: 230px;
     padding: 18px 16px;
@@ -46,6 +50,26 @@ body {
     color: #fcd34d;
     text-transform: uppercase;
     font-family: 'Bebas Neue', 'Space Grotesk', sans-serif;
+}
+
+.settings-menu-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.settings-menu-header h3 {
+    margin-bottom: 0;
+}
+
+.settings-menu-close {
+    display: none;
+}
+
+.mobile-menu-backdrop {
+    display: none;
 }
 
 .settings-menu ul {
@@ -206,6 +230,16 @@ main::after {
     color: #c8d7ff;
     font-size: 26px;
     margin-bottom: 8px;
+}
+
+.info-header {
+    position: relative;
+}
+
+.info-header .close-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
 }
 
 .info-header p {
@@ -1503,6 +1537,70 @@ footer p {
 
     .modal-card {
         padding: 18px;
+    }
+}
+
+@media (max-width: 768px) {
+    .mobile-menu-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: fit-content;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(9, 12, 26, 0.82);
+        color: #e9ecf5;
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .settings-menu {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        width: min(86vw, 320px) !important;
+        max-width: 320px;
+        height: 100dvh;
+        border-radius: 0 16px 16px 0;
+        z-index: 1200;
+        overflow-y: auto;
+        transform: translateX(-110%);
+        transition: transform 0.22s ease;
+    }
+
+    body.mobile-menu-open .settings-menu {
+        transform: translateX(0);
+    }
+
+    .settings-menu-close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .settings-menu ul {
+        flex-direction: column !important;
+        flex-wrap: nowrap !important;
+        overflow: visible !important;
+    }
+
+    .settings-menu button {
+        min-width: 0 !important;
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+
+    .mobile-menu-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 7, 18, 0.55);
+        z-index: 1100;
+    }
+
+    body.mobile-menu-open .mobile-menu-backdrop {
+        display: block !important;
     }
 }
 
