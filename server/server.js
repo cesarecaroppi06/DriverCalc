@@ -10,6 +10,14 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-prod';
+const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+const AUTH_COOKIE_NAME = String(process.env.AUTH_COOKIE_NAME || 'drivecalc_session').trim() || 'drivecalc_session';
+const AUTH_COOKIE_MAX_AGE_MS = Number(process.env.AUTH_COOKIE_MAX_AGE_MS) || 12 * 60 * 60 * 1000;
+const JWT_EXPIRES_IN = String(process.env.JWT_EXPIRES_IN || '12h');
+const AUTH_COOKIE_SECURE = String(process.env.AUTH_COOKIE_SECURE || (IS_PRODUCTION ? 'true' : 'false')).toLowerCase() === 'true';
+const AUTH_COOKIE_SAMESITE_RAW = String(process.env.AUTH_COOKIE_SAMESITE || (AUTH_COOKIE_SECURE ? 'none' : 'lax')).toLowerCase();
+const AUTH_COOKIE_SAMESITE = ['lax', 'strict', 'none'].includes(AUTH_COOKIE_SAMESITE_RAW) ? AUTH_COOKIE_SAMESITE_RAW : 'lax';
+const CORS_ORIGIN = String(process.env.CORS_ORIGIN || '').trim();
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
 const USE_POSTGRES_STATE = Boolean(DATABASE_URL);
@@ -66,6 +74,9 @@ function ensureUserShape(user = {}) {
     const username = sanitizeUsername(user.username, { fallback: usernameFallback }) || usernameFallback;
     const avatarCandidate = String(user.avatarUrl || '');
     const avatarUrl = isValidDataImageUrl(avatarCandidate) ? avatarCandidate : '';
+    const tokenVersion = Number.isInteger(Number(user.tokenVersion)) && Number(user.tokenVersion) > 0
+        ? Number(user.tokenVersion)
+        : 1;
 
     return {
         ...user,
@@ -76,6 +87,7 @@ function ensureUserShape(user = {}) {
         bio: sanitizeProfileText(user.bio || '', 220),
         location: sanitizeProfileText(user.location || '', 80),
         avatarUrl,
+        tokenVersion,
         createdAt,
         lastLoginAt,
         updatedAt
@@ -158,8 +170,49 @@ function resolveDbPath() {
 const DB_PATH = resolveDbPath();
 console.log(`[DriveCalc API] Database path: ${DB_PATH}`);
 
-app.use(cors());
+app.use(cors(CORS_ORIGIN ? { origin: CORS_ORIGIN, credentials: true } : { origin: true, credentials: true }));
 app.use(express.json({ limit: '5mb' }));
+
+function parseCookies(headerValue = '') {
+    const raw = String(headerValue || '').trim();
+    if (!raw) return {};
+    return raw.split(';').reduce((acc, part) => {
+        const idx = part.indexOf('=');
+        if (idx <= 0) return acc;
+        const key = part.slice(0, idx).trim();
+        const value = part.slice(idx + 1).trim();
+        if (!key) return acc;
+        try {
+            acc[key] = decodeURIComponent(value);
+        } catch (err) {
+            acc[key] = value;
+        }
+        return acc;
+    }, {});
+}
+
+function getAuthCookieOptions() {
+    return {
+        httpOnly: true,
+        secure: AUTH_COOKIE_SECURE,
+        sameSite: AUTH_COOKIE_SAMESITE,
+        maxAge: AUTH_COOKIE_MAX_AGE_MS,
+        path: '/'
+    };
+}
+
+function setAuthCookie(res, token) {
+    res.cookie(AUTH_COOKIE_NAME, token, getAuthCookieOptions());
+}
+
+function clearAuthCookie(res) {
+    res.clearCookie(AUTH_COOKIE_NAME, {
+        httpOnly: true,
+        secure: AUTH_COOKIE_SECURE,
+        sameSite: AUTH_COOKIE_SAMESITE,
+        path: '/'
+    });
+}
 
 function readDbFromFile() {
     try {
@@ -279,16 +332,30 @@ function writeDb(db) {
 }
 
 function issueToken(user) {
-    return jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+    const shaped = ensureUserShape(user);
+    return jwt.sign(
+        { userId: shaped.id, email: shaped.email, tokenVersion: shaped.tokenVersion },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN }
+    );
 }
 
 function authMiddleware(req, res, next) {
     const authHeader = req.headers.authorization || '';
-    const [, token] = authHeader.split(' ');
+    const [, bearerToken] = authHeader.split(' ');
+    const cookies = parseCookies(req.headers.cookie || '');
+    const cookieToken = cookies[AUTH_COOKIE_NAME];
+    const token = bearerToken || cookieToken;
     if (!token) return res.status(401).json({ error: 'Token mancante' });
     try {
         const payload = jwt.verify(token, JWT_SECRET);
-        req.user = payload;
+        const db = readDb();
+        const user = db.users.find((u) => u.id === payload.userId);
+        if (!user) return res.status(401).json({ error: 'Sessione non valida' });
+        if (Number(payload.tokenVersion || 0) !== Number(user.tokenVersion || 1)) {
+            return res.status(401).json({ error: 'Sessione invalidata, rifai login' });
+        }
+        req.user = { ...payload, userId: user.id, email: user.email };
         return next();
     } catch (err) {
         return res.status(401).json({ error: 'Token non valido' });
@@ -331,6 +398,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const token = issueToken(user);
     const stats = computeUserStats(db, user.id);
+    setAuthCookie(res, token);
     return res.json({ token, user: buildPublicUser(user), stats });
 });
 
@@ -349,6 +417,7 @@ app.post('/api/auth/login', async (req, res) => {
     writeDb(db);
     const token = issueToken(user);
     const stats = computeUserStats(db, user.id);
+    setAuthCookie(res, token);
     return res.json({ token, user: buildPublicUser(user), stats });
 });
 
@@ -420,8 +489,23 @@ app.put('/api/auth/password', authMiddleware, async (req, res) => {
     }
 
     user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.tokenVersion = Number(user.tokenVersion || 1) + 1;
     user.updatedAt = Date.now();
     writeDb(db);
+    const token = issueToken(user);
+    setAuthCookie(res, token);
+    return res.json({ ok: true });
+});
+
+app.post('/api/auth/logout', authMiddleware, (req, res) => {
+    const db = readDb();
+    const user = db.users.find((u) => u.id === req.user.userId);
+    if (user) {
+        user.tokenVersion = Number(user.tokenVersion || 1) + 1;
+        user.updatedAt = Date.now();
+        writeDb(db);
+    }
+    clearAuthCookie(res);
     return res.json({ ok: true });
 });
 

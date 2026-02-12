@@ -3,10 +3,22 @@
     {
       "id": "750f16c1-216e-499e-9c02-b1c416869606",
       "email": "cesarecaroppi06@gmail.com",
-      "passwordHash": "$2a$10$W5RhnTOjtPZ9snfk5ZdBTeqaCRYl4gxS832Nd2YKQ2Rqa.LXIvW1K"
+      "passwordHash": "$2a$10$W5RhnTOjtPZ9snfk5ZdBTeqaCRYl4gxS832Nd2YKQ2Rqa.LXIvW1K",
+      "username": "cesarecaroppi06",
+      "bio": "",
+      "location": "",
+      "avatarUrl": "",
+      "tokenVersion": 1,
+      "createdAt": 1770902281149,
+      "lastLoginAt": 1770902281149,
+      "updatedAt": 1770902281149
     }
   ],
   "favorites": {},
   "companions": {},
-  "completed": {}
+  "completed": {},
+  "mycarPhotos": {},
+  "friendRequests": [],
+  "friendships": {},
+  "shareSettings": {}
 }

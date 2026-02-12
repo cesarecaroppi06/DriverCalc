@@ -4164,9 +4164,10 @@ const FAVORITES_KEY = 'drivecalc_favorites_v1';
 const COMPANIONS_KEY = 'drivecalc_companions_v1';
 const COMPLETED_KEY = 'drivecalc_completed_v1';
 const MYCAR_PHOTOS_KEY = 'drivecalc_mycar_photos_v1';
-const AUTH_TOKEN_KEY = 'drivecalc_token_v1';
 const API_BASE = (() => {
     if (typeof window === 'undefined') return 'https://drivercalc.onrender.com/api';
+    const configuredBase = String(window.DRIVECALC_API_BASE || '').trim().replace(/\/+$/, '');
+    if (configuredBase) return configuredBase;
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     return isLocal ? 'http://localhost:3001/api' : 'https://drivercalc.onrender.com/api';
 })();
@@ -4177,7 +4178,7 @@ let companionTrips = [];
 let currentCompanions = [];
 let completedTrips = [];
 let myCarPhotos = {};
-let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || null;
+let authToken = null;
 let currentUser = null;
 let accountProfile = null;
 let accountStats = null;
@@ -4190,22 +4191,34 @@ let friendSearchRequestId = 0;
 let friends = [];
 let incomingFriendRequests = [];
 let outgoingFriendRequests = [];
+let selectedFriendId = '';
 let shareSettings = {
     shareFavorites: true,
     shareMyCar: true,
     shareCompanionTrips: true
 };
 
+function isAuthenticated() {
+    return !!authToken;
+}
+
+function buildAuthHeaders() {
+    if (authToken && authToken !== 'cookie-session') {
+        return { Authorization: `Bearer ${authToken}` };
+    }
+    return {};
+}
+
 async function apiRequest(path, method = 'GET', body) {
-    if (!authToken) throw new Error('Token mancante');
     let res;
     try {
         res = await fetch(`${API_BASE}${path}`, {
             method,
             headers: {
                 'Content-Type': 'application/json',
-                Authorization: `Bearer ${authToken}`
+                ...buildAuthHeaders()
             },
+            credentials: 'include',
             body: body ? JSON.stringify(body) : undefined
         });
     } catch (e) {
@@ -4407,7 +4420,7 @@ function clearFriendSearchResults() {
 }
 
 async function fetchFriendSearchSuggestions(query = '') {
-    if (!authToken || !friendSearchResults) return;
+    if (!isAuthenticated() || !friendSearchResults) return;
     const q = String(query || '').trim();
     if (q.length < 2) {
         clearFriendSearchResults();
@@ -4424,8 +4437,9 @@ async function fetchFriendSearchSuggestions(query = '') {
         const res = await fetch(`${API_BASE}/friends/search?q=${encodeURIComponent(q)}`, {
             headers: {
                 Accept: 'application/json',
-                Authorization: `Bearer ${authToken}`
+                ...buildAuthHeaders()
             },
+            credentials: 'include',
             signal: friendSearchAbortController.signal
         });
         const payload = await res.json().catch(() => ({}));
@@ -4483,6 +4497,10 @@ function normalizeFriendPhotoLabel(key) {
     return `Foto ${String(key).replace(/[-_]+/g, ' ')}`;
 }
 
+function getFriendDisplayName(friend = {}) {
+    return (friend.username || friend.email || 'Amico').trim();
+}
+
 function appendFriendSharedItem(title, subtitle = '', meta = '', imageSrc = '') {
     if (!friendSharedList) return;
     const li = document.createElement('li');
@@ -4531,12 +4549,49 @@ function renderFriendSharedData(shared) {
     const companionsItems = Array.isArray(shared.companions) ? shared.companions : [];
     const photoEntries = Object.entries(shared.mycarPhotos || {}).filter(([, value]) => typeof value === 'string' && value.startsWith('data:image'));
     const settings = shared.settings || {};
+    const friend = shared.friend || {};
+    const friendName = getFriendDisplayName(friend);
+    const friendAvatar = friend.avatarUrl || buildDefaultAccountAvatar(friendName);
+    const friendLocation = (friend.location || '').trim();
+    const friendBio = (friend.bio || '').trim();
 
-    appendFriendSharedItem(
-        `Amico: ${shared.friend?.email || '-'}`,
-        `Preferiti: ${favoritesItems.length} • Tratte in compagnia: ${companionsItems.length}`,
-        `Foto auto condivise: ${photoEntries.length}`
-    );
+    const profileCard = document.createElement('li');
+    profileCard.className = 'favorite-item friend-profile-card';
+
+    const avatar = document.createElement('img');
+    avatar.className = 'friend-profile-avatar';
+    avatar.src = friendAvatar;
+    avatar.alt = `Profilo di ${friendName}`;
+
+    const profileMeta = document.createElement('div');
+    profileMeta.className = 'friend-profile-meta';
+
+    const title = document.createElement('strong');
+    title.textContent = friendName;
+    const emailLine = document.createElement('span');
+    emailLine.textContent = friend.email || '-';
+    profileMeta.append(title, emailLine);
+
+    if (friendLocation) {
+        const location = document.createElement('span');
+        location.className = 'friend-profile-pill';
+        location.textContent = `Localita: ${friendLocation}`;
+        profileMeta.append(location);
+    }
+
+    const statsLine = document.createElement('span');
+    statsLine.textContent = `Preferiti: ${favoritesItems.length} • Tratte in compagnia: ${companionsItems.length} • Foto auto: ${photoEntries.length}`;
+    profileMeta.append(statsLine);
+
+    if (friendBio) {
+        const bio = document.createElement('span');
+        bio.className = 'friend-profile-bio';
+        bio.textContent = friendBio;
+        profileMeta.append(bio);
+    }
+
+    profileCard.append(avatar, profileMeta);
+    friendSharedList.appendChild(profileCard);
 
     if (!settings.shareFavorites) {
         appendFriendSharedItem('Preferiti non condivisi', 'Questo amico ha disattivato la condivisione dei preferiti.');
@@ -4578,40 +4633,88 @@ function renderFriendSharedData(shared) {
     }
 }
 
+async function selectFriend(friendId) {
+    const friend = friends.find((item) => item.id === friendId);
+    if (!friend || !friendId) return;
+    selectedFriendId = friendId;
+    renderFriends();
+    setFriendsStatus(`Caricamento dati condivisi di ${getFriendDisplayName(friend)}...`);
+    try {
+        const res = await apiRequest(`/friends/${friend.id}/shared`);
+        renderFriendSharedData(res.item || null);
+        setFriendsStatus('');
+    } catch (e) {
+        setFriendsStatus(e.message);
+    }
+}
+
 function renderFriends() {
     if (!friendsList || !friendsEmpty) return;
     friendsList.innerHTML = '';
     if (!friends.length) {
         friendsEmpty.style.display = 'block';
+        selectedFriendId = '';
+        renderFriendSharedData(null);
         return;
     }
     friendsEmpty.style.display = 'none';
+
+    if (selectedFriendId && !friends.some((friend) => friend.id === selectedFriendId)) {
+        selectedFriendId = '';
+        renderFriendSharedData(null);
+    }
+
     friends.forEach(friend => {
         const li = document.createElement('li');
-        li.className = 'favorite-item';
+        li.className = `favorite-item friend-item${selectedFriendId === friend.id ? ' is-active' : ''}`;
+        li.tabIndex = 0;
+        li.setAttribute('role', 'button');
+        li.setAttribute('aria-label', `Apri dati condivisi di ${getFriendDisplayName(friend)}`);
 
         const meta = document.createElement('div');
-        meta.className = 'favorite-meta';
-        const title = document.createElement('strong');
-        title.textContent = friend.email;
-        meta.append(title);
+        meta.className = 'favorite-meta friend-card-meta';
 
-        const actions = document.createElement('div');
-        actions.className = 'favorite-actions';
-        const viewBtn = document.createElement('button');
-        viewBtn.className = 'pill-btn primary';
-        viewBtn.textContent = 'Vedi condivisi';
-        viewBtn.addEventListener('click', async () => {
-            try {
-                const res = await apiRequest(`/friends/${friend.id}/shared`);
-                renderFriendSharedData(res.item || null);
-                setFriendsStatus('');
-            } catch (e) {
-                setFriendsStatus(e.message);
-            }
+        const top = document.createElement('div');
+        top.className = 'friend-card-top';
+
+        const avatar = document.createElement('img');
+        avatar.className = 'friend-card-avatar';
+        avatar.src = friend.avatarUrl || buildDefaultAccountAvatar(getFriendDisplayName(friend));
+        avatar.alt = `Avatar ${getFriendDisplayName(friend)}`;
+
+        const identity = document.createElement('div');
+        identity.className = 'friend-card-identity';
+        const title = document.createElement('strong');
+        title.textContent = getFriendDisplayName(friend);
+        const subtitle = document.createElement('span');
+        subtitle.textContent = friend.email || '-';
+        identity.append(title, subtitle);
+        top.append(avatar, identity);
+        meta.append(top);
+
+        if (friend.location) {
+            const location = document.createElement('span');
+            location.className = 'friend-card-location';
+            location.textContent = `Localita: ${friend.location}`;
+            meta.append(location);
+        }
+
+        if (friend.bio) {
+            const bio = document.createElement('span');
+            bio.className = 'friend-card-bio';
+            bio.textContent = friend.bio;
+            meta.append(bio);
+        }
+
+        li.append(meta);
+        li.addEventListener('click', () => {
+            selectFriend(friend.id);
         });
-        actions.append(viewBtn);
-        li.append(meta, actions);
+        li.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            selectFriend(friend.id);
+        });
         friendsList.appendChild(li);
     });
 }
@@ -4746,7 +4849,7 @@ async function sendFriendRequest() {
         setFriendsStatus('Richiesta inviata');
     } catch (e) {
         if ((e.message || '').toLowerCase().includes('sessione scaduta')) {
-            clearAuth();
+            await clearAuth();
             openAuth();
         }
         setFriendsStatus(e.message);
@@ -4756,16 +4859,16 @@ async function sendFriendRequest() {
 }
 
 function setAuth(token, user) {
-    authToken = token;
+    authToken = token || 'cookie-session';
     currentUser = user || null;
-    if (authToken) localStorage.setItem(AUTH_TOKEN_KEY, authToken);
     updateAuthUI();
-    if (authToken) {
+    if (isAuthenticated()) {
         loadAllRemoteData().catch(() => {});
     }
 }
 
-function clearAuth() {
+async function clearAuth({ remote = true } = {}) {
+    const headers = buildAuthHeaders();
     authToken = null;
     currentUser = null;
     accountProfile = null;
@@ -4773,7 +4876,7 @@ function clearAuth() {
     friends = [];
     incomingFriendRequests = [];
     outgoingFriendRequests = [];
-    localStorage.removeItem(AUTH_TOKEN_KEY);
+    selectedFriendId = '';
     updateAuthUI();
     renderAccountProfile();
     renderFriends();
@@ -4784,10 +4887,22 @@ function clearAuth() {
     if (accountNewPassword) accountNewPassword.value = '';
     if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
     if (friendsOverlay) friendsOverlay.style.display = 'none';
+
+    if (remote) {
+        try {
+            await fetch(`${API_BASE}/auth/logout`, {
+                method: 'POST',
+                headers,
+                credentials: 'include'
+            });
+        } catch (e) {
+            // Ignore logout network failures; local session is already cleared.
+        }
+    }
 }
 
 async function loadAccountProfile() {
-    if (!authToken) {
+    if (!isAuthenticated()) {
         accountProfile = null;
         accountStats = null;
         renderAccountProfile();
@@ -4800,6 +4915,25 @@ async function loadAccountProfile() {
         currentUser = { ...(currentUser || {}), ...accountProfile };
     }
     renderAccountProfile();
+}
+
+async function restoreAuthSession() {
+    try {
+        const res = await fetch(`${API_BASE}/auth/me`, {
+            method: 'GET',
+            credentials: 'include'
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload?.user) return false;
+        authToken = 'cookie-session';
+        currentUser = payload.user;
+        accountProfile = payload.user;
+        accountStats = payload.stats || accountStats;
+        updateAuthUI('Sessione ripristinata');
+        return true;
+    } catch (e) {
+        return false;
+    }
 }
 
 async function handleAuth(isRegister) {
@@ -4816,11 +4950,12 @@ async function handleAuth(isRegister) {
         const data = await fetch(`${API_BASE}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify(isRegister ? { email, password, username } : { email, password })
         });
         const json = await data.json();
         if (!data.ok) throw new Error(json.error || 'Errore di autenticazione');
-        setAuth(json.token, json.user);
+        setAuth(json.token || 'cookie-session', json.user);
         accountProfile = json.user || accountProfile;
         accountStats = json.stats || accountStats;
         updateAuthUI(isRegister ? 'Registrazione completata' : 'Accesso riuscito');
@@ -5156,7 +5291,7 @@ async function openFriendsView() {
     if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
     friendsOverlay.style.display = 'flex';
     setActiveMenu(friendsBtn);
-    setFriendsStatus('Visualizza dati condivisi dagli amici');
+    setFriendsStatus('Clicca un amico per vedere profilo e condivisioni');
     try {
         await loadFriendsData();
     } catch (e) {
@@ -5789,9 +5924,10 @@ closeAuthBtn?.addEventListener('click', closeAuth);
 loginBtn?.addEventListener('click', () => handleAuth(false));
 registerBtn?.addEventListener('click', () => handleAuth(true));
 logoutBtn?.addEventListener('click', () => {
-    clearAuth();
-    updateAuthUI('Disconnesso');
-    setAuthFeedback('Disconnessione completata', 'info');
+    clearAuth().then(() => {
+        updateAuthUI('Disconnesso');
+        setAuthFeedback('Disconnessione completata', 'info');
+    });
 });
 accountSaveProfileBtn?.addEventListener('click', saveAccountProfile);
 accountAvatarUploadBtn?.addEventListener('click', () => accountAvatarInput?.click());
@@ -5902,12 +6038,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     await filterModelsByBrand();
     updateMyCarPreview();
     updateAuthUI();
-    if (authToken) {
+    const hasSession = await restoreAuthSession();
+    if (hasSession || isAuthenticated()) {
         try {
             await loadAllRemoteData();
         } catch (e) {
             updateAuthUI('Token non valido, rifai login');
-            clearAuth();
+            await clearAuth({ remote: false });
             await loadFavorites();
             await loadCompanionTrips();
             await loadCompletedTrips();
