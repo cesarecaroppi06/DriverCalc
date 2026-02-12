@@ -5922,6 +5922,12 @@ function toggleSettingsMenu() {
     }
 }
 
+function syncSettingsMenuCloseVisibility() {
+    if (!closeSettingsMenuBtn) return;
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    closeSettingsMenuBtn.style.display = isMobile ? 'inline-flex' : 'none';
+}
+
 function showCalculatorView() {
     if (mainPanel) mainPanel.style.display = 'block';
     if (infoPage) infoPage.style.display = 'none';
@@ -6240,7 +6246,9 @@ document.addEventListener('keypress', (e) => {
 // Inizializza al caricamento
 document.addEventListener('DOMContentLoaded', async () => {
     closeSettingsMenu();
+    syncSettingsMenuCloseVisibility();
     window.addEventListener('resize', () => {
+        syncSettingsMenuCloseVisibility();
         if (!window.matchMedia('(max-width: 768px)').matches) {
             closeSettingsMenu();
         }
