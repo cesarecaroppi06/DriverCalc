@@ -5016,6 +5016,46 @@ async function runTravelAiAnalysis(base = {}) {
         impactLine,
         tips: dedupTips
     });
+
+    const aiEnhancement = await requestTravelAiEnhancement({
+        ...buildAiChatContextPayload(),
+        travelAi: {
+            weatherLine,
+            impactLine,
+            impactPercent: Number(weightedImpact.toFixed(2)),
+            reliability: reliability.label,
+            confidenceScore: reliability.score,
+            adjustedTotalCost: Number(adjustedTotalCost.toFixed(2)),
+            deltaTotal: Number(deltaTotal.toFixed(2)),
+            bestWindow: bestWindow ? {
+                timeIso: bestWindow.timeIso,
+                impactPercent: Number(bestWindow.impactPercent.toFixed(2))
+            } : null,
+            tips: dedupTips
+        }
+    });
+    if (requestId !== travelAiRequestId || !aiEnhancement || !Array.isArray(aiEnhancement.tips) || !aiEnhancement.tips.length) {
+        return;
+    }
+
+    const providerLabel = getAiProviderLabel(aiEnhancement.source);
+    const mergedTips = Array.from(new Set([
+        ...dedupTips,
+        ...aiEnhancement.tips
+    ])).slice(0, 6);
+    const enrichedImpact = `${impactLine} Assistente AI: ${providerLabel}.`;
+    lastTravelAiSnapshot = {
+        ...lastTravelAiSnapshot,
+        impactLine: enrichedImpact,
+        tips: mergedTips,
+        aiSource: aiEnhancement.source || 'remote',
+        updatedAt: Date.now()
+    };
+    renderTravelAiPanel({
+        weatherLine,
+        impactLine: enrichedImpact,
+        tips: mergedTips
+    });
 }
 
 // Calcola il costo del viaggio
@@ -6690,6 +6730,31 @@ function normalizeAiChatText(value = '') {
     return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 320);
 }
 
+function getAiProviderLabel(source = '') {
+    const normalized = String(source || '').trim().toLowerCase();
+    if (normalized === 'gemini') return 'Gemini';
+    if (normalized === 'openai') return 'OpenAI';
+    if (normalized === 'local') return 'locale';
+    return 'AI';
+}
+
+function extractTravelAiTipsFromReply(reply = '') {
+    const raw = String(reply || '').trim();
+    if (!raw) return [];
+    const lines = raw
+        .split(/\n+/)
+        .map((line) => line.replace(/^[\s\-*•\d\)\.]+/, '').trim())
+        .filter(Boolean);
+    if (lines.length > 1) {
+        return Array.from(new Set(lines)).slice(0, 4);
+    }
+    const inline = raw
+        .split(/\s*(?:\||;|\.\s+)/g)
+        .map((item) => item.replace(/^[\s\-*•\d\)\.]+/, '').trim())
+        .filter((item) => item.length >= 8);
+    return Array.from(new Set(inline)).slice(0, 4);
+}
+
 function getAiChatFallbackGreeting() {
     if (!lastCalculatedTrip) {
         return 'Ciao! Posso aiutarti su costi viaggio, pedaggi, consumi, meteo e ottimizzazione del percorso. Calcola una tratta per risposte ancora piu precise.';
@@ -6841,7 +6906,7 @@ function buildLocalAiChatFallback(question = '') {
 
 async function requestAiChatReply(question = '') {
     const message = normalizeAiChatText(question);
-    if (!message) return '';
+    if (!message) return { reply: '', source: 'local' };
     const history = aiChatHistory.slice(-8).map((item) => ({
         role: item.role === 'user' ? 'user' : 'assistant',
         text: item.text
@@ -6854,12 +6919,40 @@ async function requestAiChatReply(question = '') {
             context: buildAiChatContextPayload()
         });
         const reply = normalizeAiChatText(response?.reply || response?.message || '');
-        if (reply) return reply;
+        if (reply) {
+            return {
+                reply,
+                source: String(response?.source || 'remote').trim().toLowerCase() || 'remote'
+            };
+        }
     } catch (e) {
         // fallback below
     }
 
-    return buildLocalAiChatFallback(message);
+    return {
+        reply: buildLocalAiChatFallback(message),
+        source: 'local'
+    };
+}
+
+async function requestTravelAiEnhancement(context = {}) {
+    try {
+        const response = await apiRequest('/ai/chat', 'POST', {
+            message: 'Agisci come assistente viaggio AI. In base al contesto fornisci massimo 3 consigli pratici e concreti per risparmiare su consumi, pedaggi e orario di partenza.',
+            history: [],
+            context
+        });
+        const rawReply = String(response?.reply || response?.message || '').trim();
+        if (!rawReply) return null;
+        const normalizedReply = normalizeAiChatText(rawReply);
+        const parsedTips = extractTravelAiTipsFromReply(rawReply);
+        return {
+            source: String(response?.source || 'remote').trim().toLowerCase() || 'remote',
+            tips: parsedTips.length ? parsedTips : [normalizedReply]
+        };
+    } catch (e) {
+        return null;
+    }
 }
 
 async function sendAiChatMessage() {
@@ -6886,10 +6979,12 @@ async function sendAiChatMessage() {
     if (aiChatMessages) aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
 
     try {
-        const answer = await requestAiChatReply(message);
+        const answerPayload = await requestAiChatReply(message);
+        const answer = normalizeAiChatText(answerPayload?.reply || '');
+        const sourceLabel = getAiProviderLabel(answerPayload?.source || '');
         if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
         pushAiChatMessage('assistant', answer || 'Non ho trovato una risposta utile. Riprova con una domanda piu specifica.');
-        setAiChatStatus('Risposta pronta.');
+        setAiChatStatus(`Risposta pronta (${sourceLabel}).`);
     } catch (e) {
         if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
         pushAiChatMessage('assistant', buildLocalAiChatFallback(message));

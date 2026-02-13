@@ -538,14 +538,14 @@ async function requestRemoteAiChatReply(message = '', history = [], context = {}
         const geminiReply = await requestGeminiChatReply(message, history, context);
         if (geminiReply) return { reply: geminiReply, source: 'gemini' };
     } catch (err) {
-        // fallback openai below
+        console.warn('[AI] Gemini unavailable:', String(err?.message || 'unknown error').slice(0, 220));
     }
 
     try {
         const openAiReply = await requestOpenAiChatReply(message, history, context);
         if (openAiReply) return { reply: openAiReply, source: 'openai' };
     } catch (err) {
-        // fallback locale below
+        console.warn('[AI] OpenAI unavailable:', String(err?.message || 'unknown error').slice(0, 220));
     }
 
     return null;
@@ -1238,6 +1238,74 @@ app.delete('/api/mycar-photo/:modelId', authMiddleware, (req, res) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+app.get('/api/health/ai', async (req, res) => {
+    const hasGemini = !!GEMINI_API_KEY;
+    const hasOpenAi = !!OPENAI_API_KEY;
+    const shouldCheckUpstream = ['1', 'true', 'yes', 'on'].includes(
+        String(req.query?.check || '').trim().toLowerCase()
+    );
+
+    const payload = {
+        ok: hasGemini || hasOpenAi,
+        timestamp: new Date().toISOString(),
+        providerPriority: ['gemini', 'openai', 'local'],
+        activeProvider: hasGemini ? 'gemini' : (hasOpenAi ? 'openai' : 'local'),
+        hasGeminiApiKey: hasGemini,
+        geminiModel: GEMINI_MODEL,
+        hasOpenAiApiKey: hasOpenAi,
+        upstreamChecked: false
+    };
+
+    if (!shouldCheckUpstream) {
+        return res.json(payload);
+    }
+
+    if (hasGemini) {
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+            const apiRes = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
+                    generationConfig: { maxOutputTokens: 8, temperature: 0 }
+                })
+            });
+            if (apiRes.ok) {
+                return res.json({
+                    ...payload,
+                    ok: true,
+                    upstreamChecked: true,
+                    geminiStatus: 'OK'
+                });
+            }
+            const detail = await apiRes.text().catch(() => '');
+            return res.status(502).json({
+                ...payload,
+                ok: false,
+                upstreamChecked: true,
+                geminiStatus: 'ERROR',
+                geminiError: (detail || `Gemini HTTP ${apiRes.status}`).slice(0, 500)
+            });
+        } catch (err) {
+            return res.status(502).json({
+                ...payload,
+                ok: false,
+                upstreamChecked: true,
+                geminiStatus: 'ERROR',
+                geminiError: String(err?.message || 'Gemini request failed').slice(0, 500)
+            });
+        }
+    }
+
+    return res.status(hasOpenAi ? 200 : 503).json({
+        ...payload,
+        ok: hasOpenAi,
+        upstreamChecked: true,
+        geminiStatus: hasGemini ? 'UNKNOWN' : 'MISSING_KEY'
+    });
+});
 
 app.post('/api/fuel-stations/nearby', async (req, res) => {
     const incoming = req.body || {};
