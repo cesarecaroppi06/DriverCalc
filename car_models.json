@@ -381,5 +381,68 @@
   {"id":"byd-seal-u-2024","label":"BYD Seal U EV (2024)","brand":"byd","year":2024,"fuels":{"elettrico":18.1}},
 
   {"id":"jaguar-f-pace-2023","label":"Jaguar F-Pace P400e (2023)","brand":"jaguar","year":2023,"fuels":{"benzina":7.8}},
-  {"id":"maserati-granturismo-folgore-2024","label":"Maserati GranTurismo Folgore (2024)","brand":"maserati","year":2024,"fuels":{"elettrico":23.0}}
+  {"id":"maserati-granturismo-folgore-2024","label":"Maserati GranTurismo Folgore (2024)","brand":"maserati","year":2024,"fuels":{"elettrico":23.0}},
+
+  {"id":"fiat-500-2016-12","label":"Fiat 500 1.2 Fire (2016)","brand":"fiat","year":2016,"fuels":{"benzina":5.4}},
+  {"id":"fiat-500x-2018-multijet","label":"Fiat 500X 1.6 MultiJet (2018)","brand":"fiat","year":2018,"fuels":{"diesel":5.6}},
+  {"id":"fiat-tipo-2017-multijet","label":"Fiat Tipo 1.6 MultiJet (2017)","brand":"fiat","year":2017,"fuels":{"diesel":4.9}},
+  {"id":"fiat-panda-2019-city-life","label":"Fiat Panda City Life 1.2 (2019)","brand":"fiat","year":2019,"fuels":{"benzina":5.8}},
+
+  {"id":"vw-golf-2018-tdi","label":"Volkswagen Golf 1.6 TDI (2018)","brand":"volkswagen","year":2018,"fuels":{"diesel":4.7}},
+  {"id":"vw-tiguan-2019-tdi","label":"Volkswagen Tiguan 2.0 TDI (2019)","brand":"volkswagen","year":2019,"fuels":{"diesel":5.8}},
+  {"id":"vw-t-roc-2020-tdi","label":"Volkswagen T-Roc 1.6 TDI (2020)","brand":"volkswagen","year":2020,"fuels":{"diesel":5.7}},
+  {"id":"vw-golf-tgi-2018","label":"Volkswagen Golf 1.5 TGI Metano (2018)","brand":"volkswagen","year":2018,"fuels":{"metano":4.0,"benzina":6.0}},
+
+  {"id":"renault-clio-2019-bluedci","label":"Renault Clio 1.5 Blue dCi (2019)","brand":"renault","year":2019,"fuels":{"diesel":4.3}},
+  {"id":"renault-captur-2018-dci","label":"Renault Captur 1.5 dCi (2018)","brand":"renault","year":2018,"fuels":{"diesel":4.8}},
+  {"id":"renault-megane-2019-bluedci","label":"Renault Megane 1.5 Blue dCi (2019)","brand":"renault","year":2019,"fuels":{"diesel":4.6}},
+
+  {"id":"peugeot-208-2019-bluedci","label":"Peugeot 208 1.5 BlueHDi (2019)","brand":"peugeot","year":2019,"fuels":{"diesel":4.2}},
+  {"id":"peugeot-3008-2018-bluedci","label":"Peugeot 3008 1.5 BlueHDi (2018)","brand":"peugeot","year":2018,"fuels":{"diesel":5.0}},
+  {"id":"peugeot-2008-2020-puretech","label":"Peugeot 2008 1.2 PureTech (2020)","brand":"peugeot","year":2020,"fuels":{"benzina":5.7}},
+
+  {"id":"ford-fiesta-2017-tdci","label":"Ford Fiesta 1.5 TDCi (2017)","brand":"ford","year":2017,"fuels":{"diesel":4.3}},
+  {"id":"ford-focus-2018-ecoblue","label":"Ford Focus 1.5 EcoBlue (2018)","brand":"ford","year":2018,"fuels":{"diesel":4.8}},
+  {"id":"ford-puma-2020-ecoboost","label":"Ford Puma 1.0 EcoBoost (2020)","brand":"ford","year":2020,"fuels":{"benzina":5.6}},
+
+  {"id":"opel-corsa-2016-cdti","label":"Opel Corsa 1.3 CDTI (2016)","brand":"opel","year":2016,"fuels":{"diesel":4.1}},
+  {"id":"opel-mokka-x-2018-cdti","label":"Opel Mokka X 1.6 CDTI (2018)","brand":"opel","year":2018,"fuels":{"diesel":5.3}},
+
+  {"id":"toyota-yaris-2017-hybrid","label":"Toyota Yaris 1.5 Hybrid (2017)","brand":"toyota","year":2017,"fuels":{"benzina":4.2}},
+  {"id":"toyota-auris-2018-hybrid","label":"Toyota Auris 1.8 Hybrid (2018)","brand":"toyota","year":2018,"fuels":{"benzina":4.6}},
+  {"id":"toyota-rav4-2019-hybrid","label":"Toyota RAV4 2.5 Hybrid AWD (2019)","brand":"toyota","year":2019,"fuels":{"benzina":6.0}},
+
+  {"id":"nissan-qashqai-2018-dci","label":"Nissan Qashqai 1.5 dCi (2018)","brand":"nissan","year":2018,"fuels":{"diesel":4.9}},
+  {"id":"nissan-micra-2017-igt","label":"Nissan Micra 0.9 IG-T (2017)","brand":"nissan","year":2017,"fuels":{"benzina":5.2}},
+
+  {"id":"hyundai-tucson-2019-crdi","label":"Hyundai Tucson 1.6 CRDi (2019)","brand":"hyundai","year":2019,"fuels":{"diesel":5.8}},
+  {"id":"hyundai-kona-2020-hybrid","label":"Hyundai Kona Hybrid 1.6 (2020)","brand":"hyundai","year":2020,"fuels":{"benzina":5.1}},
+  {"id":"kia-sportage-2019-crdi","label":"Kia Sportage 1.6 CRDi (2019)","brand":"kia","year":2019,"fuels":{"diesel":5.8}},
+  {"id":"kia-rio-2018-crdi","label":"Kia Rio 1.4 CRDi (2018)","brand":"kia","year":2018,"fuels":{"diesel":4.4}},
+
+  {"id":"dacia-sandero-2018-gpl","label":"Dacia Sandero 0.9 TCe GPL (2018)","brand":"dacia","year":2018,"fuels":{"gpl":7.0,"benzina":5.9}},
+  {"id":"dacia-duster-2017-dci","label":"Dacia Duster 1.5 dCi (2017)","brand":"dacia","year":2017,"fuels":{"diesel":5.1}},
+
+  {"id":"skoda-octavia-2018-gtec","label":"Skoda Octavia 1.5 G-TEC Metano (2018)","brand":"skoda","year":2018,"fuels":{"metano":3.8,"benzina":5.9}},
+  {"id":"seat-leon-2019-tgi","label":"Seat Leon 1.5 TGI Metano (2019)","brand":"seat","year":2019,"fuels":{"metano":3.9,"benzina":6.0}},
+
+  {"id":"audi-a4-gtron-2018","label":"Audi A4 Avant g-tron Metano (2018)","brand":"audi","year":2018,"fuels":{"metano":4.3,"benzina":6.8}},
+  {"id":"audi-a4-gtron-2019","label":"Audi A4 Avant g-tron Metano (2019)","brand":"audi","year":2019,"fuels":{"metano":4.2,"benzina":6.7}},
+  {"id":"audi-a3-gtron-2017","label":"Audi A3 Sportback g-tron Metano (2017)","brand":"audi","year":2017,"fuels":{"metano":3.7,"benzina":5.8}},
+
+  {"id":"bmw-serie1-2017-116d","label":"BMW Serie 1 116d (2017)","brand":"bmw","year":2017,"fuels":{"diesel":4.6}},
+  {"id":"mercedes-a180d-2017","label":"Mercedes Classe A 180d (2017)","brand":"mercedes","year":2017,"fuels":{"diesel":4.7}},
+  {"id":"alfa-giulietta-2018-jtdm","label":"Alfa Romeo Giulietta 1.6 JTDM (2018)","brand":"alfa-romeo","year":2018,"fuels":{"diesel":4.9}},
+
+  {"id":"citroen-c3-2018-bluehdi","label":"Citroen C3 1.6 BlueHDi (2018)","brand":"citroen","year":2018,"fuels":{"diesel":4.4}},
+  {"id":"lancia-ypsilon-2018-12","label":"Lancia Ypsilon 1.2 (2018)","brand":"lancia","year":2018,"fuels":{"benzina":5.4}},
+
+  {"id":"jeep-renegade-2019-mjd","label":"Jeep Renegade 1.6 MultiJet (2019)","brand":"jeep","year":2019,"fuels":{"diesel":5.6}},
+  {"id":"land-rover-evoque-2020-d150","label":"Range Rover Evoque D150 (2020)","brand":"land-rover","year":2020,"fuels":{"diesel":6.7}},
+
+  {"id":"volvo-v40-2018-d2","label":"Volvo V40 D2 (2018)","brand":"volvo","year":2018,"fuels":{"diesel":4.3}},
+  {"id":"mini-cooper-d-2018","label":"Mini Cooper D 1.5 (2018)","brand":"mini","year":2018,"fuels":{"diesel":4.4}},
+  {"id":"honda-hrv-2019-idtec","label":"Honda HR-V 1.6 i-DTEC (2019)","brand":"honda","year":2019,"fuels":{"diesel":4.8}},
+  {"id":"mazda-cx3-2018-skyactivd","label":"Mazda CX-3 1.8 Skyactiv-D (2018)","brand":"mazda","year":2018,"fuels":{"diesel":4.9}},
+  {"id":"suzuki-ignis-2018-hybrid","label":"Suzuki Ignis 1.2 Hybrid (2018)","brand":"suzuki","year":2018,"fuels":{"benzina":4.8}}
 ]

@@ -2574,7 +2574,7 @@ Object.keys(carConsumption).forEach(key => {
 
 // Carica modelli estesi da JSON esterno per non appesantire il bundle
 const DYNAMIC_MODELS_GROUP_ID = 'dynamic-models-group';
-const BRAND_DATA_VERSION = '6';
+const BRAND_DATA_VERSION = '7';
 const MODEL_YEAR_MIN = 1980;
 const MODEL_YEAR_MAX = Math.max(new Date().getFullYear(), 2026);
 const OFFICIAL_MODELS_SOURCE = 'vpic-nhtsa';
