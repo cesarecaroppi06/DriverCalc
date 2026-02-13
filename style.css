@@ -2230,7 +2230,7 @@ main::after,
 .form-group label {
     color: #dbe8ff;
     font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 15px;
+    font-size: clamp(17px, 1.8vw, 20px);
     letter-spacing: 0.2px;
 }
 
