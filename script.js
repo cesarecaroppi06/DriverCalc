@@ -2977,7 +2977,7 @@ async function loadCarModelsFromJson() {
         console.error('Errore caricamento modelli estesi:', err);
         const errorOpt = document.createElement('option');
         errorOpt.value = '';
-        errorOpt.textContent = '⚠️ Modelli estesi non disponibili (controlla connessione/server)';
+        errorOpt.textContent = 'Modelli estesi non disponibili (controlla connessione/server)';
         errorOpt.disabled = true;
         let group = carTypeSelect.querySelector(`#${DYNAMIC_MODELS_GROUP_ID}`);
         if (!group) {
@@ -3537,9 +3537,11 @@ const installAppQuickBtn = document.getElementById('installAppQuickBtn');
 const installAppButtons = [installAppBtn, installAppQuickBtn].filter(Boolean);
 const tripActionFeedback = document.getElementById('tripActionFeedback');
 const accountBtn = document.getElementById('accountBtn');
+const securityBtn = document.getElementById('securityBtn');
 const authOverlay = document.getElementById('authOverlay');
+const securityOverlay = document.getElementById('securityOverlay');
+const closeSecurityBtn = document.getElementById('closeSecurity');
 const closeAuthBtn = document.getElementById('closeAuth');
-const friendRequestsBtn = document.getElementById('friendRequestsBtn');
 const friendRequestsOverlay = document.getElementById('friendRequestsOverlay');
 const closeFriendRequestsBtn = document.getElementById('closeFriendRequests');
 const friendsBtn = document.getElementById('friendsBtn');
@@ -3586,9 +3588,13 @@ const accountProfileLocation = document.getElementById('accountProfileLocation')
 const accountProfileBio = document.getElementById('accountProfileBio');
 const accountSaveProfileBtn = document.getElementById('accountSaveProfileBtn');
 const accountStatus = document.getElementById('accountStatus');
+const securityStatus = document.getElementById('securityStatus');
 const accountCurrentPassword = document.getElementById('accountCurrentPassword');
 const accountNewPassword = document.getElementById('accountNewPassword');
 const accountChangePasswordBtn = document.getElementById('accountChangePasswordBtn');
+const accountFriendRequestsToggle = document.getElementById('accountFriendRequestsToggle');
+const accountFriendRequestsBadge = document.getElementById('accountFriendRequestsBadge');
+const accountMyCarPanel = document.getElementById('accountMyCarPanel');
 const accountStatFavorites = document.getElementById('accountStatFavorites');
 const accountStatCompleted = document.getElementById('accountStatCompleted');
 const accountStatFriends = document.getElementById('accountStatFriends');
@@ -3634,9 +3640,6 @@ const budgetTotalCost = document.getElementById('budgetTotalCost');
 const budgetAvgCost = document.getElementById('budgetAvgCost');
 const budgetFuelCost = document.getElementById('budgetFuelCost');
 const budgetTollCost = document.getElementById('budgetTollCost');
-const myCarBtn = document.getElementById('myCarBtn');
-const myCarOverlay = document.getElementById('myCarOverlay');
-const closeMyCarBtn = document.getElementById('closeMyCar');
 const myCarImage = document.getElementById('myCarImage');
 const myCarTitle = document.getElementById('myCarTitle');
 const myCarMeta = document.getElementById('myCarMeta');
@@ -3687,11 +3690,11 @@ function updateFuelPriceUI() {
     const baseFuel = resolveBaseFuel(fuelType);
     const unit = getFuelUnit(fuelType);
     if (baseFuel === 'elettrico') {
-        fuelPriceLabel.textContent = '⚡ Prezzo energia (€/kWh):';
+        fuelPriceLabel.textContent = 'Prezzo energia (€/kWh):';
     } else if (baseFuel === 'metano') {
-        fuelPriceLabel.textContent = '⛽ Prezzo metano (€/kg):';
+        fuelPriceLabel.textContent = 'Prezzo metano (€/kg):';
     } else {
-        fuelPriceLabel.textContent = '⛽ Prezzo carburante (€/L):';
+        fuelPriceLabel.textContent = 'Prezzo carburante (€/L):';
     }
 
     const defaultPrice = getFuelDefault(fuelType);
@@ -4921,7 +4924,7 @@ async function calculateTrip() {
         if ((!departureSelect.value && !(departureAddressInput?.value || '').trim()) ||
             (!arrivalSelect.value && !(arrivalAddressInput?.value || '').trim()) ||
             !carBrandSelect.value || !carTypeSelect.value || !fuelTypeSelect.value) {
-            showError('⚠️ Per favore, seleziona partenza, arrivo, marca, modello e carburante!');
+            showError('Per favore, seleziona partenza, arrivo, marca, modello e carburante!');
             return;
         }
 
@@ -4933,13 +4936,13 @@ async function calculateTrip() {
             fromLocation = await resolveLocation('la partenza', departureAddressInput, departureSelect);
             toLocation = await resolveLocation('l’arrivo', arrivalAddressInput, arrivalSelect);
         } catch (e) {
-            showError(e.message || '❌ Errore nel recupero degli indirizzi.');
+            showError(e.message || 'Errore nel recupero degli indirizzi.');
             return;
         }
 
         const samePoint = haversineKm(fromLocation.lat, fromLocation.lng, toLocation.lat, toLocation.lng) < 0.2;
         if (samePoint) {
-            showError('❌ Il punto di partenza e arrivo non possono essere uguali!');
+            showError('Il punto di partenza e arrivo non possono essere uguali!');
             return;
         }
 
@@ -4951,7 +4954,7 @@ async function calculateTrip() {
         const baseFuelType = resolveBaseFuel(fuelType);
         const fuelPrice = parseFloat(fuelPriceInput.value);
         if (!Number.isFinite(fuelPrice) || fuelPrice <= 0) {
-            showError('❌ Inserisci un prezzo carburante valido maggiore di zero.');
+            showError('Inserisci un prezzo carburante valido maggiore di zero.');
             return;
         }
         const fuelLabel = fuelTypeSelect.options[fuelTypeSelect.selectedIndex]?.textContent || fuelType;
@@ -4961,7 +4964,7 @@ async function calculateTrip() {
         const carTypeLabel = carProfile?.label || carTypeSelect.options[carTypeSelect.selectedIndex]?.textContent || carType;
         const consumptionPer100 = carProfile && (carProfile.fuels[fuelType] ?? carProfile.fuels[baseFuelType]);
         if (!consumptionPer100) {
-            showError('❌ Questa combinazione auto/alimentazione non è supportata. Scegli un altro carburante o tipo di auto.');
+            showError('Questa combinazione auto/alimentazione non è supportata. Scegli un altro carburante o tipo di auto.');
             return;
         }
         
@@ -4973,7 +4976,7 @@ async function calculateTrip() {
             route = null;
         }
         if (!route) {
-            showError('❌ Errore nel calcolo della rotta. Riprova oppure scegli una tratta diversa.');
+            showError('Errore nel calcolo della rotta. Riprova oppure scegli una tratta diversa.');
             return;
         }
 
@@ -5443,7 +5446,7 @@ function buildDefaultAccountAvatar(name = '') {
   </defs>
   <rect width="160" height="160" rx="30" fill="#0b162d"/>
   <circle cx="80" cy="80" r="66" fill="url(#g)" opacity="0.95"/>
-  <text x="80" y="96" text-anchor="middle" font-family="Space Grotesk, Arial, sans-serif" font-size="54" font-weight="700" fill="#041127">${escapeSvgText(initials || 'DC')}</text>
+  <text x="80" y="96" text-anchor="middle" font-family="IBM Plex Sans, Arial, sans-serif" font-size="54" font-weight="700" fill="#041127">${escapeSvgText(initials || 'DC')}</text>
 </svg>`;
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
@@ -5504,14 +5507,14 @@ function setCalculateBusy(isBusy) {
     if (!calculateBtn) return;
     if (isBusy) {
         if (!calculateBtn.dataset.originalLabel) {
-            calculateBtn.dataset.originalLabel = calculateBtn.textContent || '📊 Calcola Costo Viaggio';
+            calculateBtn.dataset.originalLabel = calculateBtn.textContent || 'Calcola Costo Viaggio';
         }
         calculateBtn.disabled = true;
-        calculateBtn.textContent = '⏳ Calcolo in corso...';
+        calculateBtn.textContent = 'Calcolo in corso...';
         calculateBtn.setAttribute('aria-busy', 'true');
     } else {
         calculateBtn.disabled = false;
-        calculateBtn.textContent = calculateBtn.dataset.originalLabel || '📊 Calcola Costo Viaggio';
+        calculateBtn.textContent = calculateBtn.dataset.originalLabel || 'Calcola Costo Viaggio';
         calculateBtn.removeAttribute('aria-busy');
     }
 }
@@ -5641,7 +5644,7 @@ function ensureImagePreviewOverlay() {
     closeBtn.className = 'image-preview-close';
     closeBtn.type = 'button';
     closeBtn.setAttribute('aria-label', 'Chiudi anteprima immagine');
-    closeBtn.textContent = '✖';
+    closeBtn.textContent = 'X';
 
     const image = document.createElement('img');
     image.className = 'image-preview-image';
@@ -5985,6 +5988,8 @@ function renderFriendRequests() {
             });
         }
     }
+
+    updateFriendRequestsBadge();
 }
 
 function applyShareSettingsToUI() {
@@ -6079,11 +6084,14 @@ async function clearAuth({ remote = true } = {}) {
     renderFriends();
     renderFriendRequests();
     renderFriendSharedData(null);
+    closeAccountSubPanels();
+    updateFriendRequestsBadge();
     setFriendsStatus('');
+    setSecurityStatus('');
     if (accountCurrentPassword) accountCurrentPassword.value = '';
     if (accountNewPassword) accountNewPassword.value = '';
-    if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
     if (friendsOverlay) friendsOverlay.style.display = 'none';
+    if (securityOverlay) securityOverlay.style.display = 'none';
 
     if (remote) {
         try {
@@ -6235,12 +6243,15 @@ async function removeAccountAvatar() {
 }
 
 async function changeAccountPassword() {
-    if (!authToken) return;
+    if (!authToken) {
+        openAuth();
+        updateAuthUI('Accedi per aggiornare la password');
+        return;
+    }
     const currentPassword = accountCurrentPassword?.value || '';
     const newPassword = accountNewPassword?.value || '';
     if (!currentPassword || !newPassword) {
-        updateAuthUI('Inserisci password attuale e nuova password');
-        setAuthFeedback('Inserisci password attuale e nuova password', 'error');
+        setSecurityStatus('Inserisci password attuale e nuova password');
         return;
     }
     try {
@@ -6248,10 +6259,9 @@ async function changeAccountPassword() {
         if (accountCurrentPassword) accountCurrentPassword.value = '';
         if (accountNewPassword) accountNewPassword.value = '';
         updateAuthUI('Password aggiornata');
-        setAuthFeedback('Password aggiornata con successo', 'success');
+        setSecurityStatus('Password aggiornata con successo');
     } catch (e) {
-        updateAuthUI(e.message);
-        setAuthFeedback(e.message, 'error');
+        setSecurityStatus(e.message || 'Errore aggiornamento password');
     }
 }
 
@@ -6423,6 +6433,7 @@ function renderFavorites() {
 
 async function openFavorites() {
     if (favoritesOverlay) {
+        closeAccountSubPanels({ clearSearch: false });
         if (authToken) await loadFavorites();
         favoritesOverlay.style.display = 'flex';
         setActiveMenu(favoritesBtn);
@@ -6435,18 +6446,82 @@ function closeFavorites() {
     setActiveMenu(homeBtn);
 }
 
-function openAuth() {
-    if (authOverlay) {
-        authOverlay.style.display = 'flex';
-        setActiveMenu(accountBtn);
-        updateAuthUI(authToken ? 'Account connesso' : 'Accedi o registrati');
-        setAuthFeedback('');
-        if (authToken) {
-            loadAccountProfile().catch((e) => {
-                updateAuthUI(e.message || 'Impossibile caricare il profilo');
-            });
-        }
+function setFriendRequestsWindowState(isOpen) {
+    if (friendRequestsOverlay) {
+        friendRequestsOverlay.style.display = isOpen ? 'flex' : 'none';
     }
+    if (accountFriendRequestsToggle) {
+        accountFriendRequestsToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        accountFriendRequestsToggle.classList.toggle('is-open', isOpen);
+    }
+}
+
+function closeAccountSubPanels({ clearSearch = true } = {}) {
+    setFriendRequestsWindowState(false);
+    if (clearSearch) clearFriendSearchResults();
+}
+
+function updateFriendRequestsBadge() {
+    if (!accountFriendRequestsBadge || !accountFriendRequestsToggle) return;
+    const pendingCount = Array.isArray(incomingFriendRequests) ? incomingFriendRequests.length : 0;
+    accountFriendRequestsBadge.textContent = String(pendingCount);
+    accountFriendRequestsBadge.style.display = pendingCount > 0 ? 'inline-flex' : 'none';
+    accountFriendRequestsToggle.classList.toggle('has-notifications', pendingCount > 0);
+}
+
+function setSecurityStatus(message = '') {
+    if (!securityStatus) return;
+    securityStatus.textContent = message || '';
+}
+
+function openAuth() {
+    if (!authOverlay) return;
+    closeAccountSubPanels({ clearSearch: false });
+    if (securityOverlay) securityOverlay.style.display = 'none';
+    setSecurityStatus('');
+    authOverlay.style.display = 'flex';
+    setActiveMenu(accountBtn);
+    updateAuthUI(authToken ? 'Account connesso' : 'Accedi o registrati');
+    setAuthFeedback('');
+
+    if (!authToken) {
+        closeAccountSubPanels();
+        updateFriendRequestsBadge();
+        return;
+    }
+
+    loadAccountProfile().catch((e) => {
+        updateAuthUI(e.message || 'Impossibile caricare il profilo');
+    });
+    loadFriendsData().catch(() => {
+        setFriendsStatus('Impossibile caricare richieste amicizia');
+    });
+    prepareMyCarPanel().catch(() => {});
+}
+
+function openSecurity() {
+    if (!authToken) {
+        openAuth();
+        updateAuthUI('Accedi per gestire la sicurezza account');
+        return;
+    }
+    if (!securityOverlay) return;
+    closeAccountSubPanels({ clearSearch: false });
+    if (authOverlay) authOverlay.style.display = 'none';
+    securityOverlay.style.display = 'flex';
+    setActiveMenu(securityBtn);
+    setSecurityStatus('');
+    if (accountCurrentPassword) accountCurrentPassword.value = '';
+    if (accountNewPassword) accountNewPassword.value = '';
+    if (accountCurrentPassword) accountCurrentPassword.focus();
+}
+
+function closeSecurity() {
+    if (securityOverlay) securityOverlay.style.display = 'none';
+    setSecurityStatus('');
+    if (accountCurrentPassword) accountCurrentPassword.value = '';
+    if (accountNewPassword) accountNewPassword.value = '';
+    setActiveMenu(homeBtn);
 }
 
 async function openFriendRequestsView() {
@@ -6455,19 +6530,16 @@ async function openFriendRequestsView() {
         updateAuthUI('Accedi per inviare o gestire richieste amicizia');
         return;
     }
-    if (!friendRequestsOverlay) return;
-    if (authOverlay) authOverlay.style.display = 'none';
-    if (friendsOverlay) friendsOverlay.style.display = 'none';
-    friendRequestsOverlay.style.display = 'flex';
-    setActiveMenu(friendRequestsBtn);
+    openAuth();
+    setFriendRequestsWindowState(true);
     setFriendsStatus('Gestisci richieste amicizia');
+    clearFriendSearchResults();
     try {
         await loadFriendsData();
-        clearFriendSearchResults();
-        if (friendSearchInput) friendSearchInput.focus();
     } catch (e) {
         setFriendsStatus('Impossibile caricare richieste amicizia');
     }
+    if (friendSearchInput) friendSearchInput.focus();
 }
 
 async function openFriendsView() {
@@ -6477,8 +6549,9 @@ async function openFriendsView() {
         return;
     }
     if (!friendsOverlay) return;
+    closeAccountSubPanels({ clearSearch: false });
     if (authOverlay) authOverlay.style.display = 'none';
-    if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
+    if (securityOverlay) securityOverlay.style.display = 'none';
     friendsOverlay.style.display = 'flex';
     setActiveMenu(friendsBtn);
     setFriendsStatus('Clicca un amico per vedere profilo e condivisioni');
@@ -6491,14 +6564,14 @@ async function openFriendsView() {
 
 function closeAuth() {
     if (authOverlay) authOverlay.style.display = 'none';
+    closeAccountSubPanels();
     setAuthFeedback('');
     setActiveMenu(homeBtn);
 }
 
 function closeFriendRequestsView() {
-    if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
+    setFriendRequestsWindowState(false);
     clearFriendSearchResults();
-    setActiveMenu(homeBtn);
 }
 
 function closeFriendsView() {
@@ -6722,13 +6795,13 @@ async function sendAiChatMessage() {
 
 function openAiChat() {
     if (!aiChatOverlay) return;
+    closeAccountSubPanels({ clearSearch: false });
     if (authOverlay) authOverlay.style.display = 'none';
-    if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
+    if (securityOverlay) securityOverlay.style.display = 'none';
     if (friendsOverlay) friendsOverlay.style.display = 'none';
     if (favoritesOverlay) favoritesOverlay.style.display = 'none';
     if (companionsOverlay) companionsOverlay.style.display = 'none';
     if (budgetOverlay) budgetOverlay.style.display = 'none';
-    if (myCarOverlay) myCarOverlay.style.display = 'none';
 
     aiChatOverlay.style.display = 'flex';
     setActiveMenu(aiChatBtn);
@@ -6822,12 +6895,12 @@ function setFuelFinderBusy(isBusy) {
     fuelFinderPending = !!isBusy;
     if (!findFuelStationsBtn) return;
     if (!findFuelStationsBtn.dataset.originalLabel) {
-        findFuelStationsBtn.dataset.originalLabel = findFuelStationsBtn.textContent || '📡 Trova vicino a me';
+        findFuelStationsBtn.dataset.originalLabel = findFuelStationsBtn.textContent || 'Trova vicino a me';
     }
     findFuelStationsBtn.disabled = fuelFinderPending;
     findFuelStationsBtn.textContent = fuelFinderPending
         ? 'Ricerca in corso...'
-        : (findFuelStationsBtn.dataset.originalLabel || '📡 Trova vicino a me');
+        : (findFuelStationsBtn.dataset.originalLabel || 'Trova vicino a me');
 }
 
 function persistFuelFinderPosition(position) {
@@ -7156,13 +7229,13 @@ async function runFuelFinderSearch({ useLastKnown = false } = {}) {
 
 function openFuelFinder() {
     if (!fuelFinderOverlay) return;
+    closeAccountSubPanels({ clearSearch: false });
     if (authOverlay) authOverlay.style.display = 'none';
-    if (friendRequestsOverlay) friendRequestsOverlay.style.display = 'none';
+    if (securityOverlay) securityOverlay.style.display = 'none';
     if (friendsOverlay) friendsOverlay.style.display = 'none';
     if (favoritesOverlay) favoritesOverlay.style.display = 'none';
     if (companionsOverlay) companionsOverlay.style.display = 'none';
     if (budgetOverlay) budgetOverlay.style.display = 'none';
-    if (myCarOverlay) myCarOverlay.style.display = 'none';
     if (aiChatOverlay) aiChatOverlay.style.display = 'none';
 
     syncFuelFinderTypeFromTrip();
@@ -7389,6 +7462,8 @@ function renderCompanionHistory() {
 
 async function openCompanions() {
     if (authToken) await loadCompanionTrips();
+    closeAccountSubPanels({ clearSearch: false });
+    if (securityOverlay) securityOverlay.style.display = 'none';
     setActiveMenu(companionsBtn);
     if (companionsOverlay) companionsOverlay.style.display = 'flex';
     currentCompanions = [];
@@ -7547,6 +7622,7 @@ function renderBudget() {
 
 async function openBudget() {
     if (authToken) await loadCompletedTrips();
+    closeAccountSubPanels({ clearSearch: false });
     setActiveMenu(budgetBtn);
     if (budgetOverlay) budgetOverlay.style.display = 'flex';
     renderBudget();
@@ -7557,9 +7633,7 @@ function closeBudget() {
     setActiveMenu(homeBtn);
 }
 
-async function openMyCar() {
-    setActiveMenu(myCarBtn);
-    if (myCarOverlay) myCarOverlay.style.display = 'flex';
+async function prepareMyCarPanel() {
     populateMyCarBrandOptions();
 
     if (!Object.keys(myCarPhotos || {}).length) {
@@ -7579,9 +7653,19 @@ async function openMyCar() {
     updateMyCarPreview();
 }
 
-function closeMyCar() {
-    if (myCarOverlay) myCarOverlay.style.display = 'none';
-    setActiveMenu(homeBtn);
+async function openMyCar() {
+    if (!authToken) {
+        openAuth();
+        updateAuthUI('Accedi per gestire la tua auto');
+        return;
+    }
+    openAuth();
+    try {
+        await prepareMyCarPanel();
+        accountMyCarPanel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (e) {
+        setAuthFeedback('Impossibile caricare i dati della tua auto', 'error');
+    }
 }
 
 // Gestione viste (calcolatore vs pagina info)
@@ -7694,7 +7778,7 @@ function handleBrandChange() {
 calculateBtn.addEventListener('click', () => {
     calculateTrip().catch(err => {
         console.error(err);
-        showError('❌ Si è verificato un errore durante il calcolo. Riprova.');
+        showError('Si è verificato un errore durante il calcolo. Riprova.');
     });
 });
 resetBtn.addEventListener('click', resetCalculator);
@@ -7745,11 +7829,9 @@ showTripFuelOnMapBtn?.addEventListener('click', () => {
     showTripFuelStationsOnMap().catch(() => {});
 });
 companionsBtn?.addEventListener('click', openCompanions);
-friendRequestsBtn?.addEventListener('click', openFriendRequestsView);
 friendsBtn?.addEventListener('click', openFriendsView);
 fuelFinderBtn?.addEventListener('click', openFuelFinder);
 aiChatBtn?.addEventListener('click', openAiChat);
-closeFriendRequestsBtn?.addEventListener('click', closeFriendRequestsView);
 closeFriendsBtn?.addEventListener('click', closeFriendsView);
 closeFuelFinderBtn?.addEventListener('click', closeFuelFinder);
 closeAiChatBtn?.addEventListener('click', closeAiChat);
@@ -7765,8 +7847,17 @@ companionNameInput?.addEventListener('keypress', (e) => {
 });
 budgetBtn?.addEventListener('click', openBudget);
 closeBudgetBtn?.addEventListener('click', closeBudget);
-myCarBtn?.addEventListener('click', openMyCar);
-closeMyCarBtn?.addEventListener('click', closeMyCar);
+securityBtn?.addEventListener('click', openSecurity);
+closeSecurityBtn?.addEventListener('click', closeSecurity);
+closeFriendRequestsBtn?.addEventListener('click', closeFriendRequestsView);
+accountFriendRequestsToggle?.addEventListener('click', () => {
+    const isOpen = friendRequestsOverlay?.style.display === 'flex';
+    if (isOpen) {
+        closeFriendRequestsView();
+        return;
+    }
+    openFriendRequestsView().catch(() => {});
+});
 myCarBrandSelect?.addEventListener('change', async () => {
     const brandKey = (myCarBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
     await populateMyCarModelOptions(brandKey);
@@ -7791,12 +7882,12 @@ myCarRemoveBtn?.addEventListener('click', removeMyCarPhoto);
 useLocationBtn?.addEventListener('click', async () => {
     if (!navigator.geolocation) {
         if (myCarUploadStatus) myCarUploadStatus.textContent = '';
-        showError('❌ Geolocalizzazione non supportata dal browser.');
+        showError('Geolocalizzazione non supportata dal browser.');
         return;
     }
     hideError();
     useLocationBtn.disabled = true;
-    useLocationBtn.textContent = '📡 Posizione in corso...';
+    useLocationBtn.textContent = 'Posizione in corso...';
     navigator.geolocation.getCurrentPosition(async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
@@ -7818,22 +7909,22 @@ useLocationBtn?.addEventListener('click', async () => {
             departureSelect.value = match ? match.value : '';
         }
         if (!details?.fullAddress) {
-            showError('⚠️ Posizione rilevata. Via non disponibile: uso città/coordinate.');
+            showError('Posizione rilevata. Via non disponibile: uso città/coordinate.');
         }
         useLocationBtn.disabled = false;
-        useLocationBtn.textContent = '📡 Usa la mia posizione';
+        useLocationBtn.textContent = 'Usa la mia posizione';
     }, (err) => {
         if (err && err.code === 1) {
-            showError('❌ Permesso geolocalizzazione negato.');
+            showError('Permesso geolocalizzazione negato.');
         } else if (err && err.code === 2) {
-            showError('❌ Posizione non disponibile. Attiva GPS o rete.');
+            showError('Posizione non disponibile. Attiva GPS o rete.');
         } else if (err && err.code === 3) {
-            showError('❌ Timeout nel recupero posizione. Riprova.');
+            showError('Timeout nel recupero posizione. Riprova.');
         } else {
-            showError('❌ Errore geolocalizzazione.');
+            showError('Errore geolocalizzazione.');
         }
         useLocationBtn.disabled = false;
-        useLocationBtn.textContent = '📡 Usa la mia posizione';
+        useLocationBtn.textContent = 'Usa la mia posizione';
     }, { enableHighAccuracy: true, timeout: 10000 });
 });
 accountBtn?.addEventListener('click', openAuth);
@@ -7925,17 +8016,18 @@ document.addEventListener('keydown', (e) => {
         if (budgetOverlay && budgetOverlay.style.display === 'flex') {
             closeBudget();
         }
-        if (myCarOverlay && myCarOverlay.style.display === 'flex') {
-            closeMyCar();
-        }
         if (myCarConsentOverlay && myCarConsentOverlay.style.display === 'flex') {
             closeMyCarConsent();
+        }
+        if (friendRequestsOverlay && friendRequestsOverlay.style.display === 'flex') {
+            closeFriendRequestsView();
+            return;
         }
         if (authOverlay && authOverlay.style.display === 'flex') {
             closeAuth();
         }
-        if (friendRequestsOverlay && friendRequestsOverlay.style.display === 'flex') {
-            closeFriendRequestsView();
+        if (securityOverlay && securityOverlay.style.display === 'flex') {
+            closeSecurity();
         }
         if (friendsOverlay && friendsOverlay.style.display === 'flex') {
             closeFriendsView();
@@ -7976,7 +8068,7 @@ document.addEventListener('keypress', (e) => {
         }
         calculateTrip().catch(err => {
             console.error(err);
-            showError('❌ Si è verificato un errore durante il calcolo. Riprova.');
+            showError('Si è verificato un errore durante il calcolo. Riprova.');
         });
     }
 });
@@ -8026,21 +8118,21 @@ function updateInstallButtonState() {
     };
 
     if (isStandaloneApp()) {
-        setButtonState('✅ App installata', true, 'Applicazione già installata su questo dispositivo');
+        setButtonState('App installata', true, 'Applicazione già installata su questo dispositivo');
         return;
     }
 
     if (deferredInstallPrompt) {
-        setButtonState('📲 Installa App', false, 'Installa l’app su questo dispositivo');
+        setButtonState('Installa App', false, 'Installa l’app su questo dispositivo');
         return;
     }
 
     if (isIosDevice()) {
-        setButtonState('📲 Installa App', false, 'Installa con Aggiungi a schermata Home');
+        setButtonState('Installa App', false, 'Installa con Aggiungi a schermata Home');
         return;
     }
 
-    setButtonState('📲 Installa App', false, 'Apri in Chrome/Edge mobile per installare la PWA');
+    setButtonState('Installa App', false, 'Apri in Chrome/Edge mobile per installare la PWA');
 }
 
 async function handleInstallAppClick() {
@@ -8120,6 +8212,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     await filterModelsByBrand();
     updateMyCarPreview();
     updateAuthUI();
+    closeAccountSubPanels({ clearSearch: false });
+    updateFriendRequestsBadge();
+    setSecurityStatus('');
     const hasSession = await restoreAuthSession();
     if (hasSession || isAuthenticated()) {
         try {

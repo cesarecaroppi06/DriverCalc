@@ -26,7 +26,7 @@
     <link rel="icon" type="image/png" href="logo.png?v=3">
     <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=12">
+    <link rel="stylesheet" href="style.css?v=15">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <script type="application/ld+json">
         {
@@ -85,47 +85,44 @@
 
         <div class="layout-body">
             <div class="mobile-top-actions">
-                <button id="mobileMenuToggle" class="mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="settingsMenu">
-                    ☰ Impostazioni
-                </button>
-                <button id="installAppQuickBtn" class="install-app-btn mobile-install-btn" type="button">📲 Installa App</button>
+                <button id="mobileMenuToggle" class="mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="settingsMenu">Menu</button>
+                <button id="installAppQuickBtn" class="install-app-btn mobile-install-btn" type="button">Installa App</button>
             </div>
             <div id="mobileMenuBackdrop" class="mobile-menu-backdrop" style="display:none;"></div>
             <nav id="settingsMenu" class="settings-menu">
                 <div class="settings-menu-header">
-                    <h3>Impostazioni</h3>
-                    <button id="installAppBtn" class="install-app-btn settings-install-btn" type="button">📲 Installa App</button>
-                    <button id="closeSettingsMenu" class="close-btn settings-menu-close" type="button">✖</button>
+                    <h3>Menu</h3>
+                    <button id="installAppBtn" class="install-app-btn settings-install-btn" type="button">Installa App</button>
+                    <button id="closeSettingsMenu" class="close-btn settings-menu-close" type="button">X</button>
                 </div>
                 <ul>
-                    <li><button id="homeBtn" class="active">🏠 Home</button></li>
-                    <li><button id="budgetBtn">📊 Bilancio</button></li>
-                    <li><button id="companionsBtn">🤝 Tratta in compagnia</button></li>
-                    <li><button id="friendRequestsBtn">📨 Invia richiesta amicizia</button></li>
-                    <li><button id="friendsBtn">👥 I miei amici</button></li>
-                    <li><button id="myCarBtn">🚗 La mia auto</button></li>
-                    <li><button id="fuelFinderBtn">⛽ Ricerca benzinaio smart</button></li>
-                    <li><button id="aiChatBtn">🤖 Chat AI</button></li>
-                    <li><button id="favoritesBtn">⭐ Preferiti</button></li>
-                    <li><button id="accountBtn">👤 Account</button></li>
-                    <li><button id="infoBtn">ℹ️ Info</button></li>
+                    <li><button id="homeBtn" class="active">Home</button></li>
+                    <li><button id="budgetBtn">Bilancio</button></li>
+                    <li><button id="companionsBtn">Tratta in compagnia</button></li>
+                    <li><button id="friendsBtn">I miei amici</button></li>
+                    <li><button id="fuelFinderBtn">Ricerca benzinaio smart</button></li>
+                    <li><button id="aiChatBtn">Chat AI</button></li>
+                    <li><button id="favoritesBtn">Preferiti</button></li>
+                    <li><button id="accountBtn">Il mio account</button></li>
+                    <li><button id="securityBtn">Sicurezza</button></li>
+                    <li><button id="infoBtn">Info</button></li>
                 </ul>
             </nav>
 
             <main>
             <div class="calculator-section">
                 <div class="form-group">
-                    <label for="departureAddress">📍 Punto di Partenza (città o via):</label>
+                    <label for="departureAddress">Punto di Partenza (città o via):</label>
                     <select id="departure" required class="location-hidden" aria-hidden="true" tabindex="-1">
                         <option value="">Seleziona città...</option>
                     </select>
                     <input type="text" id="departureAddress" class="filter-input" placeholder="Scrivi città o indirizzo (es. Roma / Via Roma 10, Milano)">
                     <div id="departureAddressResults" class="filter-results" aria-live="polite"></div>
-                    <button id="useLocationBtn" class="pill-btn" type="button">📡 Usa la mia posizione</button>
+                    <button id="useLocationBtn" class="pill-btn" type="button">Usa la mia posizione</button>
                 </div>
 
                 <div class="form-group">
-                    <label for="arrivalAddress">📍 Punto di Arrivo (città o via):</label>
+                    <label for="arrivalAddress">Punto di Arrivo (città o via):</label>
                     <select id="arrival" required class="location-hidden" aria-hidden="true" tabindex="-1">
                         <option value="">Seleziona città...</option>
                     </select>
@@ -134,7 +131,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="carBrandSearch">🏷️ Marca di Macchina:</label>
+                    <label for="carBrandSearch">Marca di Macchina:</label>
                     <input type="text" id="carBrandSearch" class="filter-input" placeholder="Scrivi marca (es. Fiat, Toyota)">
                     <div id="carBrandResults" class="filter-results" aria-live="polite"></div>
                     <select id="carBrand" required class="location-hidden" aria-hidden="true" tabindex="-1">
@@ -182,18 +179,18 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="carTypeSearch">🚙 Modello di Macchina:</label>
+                    <label for="carTypeSearch">Modello di Macchina:</label>
                     <input type="text" id="carTypeSearch" class="filter-input" placeholder="Scrivi modello (es. Panda, Golf, Model 3)">
                     <div id="carTypeResults" class="filter-results" aria-live="polite"></div>
                     <select id="carType" required class="location-hidden" aria-hidden="true" tabindex="-1">
                         <option value="">Seleziona modello...</option>
                         <optgroup label="Categorie generali">
-                            <option value="city-car">🚗 City Car (Fiat Panda, Toyota Aygo)</option>
-                            <option value="sedan">🟩 Berlina (Toyota Corolla, VW Golf)</option>
-                            <option value="suv">⬜ SUV (Toyota RAV4, Jeep Grand Cherokee)</option>
-                            <option value="estate">🟫 Station Wagon (Audi A4 allroad, BMW 3 Series)</option>
-                            <option value="hybrid">🔋 Ibrida (Toyota Prius)</option>
-                            <option value="electric">⚡ Full Electric (Tesla Model 3, Nissan Leaf)</option>
+                            <option value="city-car">City Car (Fiat Panda, Toyota Aygo)</option>
+                            <option value="sedan">Berlina (Toyota Corolla, VW Golf)</option>
+                            <option value="suv">SUV (Toyota RAV4, Jeep Grand Cherokee)</option>
+                            <option value="estate">Station Wagon (Audi A4 allroad, BMW 3 Series)</option>
+                            <option value="hybrid">Ibrida (Toyota Prius)</option>
+                            <option value="electric">Full Electric (Tesla Model 3, Nissan Leaf)</option>
                         </optgroup>
                         <optgroup label="Modelli (anno e consumo)">
                             <option value="fiat-panda-2024">Fiat Panda 1.0 Hybrid (2024) - 4.7 L/100 km</option>
@@ -413,7 +410,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="fuelType">⛽ Tipo di carburante/energia:</label>
+                    <label for="fuelType">Tipo di carburante/energia:</label>
                     <select id="fuelType" required>
                         <option value="">Seleziona alimentazione...</option>
                         <option value="benzina">Benzina</option>
@@ -428,49 +425,49 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="fuelPrice" id="fuelPriceLabel">⛽ Prezzo carburante (€/L):</label>
+                    <label for="fuelPrice" id="fuelPriceLabel">Prezzo carburante (€/L):</label>
                     <input type="number" id="fuelPrice" value="1.65" step="0.01" min="0">
                 </div>
 
-                <button id="calculateBtn" class="calculate-btn">📊 Calcola Costo Viaggio</button>
+                <button id="calculateBtn" class="calculate-btn">Calcola Costo Viaggio</button>
             </div>
 
             <div id="results" class="results-section" style="display: none;">
-                <h2>📈 Risultati del Viaggio</h2>
+                <h2>Risultati del Viaggio</h2>
                 
                 <div class="result-grid">
                     <div class="result-card">
-                        <h3>📏 Distanza</h3>
+                        <h3>Distanza</h3>
                         <p class="result-value" id="distanceResult">-</p>
                         <p class="result-label">km</p>
                     </div>
 
                     <div class="result-card">
-                        <h3>⚡ Consumo Carburante</h3>
+                        <h3>Consumo Carburante</h3>
                         <p class="result-value" id="fuelResult">-</p>
                         <p class="result-label" id="fuelUnit">L</p>
                     </div>
 
                     <div class="result-card">
-                        <h3>⛽ Costo Benzina</h3>
+                        <h3>Costo Benzina</h3>
                         <p class="result-value" id="fuelCostResult">-</p>
                         <p class="result-label">€</p>
                     </div>
 
                     <div class="result-card">
-                        <h3>🛣️ Pedaggi Autostrada</h3>
+                        <h3>Pedaggi Autostrada</h3>
                         <p class="result-value" id="tollCostResult">-</p>
                         <p class="result-label">€</p>
                     </div>
 
                     <div class="result-card highlight">
-                        <h3>💰 Costo Totale</h3>
+                        <h3>Costo Totale</h3>
                         <p class="result-value" id="totalCostResult">-</p>
                         <p class="result-label">€</p>
                     </div>
 
                     <div class="result-card">
-                        <h3>💵 Costo per Km</h3>
+                        <h3>Costo per Km</h3>
                         <p class="result-value" id="costPerKmResult">-</p>
                         <p class="result-label">€/km</p>
                     </div>
@@ -484,7 +481,7 @@
                 </div>
 
                 <div id="travelAiPanel" class="travel-ai-panel" style="display:none;">
-                    <h3>🤖 Assistente Viaggio AI</h3>
+                    <h3>Assistente Viaggio AI</h3>
                     <p id="travelAiWeather" class="travel-ai-weather">Analisi meteo in corso...</p>
                     <p id="travelAiImpact" class="travel-ai-impact"></p>
                     <ul id="travelAiTips" class="travel-ai-tips"></ul>
@@ -492,24 +489,22 @@
 
                 <div class="completed-row">
                     <label class="checkbox-label">
-                        <input type="checkbox" id="completedTrip">
-                        Tratta completata
-                    </label>
+                        <input type="checkbox" id="completedTrip">Tratta completata</label>
                     <p class="helper-text">Spunta se hai davvero percorso questa tratta: solo le completate finiscono nel Bilancio.</p>
                 </div>
 
                 <div class="result-actions">
-                    <button id="saveFavoriteBtn" class="favorite-btn">⭐ Salva nei preferiti</button>
-                    <button id="copySummaryBtn" class="pill-btn" type="button">📋 Copia riepilogo</button>
-                    <button id="showTripFuelOnMapBtn" class="pill-btn" type="button">🗺️ Mostra benzinai su mappa</button>
-                    <button id="resetBtn" class="reset-btn">🔄 Nuovo Calcolo</button>
+                    <button id="saveFavoriteBtn" class="favorite-btn">Salva nei preferiti</button>
+                    <button id="copySummaryBtn" class="pill-btn" type="button">Copia riepilogo</button>
+                    <button id="showTripFuelOnMapBtn" class="pill-btn" type="button">Mostra benzinai su mappa</button>
+                    <button id="resetBtn" class="reset-btn">Nuovo Calcolo</button>
                 </div>
                 <div id="tripActionFeedback" class="helper-text"></div>
             </div>
 
             <section id="mapSection" class="map-section" style="display: none;">
                 <div class="map-header">
-                    <h3>🗺️ Percorso e benzinai su mappa</h3>
+                    <h3>Percorso e benzinai su mappa</h3>
                     <span id="mapStatus" class="helper-text"></span>
                 </div>
                 <div id="map" class="map-canvas"></div>
@@ -520,24 +515,24 @@
 
             <section id="infoPage" class="info-page" style="display: none;">
                 <div class="info-header">
-                    <h2>ℹ️ Come calcoliamo</h2>
-                    <button id="closeInfoView" class="close-btn" type="button" aria-label="Chiudi pagina info">✖</button>
+                    <h2>Come calcoliamo</h2>
+                    <button id="closeInfoView" class="close-btn" type="button" aria-label="Chiudi pagina info">X</button>
                     <p>Qui trovi formule, logica e vantaggi pratici di DriveCalc: perche i risultati sono utili ogni giorno e come sfruttare tutte le funzioni.</p>
                 </div>
 
                 <div class="info-grid">
                     <article class="info-card">
                         <h3>Formula carburante</h3>
-                        <p><strong>Consumo totale</strong> = (Distanza_km * Consumo_per_100km) / 100</p>
-                        <p><strong>Costo carburante</strong> = Consumo totale * Prezzo unitario scelto</p>
+                        <p><strong>Consumo totale</strong>= (Distanza_km * Consumo_per_100km) / 100</p>
+                        <p><strong>Costo carburante</strong>= Consumo totale * Prezzo unitario scelto</p>
                         <p>Il consumo per 100 km cambia in base a modello e alimentazione selezionati.</p>
                     </article>
 
                     <article class="info-card">
                         <h3>Formula pedaggi</h3>
-                        <p>Se la rotta ha pedaggi ufficiali: <strong>Costo pedaggi</strong> = totale pedaggi forniti.</p>
-                        <p>Se non ci sono dati ufficiali: <strong>Costo pedaggi stimato</strong> = (Km autostrada * 0.09 €/km) + (Numero caselli * 1.80 €).</p>
-                        <p><strong>Numero caselli</strong> = ceil(Km autostrada / 25). Usiamo una media nazionale per stimare i caselli.</p>
+                        <p>Se la rotta ha pedaggi ufficiali: <strong>Costo pedaggi</strong>= totale pedaggi forniti.</p>
+                        <p>Se non ci sono dati ufficiali: <strong>Costo pedaggi stimato</strong>= (Km autostrada * 0.09 €/km) + (Numero caselli * 1.80 €).</p>
+                        <p><strong>Numero caselli</strong>= ceil(Km autostrada / 25). Usiamo una media nazionale per stimare i caselli.</p>
                     </article>
 
                     <article class="info-card">
@@ -575,14 +570,14 @@
                     </article>
                 </div>
 
-                <button id="backToCalculator" class="back-btn">⬅️ Torna al calcolatore</button>
+                <button id="backToCalculator" class="back-btn">Torna al calcolatore</button>
             </section>
 
             <div id="favoritesOverlay" class="modal-overlay" style="display: none;">
                 <div class="modal-card">
                     <div class="modal-header">
-                        <h3>⭐ Preferiti</h3>
-                        <button id="closeFavorites" class="close-btn">✖</button>
+                        <h3>Preferiti</h3>
+                        <button id="closeFavorites" class="close-btn">X</button>
                     </div>
                     <p class="modal-subtitle">Salva le tratte calcolate e ricaricale quando ti servono.</p>
                     <div id="favoritesEmpty" class="empty-state">Nessun preferito salvato.</div>
@@ -593,8 +588,8 @@
             <div id="authOverlay" class="modal-overlay" style="display: none;">
                 <div class="modal-card account-card">
                     <div class="modal-header">
-                        <h3>👤 Account</h3>
-                        <button id="closeAuth" class="close-btn">✖</button>
+                        <h3>Account</h3>
+                        <button id="closeAuth" class="close-btn">X</button>
                     </div>
 
                     <div id="authFeedback" class="auth-feedback" style="display:none;"></div>
@@ -616,22 +611,31 @@
                             </div>
                         </div>
                         <div class="auth-actions">
-                            <button id="loginBtn" class="pill-btn primary">🔑 Accedi</button>
-                            <button id="registerBtn" class="pill-btn">🆕 Registrati</button>
+                            <button id="loginBtn" class="pill-btn primary">Accedi</button>
+                            <button id="registerBtn" class="pill-btn">Registrati</button>
                         </div>
                         <div id="authStatus" class="helper-text"></div>
                     </div>
 
                     <div id="accountConnectedPanel" class="account-panel" style="display:none;">
-                        <p class="modal-subtitle">Gestisci il tuo profilo personale e le impostazioni di sicurezza.</p>
+                        <p class="modal-subtitle">Gestisci profilo, richieste amicizia e la tua auto in un unico spazio.</p>
+                        <div class="account-priority-actions">
+                            <button id="accountFriendRequestsToggle" class="pill-btn account-friend-cta" type="button" aria-expanded="false" aria-controls="friendRequestsOverlay">
+                                <span class="account-friend-cta-copy">
+                                    <span class="account-friend-cta-title">Richieste di amicizia</span>
+                                    <span class="account-friend-cta-subtitle">Gestisci ricevute e inviate in un click</span>
+                                </span>
+                                <span id="accountFriendRequestsBadge" class="account-badge" style="display:none;">0</span>
+                            </button>
+                        </div>
 
                         <div class="account-header">
                             <div class="account-avatar-box">
                                 <img id="accountAvatarPreview" class="account-avatar" alt="Immagine profilo">
                                 <input id="accountAvatarInput" type="file" accept="image/*" hidden>
                                 <div class="account-avatar-actions">
-                                    <button id="accountAvatarUploadBtn" class="pill-btn" type="button">📷 Cambia foto</button>
-                                    <button id="accountAvatarRemoveBtn" class="pill-btn danger" type="button">🗑️ Rimuovi</button>
+                                    <button id="accountAvatarUploadBtn" class="pill-btn" type="button">Cambia foto</button>
+                                    <button id="accountAvatarRemoveBtn" class="pill-btn danger" type="button">Rimuovi</button>
                                 </div>
                             </div>
                             <div class="account-identity">
@@ -681,32 +685,75 @@
                         </div>
 
                         <div class="auth-actions">
-                            <button id="accountSaveProfileBtn" class="pill-btn primary" type="button">💾 Salva profilo</button>
-                            <button id="logoutBtn" class="pill-btn danger" type="button">🚪 Esci</button>
+                            <button id="accountSaveProfileBtn" class="pill-btn primary" type="button">Salva profilo</button>
+                            <button id="logoutBtn" class="pill-btn danger" type="button">Esci</button>
                         </div>
 
-                        <h4 class="section-title">Sicurezza</h4>
-                        <div class="account-security-grid">
-                            <div class="form-group">
-                                <label for="accountCurrentPassword">Password attuale</label>
-                                <input type="password" id="accountCurrentPassword" placeholder="Inserisci password attuale">
+                        <div id="accountMyCarPanel" class="account-section account-mycar-section">
+                            <h4 class="section-title">La mia auto</h4>
+                            <p class="modal-subtitle">Scegli marca e modello, carica una foto e monitora i dati principali in tempo reale.</p>
+                            <div class="mycar-form">
+                                <div class="form-group">
+                                    <label for="myCarBrand">Marca preferita:</label>
+                                    <select id="myCarBrand">
+                                        <option value="">Seleziona marca...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="myCarModel">Modello preferito:</label>
+                                    <select id="myCarModel">
+                                        <option value="">Seleziona modello...</option>
+                                    </select>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label for="accountNewPassword">Nuova password</label>
-                                <input type="password" id="accountNewPassword" placeholder="Nuova password (min 6 caratteri)">
+                            <div class="mycar-preview">
+                                <div class="mycar-photo">
+                                    <div class="mycar-photo-frame">
+                                        <img id="myCarImage" class="mycar-image" alt="Anteprima auto" />
+                                        <button id="myCarUploadBtn" class="mycar-upload-btn" type="button">Allega foto auto</button>
+                                    </div>
+                                    <div class="mycar-actions">
+                                        <button id="myCarRemoveBtn" class="pill-btn" type="button">Rimuovi foto</button>
+                                        <input id="myCarUploadInput" type="file" accept="image/*" hidden>
+                                    </div>
+                                    <div id="myCarUploadStatus" class="helper-text"></div>
+                                </div>
+                                <div class="mycar-info">
+                                    <h4 id="myCarTitle">Nessun modello selezionato</h4>
+                                    <p id="myCarMeta">Seleziona marca e modello nel calcolatore.</p>
+                                    <p id="myCarHint" class="helper-text"></p>
+                                </div>
+                            </div>
+                            <div class="mycar-stats">
+                                <div class="mycar-stat">
+                                    <span class="label">Km completati</span>
+                                    <strong id="myCarKm">-</strong>
+                                </div>
+                                <div class="mycar-stat">
+                                    <span class="label">Tratte completate</span>
+                                    <strong id="myCarTrips">-</strong>
+                                </div>
+                                <div class="mycar-stat">
+                                    <span class="label">Spesa totale</span>
+                                    <strong id="myCarTotalCost">-</strong>
+                                </div>
+                                <div class="mycar-stat">
+                                    <span class="label">Costo medio/km</span>
+                                    <strong id="myCarAvgCost">-</strong>
+                                </div>
                             </div>
                         </div>
-                        <button id="accountChangePasswordBtn" class="pill-btn" type="button">🔒 Aggiorna password</button>
+
                         <div id="accountStatus" class="helper-text"></div>
                     </div>
                 </div>
             </div>
 
             <div id="friendRequestsOverlay" class="modal-overlay" style="display: none;">
-                <div class="modal-card">
+                <div class="modal-card friend-requests-card">
                     <div class="modal-header">
-                        <h3>📨 Invia richiesta amicizia</h3>
-                        <button id="closeFriendRequests" class="close-btn">✖</button>
+                        <h3>Richieste di amicizia</h3>
+                        <button id="closeFriendRequests" class="close-btn">X</button>
                     </div>
                     <p class="modal-subtitle">Invia nuove richieste e gestisci quelle ricevute/inviate.</p>
 
@@ -730,16 +777,16 @@
             <div id="friendsOverlay" class="modal-overlay" style="display: none;">
                 <div class="modal-card">
                     <div class="modal-header">
-                        <h3>👥 I miei amici</h3>
-                        <button id="closeFriends" class="close-btn">✖</button>
+                        <h3>I miei amici</h3>
+                        <button id="closeFriends" class="close-btn">X</button>
                     </div>
                     <p class="modal-subtitle">Clicca un amico per vedere subito profilo e dati condivisi.</p>
                     <div id="friendsStatusMirror" class="helper-text"></div>
 
                     <h4 class="section-title">Privacy condivisione</h4>
-                    <label class="checkbox-label"><input id="shareFavoritesToggle" type="checkbox"> Condividi preferiti</label>
-                    <label class="checkbox-label"><input id="shareMyCarToggle" type="checkbox"> Condividi la mia auto</label>
-                    <label class="checkbox-label"><input id="shareCompanionsToggle" type="checkbox"> Condividi tratte in compagnia</label>
+                    <label class="checkbox-label"><input id="shareFavoritesToggle" type="checkbox">Condividi preferiti</label>
+                    <label class="checkbox-label"><input id="shareMyCarToggle" type="checkbox">Condividi la mia auto</label>
+                    <label class="checkbox-label"><input id="shareCompanionsToggle" type="checkbox">Condividi tratte in compagnia</label>
 
                     <h4 class="section-title">I miei amici</h4>
                     <div id="friendsEmpty" class="empty-state">Nessun amico aggiunto.</div>
@@ -754,8 +801,8 @@
             <div id="aiChatOverlay" class="modal-overlay" style="display: none;">
                 <div class="modal-card ai-chat-card">
                     <div class="modal-header">
-                        <h3>🤖 Chat AI DriveCalc</h3>
-                        <button id="closeAiChat" class="close-btn">✖</button>
+                        <h3>Chat AI DriveCalc</h3>
+                        <button id="closeAiChat" class="close-btn">X</button>
                     </div>
                     <p class="modal-subtitle">Fai domande su percorso, costi, consumi, meteo e ottimizzazione del viaggio.</p>
                     <div id="aiChatStatus" class="helper-text">Pronto. Scrivi la tua domanda.</div>
@@ -770,8 +817,8 @@
             <div id="fuelFinderOverlay" class="modal-overlay" style="display: none;">
                 <div class="modal-card fuel-finder-card">
                     <div class="modal-header">
-                        <h3>⛽ Ricerca benzinaio smart</h3>
-                        <button id="closeFuelFinder" class="close-btn">✖</button>
+                        <h3>Ricerca benzinaio smart</h3>
+                        <button id="closeFuelFinder" class="close-btn">X</button>
                     </div>
                     <p class="modal-subtitle">Trova i benzinai vicino a te e confronta subito i prezzi del carburante.</p>
 
@@ -794,7 +841,7 @@
                                 <option value="15">15 km</option>
                             </select>
                         </div>
-                        <button id="findFuelStationsBtn" class="pill-btn primary" type="button">📡 Trova vicino a me</button>
+                        <button id="findFuelStationsBtn" class="pill-btn primary" type="button">Trova vicino a me</button>
                     </div>
 
                     <div id="fuelFinderStatus" class="helper-text">Premi "Trova vicino a me" per avviare la ricerca.</div>
@@ -807,8 +854,8 @@
             <div id="companionsOverlay" class="modal-overlay" style="display: none;">
                 <div class="modal-card">
                     <div class="modal-header">
-                        <h3>🤝 Tratta in compagnia</h3>
-                        <button id="closeCompanions" class="close-btn">✖</button>
+                        <h3>Tratta in compagnia</h3>
+                        <button id="closeCompanions" class="close-btn">X</button>
                     </div>
                     <p class="modal-subtitle">Salva la tratta appena calcolata, aggiungi i partecipanti e dividi il costo totale.</p>
 
@@ -828,7 +875,7 @@
                     </div>
 
                     <div class="modal-actions">
-                        <button id="saveCompanionTrip" class="favorite-btn">💾 Salva tratta condivisa</button>
+                        <button id="saveCompanionTrip" class="favorite-btn">Salva tratta condivisa</button>
                     </div>
 
                     <h4 class="section-title">Cronologia tratte in compagnia</h4>
@@ -837,71 +884,11 @@
                 </div>
             </div>
 
-            <div id="myCarOverlay" class="modal-overlay" style="display: none;">
-                <div class="modal-card mycar-card">
-                    <div class="modal-header">
-                        <h3>🚗 La mia auto</h3>
-                        <button id="closeMyCar" class="close-btn">✖</button>
-                    </div>
-                    <p class="modal-subtitle">Scegli marca e modello per vedere la texture dell'auto.</p>
-                    <div class="mycar-form">
-                        <div class="form-group">
-                            <label for="myCarBrand">🏷️ Marca preferita:</label>
-                            <select id="myCarBrand">
-                                <option value="">Seleziona marca...</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="myCarModel">🚙 Modello preferito:</label>
-                            <select id="myCarModel">
-                                <option value="">Seleziona modello...</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="mycar-preview">
-                        <div class="mycar-photo">
-                            <div class="mycar-photo-frame">
-                                <img id="myCarImage" class="mycar-image" alt="Anteprima auto" />
-                                <button id="myCarUploadBtn" class="mycar-upload-btn" type="button">📷 Allegra foto macchina</button>
-                            </div>
-                            <div class="mycar-actions">
-                                <button id="myCarRemoveBtn" class="pill-btn" type="button">🗑️ Rimuovi foto</button>
-                                <input id="myCarUploadInput" type="file" accept="image/*" hidden>
-                            </div>
-                            <div id="myCarUploadStatus" class="helper-text"></div>
-                        </div>
-                        <div class="mycar-info">
-                            <h4 id="myCarTitle">Nessun modello selezionato</h4>
-                            <p id="myCarMeta">Seleziona marca e modello nel calcolatore.</p>
-                            <p id="myCarHint" class="helper-text"></p>
-                        </div>
-                    </div>
-                    <div class="mycar-stats">
-                        <div class="mycar-stat">
-                            <span class="label">Km completati</span>
-                            <strong id="myCarKm">-</strong>
-                        </div>
-                        <div class="mycar-stat">
-                            <span class="label">Tratte completate</span>
-                            <strong id="myCarTrips">-</strong>
-                        </div>
-                        <div class="mycar-stat">
-                            <span class="label">Spesa totale</span>
-                            <strong id="myCarTotalCost">-</strong>
-                        </div>
-                        <div class="mycar-stat">
-                            <span class="label">Costo medio/km</span>
-                            <strong id="myCarAvgCost">-</strong>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <div id="budgetOverlay" class="modal-overlay" style="display: none;">
                 <div class="modal-card budget-card">
                     <div class="modal-header">
-                        <h3>📊 Bilancio</h3>
-                        <button id="closeBudget" class="close-btn">✖</button>
+                        <h3>Bilancio</h3>
+                        <button id="closeBudget" class="close-btn">X</button>
                     </div>
                     <p class="modal-subtitle">Statistiche delle tratte completate in questo mese.</p>
 
@@ -936,11 +923,33 @@
                 </div>
             </div>
 
+            <div id="securityOverlay" class="modal-overlay" style="display: none;">
+                <div class="modal-card security-card">
+                    <div class="modal-header">
+                        <h3>Sicurezza</h3>
+                        <button id="closeSecurity" class="close-btn">X</button>
+                    </div>
+                    <p class="modal-subtitle">Aggiorna la password del tuo account in modo sicuro.</p>
+                    <div class="account-security-grid">
+                        <div class="form-group">
+                            <label for="accountCurrentPassword">Password attuale</label>
+                            <input type="password" id="accountCurrentPassword" placeholder="Inserisci password attuale">
+                        </div>
+                        <div class="form-group">
+                            <label for="accountNewPassword">Nuova password</label>
+                            <input type="password" id="accountNewPassword" placeholder="Nuova password (min 6 caratteri)">
+                        </div>
+                    </div>
+                    <button id="accountChangePasswordBtn" class="pill-btn primary" type="button">Aggiorna password</button>
+                    <div id="securityStatus" class="helper-text"></div>
+                </div>
+            </div>
+
             <div id="myCarConsentOverlay" class="modal-overlay" style="display: none;">
                 <div class="modal-card consent-card">
                     <div class="modal-header">
-                        <h3>📷 Consenso caricamento foto</h3>
-                        <button id="closeMyCarConsent" class="close-btn">✖</button>
+                        <h3>Consenso caricamento foto</h3>
+                        <button id="closeMyCarConsent" class="close-btn">X</button>
                     </div>
                     <p class="modal-subtitle">La foto rimane solo sul tuo dispositivo (local storage). Vuoi continuare?</p>
                     <div class="modal-actions">
@@ -987,14 +996,14 @@
         </section>
 
         <footer>
-            <p>💡 Calcoli basati su dati reali di pedaggi autostradali italiani e consumi medi per categoria auto</p>
-            <p>Non ti dimenticate di controllare il prezzo del carburante aggiornato! ⛽</p>
+            <p>Calcoli basati su dati reali di pedaggi autostradali italiani e consumi medi per categoria auto</p>
+            <p>Non ti dimenticate di controllare il prezzo del carburante aggiornato! </p>
             <div class="site-badge">Sito web realizzato da Cesare Caroppi</div>
         </footer>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="config.public.js?v=3"></script>
-    <script src="script.js?v=31"></script>
+    <script src="script.js?v=33"></script>
 </body>
 </html>

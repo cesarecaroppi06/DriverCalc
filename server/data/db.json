@@ -10,8 +10,8 @@
       "avatarUrl": "",
       "tokenVersion": 1,
       "createdAt": 1770902281149,
-      "lastLoginAt": 1770902281149,
-      "updatedAt": 1770902281149
+      "lastLoginAt": 1770904424642,
+      "updatedAt": 1770904424642
     }
   ],
   "favorites": {},
@@ -20,5 +20,11 @@
   "mycarPhotos": {},
   "friendRequests": [],
   "friendships": {},
-  "shareSettings": {}
+  "shareSettings": {
+    "750f16c1-216e-499e-9c02-b1c416869606": {
+      "shareFavorites": true,
+      "shareMyCar": true,
+      "shareCompanionTrips": true
+    }
+  }
 }
