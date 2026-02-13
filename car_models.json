@@ -333,5 +333,53 @@
 
   {"id":"cupra-formentor-2022","label":"Cupra Formentor 1.4 e-Hybrid (2022)","brand":"cupra","year":2022,"fuels":{"benzina":5.8}},
 
-  {"id":"lancia-ypsilon-2015","label":"Lancia Ypsilon 0.9 TwinAir (2015)","brand":"lancia","year":2015,"fuels":{"benzina":5.1}}
+  {"id":"lancia-ypsilon-2015","label":"Lancia Ypsilon 0.9 TwinAir (2015)","brand":"lancia","year":2015,"fuels":{"benzina":5.1}},
+
+  {"id":"land-rover-defender-2016","label":"Land Rover Defender 2.2 TDCi (2016)","brand":"land-rover","year":2016,"fuels":{"diesel":9.0}},
+  {"id":"land-rover-defender-2020","label":"Land Rover Defender D240 (2020)","brand":"land-rover","year":2020,"fuels":{"diesel":8.7}},
+  {"id":"land-rover-defender-2023","label":"Land Rover Defender P400e (2023)","brand":"land-rover","year":2023,"fuels":{"benzina":7.9}},
+  {"id":"land-rover-discovery-sport-2022","label":"Land Rover Discovery Sport D200 (2022)","brand":"land-rover","year":2022,"fuels":{"diesel":6.9}},
+  {"id":"land-rover-range-rover-sport-2024","label":"Range Rover Sport D300 (2024)","brand":"land-rover","year":2024,"fuels":{"diesel":8.2}},
+
+  {"id":"jeep-wrangler-2021","label":"Jeep Wrangler 2.0 Turbo (2021)","brand":"jeep","year":2021,"fuels":{"benzina":10.3}},
+  {"id":"jeep-grand-cherokee-2023","label":"Jeep Grand Cherokee 4xe (2023)","brand":"jeep","year":2023,"fuels":{"benzina":7.5}},
+  {"id":"jeep-avenger-hybrid-2024","label":"Jeep Avenger 1.2 e-Hybrid (2024)","brand":"jeep","year":2024,"fuels":{"benzina":5.5}},
+
+  {"id":"toyota-chr-2018","label":"Toyota C-HR 1.8 Hybrid (2018)","brand":"toyota","year":2018,"fuels":{"benzina":4.8}},
+  {"id":"toyota-chr-2024","label":"Toyota C-HR 2.0 Hybrid (2024)","brand":"toyota","year":2024,"fuels":{"benzina":4.9}},
+  {"id":"toyota-camry-2021","label":"Toyota Camry 2.5 Hybrid (2021)","brand":"toyota","year":2021,"fuels":{"benzina":5.3}},
+  {"id":"toyota-land-cruiser-2024","label":"Toyota Land Cruiser 2.8 D-4D (2024)","brand":"toyota","year":2024,"fuels":{"diesel":8.4}},
+
+  {"id":"mercedes-glc-2019","label":"Mercedes GLC 220d 4Matic (2019)","brand":"mercedes","year":2019,"fuels":{"diesel":5.9}},
+  {"id":"mercedes-glc-2023","label":"Mercedes GLC 300de 4Matic (2023)","brand":"mercedes","year":2023,"fuels":{"diesel":5.7}},
+  {"id":"mercedes-eqb-2024","label":"Mercedes EQB 300 4Matic (2024)","brand":"mercedes","year":2024,"fuels":{"elettrico":18.6}},
+
+  {"id":"bmw-x5-2021","label":"BMW X5 xDrive30d (2021)","brand":"bmw","year":2021,"fuels":{"diesel":6.8}},
+  {"id":"bmw-x3-2023","label":"BMW X3 xDrive20d (2023)","brand":"bmw","year":2023,"fuels":{"diesel":6.0}},
+  {"id":"bmw-ix1-2024","label":"BMW iX1 xDrive30 (2024)","brand":"bmw","year":2024,"fuels":{"elettrico":17.4}},
+
+  {"id":"audi-q5-2023","label":"Audi Q5 40 TDI quattro (2023)","brand":"audi","year":2023,"fuels":{"diesel":6.0}},
+  {"id":"audi-q7-2022","label":"Audi Q7 45 TDI quattro (2022)","brand":"audi","year":2022,"fuels":{"diesel":7.2}},
+  {"id":"audi-q8-etron-2024","label":"Audi Q8 e-tron 55 quattro (2024)","brand":"audi","year":2024,"fuels":{"elettrico":22.1}},
+
+  {"id":"volvo-xc60-2023","label":"Volvo XC60 B5 AWD (2023)","brand":"volvo","year":2023,"fuels":{"benzina":7.1}},
+  {"id":"volvo-v60-2022","label":"Volvo V60 B4 (2022)","brand":"volvo","year":2022,"fuels":{"benzina":6.3}},
+  {"id":"volvo-ex90-2024","label":"Volvo EX90 Twin Motor (2024)","brand":"volvo","year":2024,"fuels":{"elettrico":21.0}},
+
+  {"id":"lexus-es300h-2022","label":"Lexus ES 300h (2022)","brand":"lexus","year":2022,"fuels":{"benzina":5.3}},
+  {"id":"lexus-lbx-2024","label":"Lexus LBX Hybrid (2024)","brand":"lexus","year":2024,"fuels":{"benzina":4.7}},
+
+  {"id":"porsche-macan-2023","label":"Porsche Macan 2.0 (2023)","brand":"porsche","year":2023,"fuels":{"benzina":8.6}},
+  {"id":"porsche-macan-electric-2024","label":"Porsche Macan 4 Electric (2024)","brand":"porsche","year":2024,"fuels":{"elettrico":21.9}},
+
+  {"id":"cupra-leon-2023","label":"Cupra Leon 1.5 eTSI (2023)","brand":"cupra","year":2023,"fuels":{"benzina":5.8}},
+  {"id":"cupra-born-2023","label":"Cupra Born 58 kWh (2023)","brand":"cupra","year":2023,"fuels":{"elettrico":16.2}},
+
+  {"id":"mg4-2023","label":"MG4 Electric 64 kWh (2023)","brand":"mg","year":2023,"fuels":{"elettrico":16.6}},
+
+  {"id":"byd-atto3-2024","label":"BYD Atto 3 Comfort (2024)","brand":"byd","year":2024,"fuels":{"elettrico":17.0}},
+  {"id":"byd-seal-u-2024","label":"BYD Seal U EV (2024)","brand":"byd","year":2024,"fuels":{"elettrico":18.1}},
+
+  {"id":"jaguar-f-pace-2023","label":"Jaguar F-Pace P400e (2023)","brand":"jaguar","year":2023,"fuels":{"benzina":7.8}},
+  {"id":"maserati-granturismo-folgore-2024","label":"Maserati GranTurismo Folgore (2024)","brand":"maserati","year":2024,"fuels":{"elettrico":23.0}}
 ]
