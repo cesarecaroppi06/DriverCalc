@@ -33,6 +33,8 @@ const OFFICIAL_MODELS_MAX_YEAR_SPAN = 26;
 const officialModelsCache = new Map();
 const officialModelsPending = new Map();
 const ACCOUNT_AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '').trim();
+const GEMINI_MODEL = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
 const AI_CHAT_MAX_MESSAGE_CHARS = 340;
@@ -447,6 +449,106 @@ async function requestOpenAiChatReply(message = '', history = [], context = {}) 
     } finally {
         clearTimeout(timeoutId);
     }
+}
+
+async function requestGeminiChatReply(message = '', history = [], context = {}) {
+    if (!GEMINI_API_KEY) return null;
+
+    const safeMessage = normalizeAiChatText(message, AI_CHAT_MAX_MESSAGE_CHARS);
+    if (!safeMessage) return null;
+
+    const safeHistory = Array.isArray(history)
+        ? history
+            .map((item) => ({
+                role: item && item.role === 'assistant' ? 'assistant' : 'user',
+                text: normalizeAiChatText(item && item.text, AI_CHAT_MAX_MESSAGE_CHARS)
+            }))
+            .filter((item) => item.text)
+            .slice(-8)
+        : [];
+
+    const contextJsonRaw = JSON.stringify(context || {});
+    const contextJson = contextJsonRaw.length > 2400 ? `${contextJsonRaw.slice(0, 2400)}...` : contextJsonRaw;
+    const systemPrompt = [
+        'Sei DriveCalc AI Assistant.',
+        'Rispondi in italiano in modo chiaro e pratico, massimo 6 frasi.',
+        'Usa i dati del contesto se presenti.',
+        'Se manca un dato, dichiaralo senza inventare numeri.',
+        `Contesto app (JSON): ${contextJson}`
+    ].join(' ');
+
+    const contents = [
+        ...safeHistory.map((item) => ({
+            role: item.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: item.text }]
+        })),
+        {
+            role: 'user',
+            parts: [{ text: safeMessage }]
+        }
+    ];
+
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = setTimeout(() => {
+        try {
+            controller && controller.abort();
+        } catch (e) {}
+    }, 9200);
+
+    try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                systemInstruction: {
+                    role: 'system',
+                    parts: [{ text: systemPrompt }]
+                },
+                contents,
+                generationConfig: {
+                    temperature: 0.2,
+                    maxOutputTokens: 420
+                }
+            }),
+            signal: controller ? controller.signal : undefined
+        });
+
+        if (!res.ok) {
+            const detail = await res.text().catch(() => '');
+            throw new Error(detail || `Gemini HTTP ${res.status}`);
+        }
+
+        const payload = await res.json();
+        const parts = payload?.candidates?.[0]?.content?.parts;
+        const text = Array.isArray(parts)
+            ? parts.map((part) => String(part?.text || '').trim()).filter(Boolean).join('\n')
+            : '';
+        const reply = normalizeAiChatText(text, AI_CHAT_MAX_REPLY_CHARS);
+        return reply || null;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+async function requestRemoteAiChatReply(message = '', history = [], context = {}) {
+    try {
+        const geminiReply = await requestGeminiChatReply(message, history, context);
+        if (geminiReply) return { reply: geminiReply, source: 'gemini' };
+    } catch (err) {
+        // fallback openai below
+    }
+
+    try {
+        const openAiReply = await requestOpenAiChatReply(message, history, context);
+        if (openAiReply) return { reply: openAiReply, source: 'openai' };
+    } catch (err) {
+        // fallback locale below
+    }
+
+    return null;
 }
 
 function clampNumber(value, min, max) {
@@ -1245,17 +1347,8 @@ app.post('/api/ai/chat', async (req, res) => {
         return res.status(429).json({ error: 'Troppi messaggi in poco tempo. Riprova tra qualche secondo.' });
     }
 
-    try {
-        const remoteReply = await requestOpenAiChatReply(message, history, context);
-        if (remoteReply) {
-            return res.json({
-                reply: remoteReply,
-                source: 'openai'
-            });
-        }
-    } catch (err) {
-        // fallback locale sotto
-    }
+    const remoteReply = await requestRemoteAiChatReply(message, history, context);
+    if (remoteReply) return res.json(remoteReply);
 
     return res.json({
         reply: buildLocalAiChatReply(message, context),
