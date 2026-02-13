@@ -37,10 +37,11 @@ const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '').trim();
 const GEMINI_MODEL = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
-const AI_CHAT_MAX_MESSAGE_CHARS = 700;
-const AI_CHAT_MAX_REPLY_CHARS = 2800;
-const AI_CHAT_REMOTE_TIMEOUT_MS = 22000;
-const AI_CHAT_MAX_OUTPUT_TOKENS = 1400;
+const AI_CHAT_MAX_MESSAGE_CHARS = 1800;
+const AI_CHAT_MAX_REPLY_CHARS = 9000;
+const AI_CHAT_REMOTE_TIMEOUT_MS = 60000;
+const AI_CHAT_MAX_OUTPUT_TOKENS = 3072;
+const AI_CHAT_GEMINI_CONTINUATION_STEPS = 3;
 const AI_CHAT_RATE_WINDOW_MS = 60 * 1000;
 const AI_CHAT_RATE_MAX_REQUESTS = 12;
 const aiChatRateBuckets = new Map();
@@ -495,49 +496,89 @@ async function requestGeminiChatReply(message = '', history = [], context = {}) 
         }
     ];
 
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timeoutId = setTimeout(() => {
+    const deadlineTs = Date.now() + AI_CHAT_REMOTE_TIMEOUT_MS;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+
+    async function callGemini(turnContents = []) {
+        const remainingMs = Math.max(1200, deadlineTs - Date.now());
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timeoutId = setTimeout(() => {
+            try {
+                controller && controller.abort();
+            } catch (e) {}
+        }, remainingMs);
         try {
-            controller && controller.abort();
-        } catch (e) {}
-    }, AI_CHAT_REMOTE_TIMEOUT_MS);
-
-    try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                systemInstruction: {
-                    role: 'system',
-                    parts: [{ text: systemPrompt }]
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
                 },
-                contents,
-                generationConfig: {
-                    temperature: 0.2,
-                    maxOutputTokens: AI_CHAT_MAX_OUTPUT_TOKENS
-                }
-            }),
-            signal: controller ? controller.signal : undefined
-        });
+                body: JSON.stringify({
+                    systemInstruction: {
+                        role: 'system',
+                        parts: [{ text: systemPrompt }]
+                    },
+                    contents: turnContents,
+                    generationConfig: {
+                        temperature: 0.2,
+                        maxOutputTokens: AI_CHAT_MAX_OUTPUT_TOKENS
+                    }
+                }),
+                signal: controller ? controller.signal : undefined
+            });
 
-        if (!res.ok) {
-            const detail = await res.text().catch(() => '');
-            throw new Error(detail || `Gemini HTTP ${res.status}`);
+            if (!res.ok) {
+                const detail = await res.text().catch(() => '');
+                throw new Error(detail || `Gemini HTTP ${res.status}`);
+            }
+
+            const payload = await res.json();
+            const candidate = payload?.candidates?.[0] || {};
+            const parts = candidate?.content?.parts;
+            const text = Array.isArray(parts)
+                ? parts.map((part) => String(part?.text || '').trim()).filter(Boolean).join('\n')
+                : '';
+            const finishReason = String(candidate?.finishReason || '').toUpperCase();
+            return { text, finishReason };
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }
+
+    let combinedText = '';
+    let finishReason = '';
+    let rollingContents = [...contents];
+    for (let step = 0; step <= AI_CHAT_GEMINI_CONTINUATION_STEPS; step += 1) {
+        if (Date.now() >= deadlineTs) break;
+        const turn = await callGemini(rollingContents);
+        const turnText = String(turn?.text || '').trim();
+        if (!turnText) break;
+
+        if (!combinedText) {
+            combinedText = turnText;
+        } else {
+            // Evita duplicazioni quando il modello ripete l'ultima parte nel chunk successivo.
+            const tail = combinedText.slice(-420).trim();
+            const normalizedTurn = tail && turnText.startsWith(tail)
+                ? turnText.slice(tail.length).trim()
+                : turnText;
+            if (normalizedTurn) combinedText = `${combinedText}\n${normalizedTurn}`.trim();
         }
 
-        const payload = await res.json();
-        const parts = payload?.candidates?.[0]?.content?.parts;
-        const text = Array.isArray(parts)
-            ? parts.map((part) => String(part?.text || '').trim()).filter(Boolean).join('\n')
-            : '';
-        const reply = normalizeAiChatText(text, AI_CHAT_MAX_REPLY_CHARS);
-        return reply || null;
-    } finally {
-        clearTimeout(timeoutId);
+        combinedText = normalizeAiChatText(combinedText, AI_CHAT_MAX_REPLY_CHARS);
+        finishReason = String(turn?.finishReason || '').toUpperCase();
+        const canContinue = finishReason === 'MAX_TOKENS' && combinedText.length < (AI_CHAT_MAX_REPLY_CHARS - 120);
+        if (!canContinue) break;
+
+        const modelTail = combinedText.slice(-1800);
+        rollingContents = [
+            ...contents,
+            { role: 'model', parts: [{ text: modelTail }] },
+            { role: 'user', parts: [{ text: 'Continua esattamente da dove eri arrivato. Non ripetere parti già scritte.' }] }
+        ];
     }
+
+    return combinedText || null;
 }
 
 async function requestRemoteAiChatReply(message = '', history = [], context = {}) {
