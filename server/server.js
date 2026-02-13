@@ -37,8 +37,10 @@ const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '').trim();
 const GEMINI_MODEL = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
-const AI_CHAT_MAX_MESSAGE_CHARS = 340;
-const AI_CHAT_MAX_REPLY_CHARS = 900;
+const AI_CHAT_MAX_MESSAGE_CHARS = 700;
+const AI_CHAT_MAX_REPLY_CHARS = 2800;
+const AI_CHAT_REMOTE_TIMEOUT_MS = 22000;
+const AI_CHAT_MAX_OUTPUT_TOKENS = 1400;
 const AI_CHAT_RATE_WINDOW_MS = 60 * 1000;
 const AI_CHAT_RATE_MAX_REQUESTS = 12;
 const aiChatRateBuckets = new Map();
@@ -425,7 +427,7 @@ async function requestOpenAiChatReply(message = '', history = [], context = {}) 
         try {
             controller && controller.abort();
         } catch (e) {}
-    }, 9200);
+    }, AI_CHAT_REMOTE_TIMEOUT_MS);
 
     try {
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -498,7 +500,7 @@ async function requestGeminiChatReply(message = '', history = [], context = {}) 
         try {
             controller && controller.abort();
         } catch (e) {}
-    }, 9200);
+    }, AI_CHAT_REMOTE_TIMEOUT_MS);
 
     try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
@@ -515,7 +517,7 @@ async function requestGeminiChatReply(message = '', history = [], context = {}) 
                 contents,
                 generationConfig: {
                     temperature: 0.2,
-                    maxOutputTokens: 420
+                    maxOutputTokens: AI_CHAT_MAX_OUTPUT_TOKENS
                 }
             }),
             signal: controller ? controller.signal : undefined

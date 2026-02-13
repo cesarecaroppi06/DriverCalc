@@ -5364,6 +5364,8 @@ const COMPANIONS_KEY = 'drivecalc_companions_v1';
 const COMPLETED_KEY = 'drivecalc_completed_v1';
 const MYCAR_PHOTOS_KEY = 'drivecalc_mycar_photos_v1';
 const AI_CHAT_HISTORY_KEY = 'drivecalc_ai_chat_history_v1';
+const AI_CHAT_INPUT_MAX_CHARS = 700;
+const AI_CHAT_REPLY_MAX_CHARS = 2400;
 const FUEL_FINDER_LAST_KEY = 'drivecalc_fuel_finder_last_v1';
 const LOCAL_API_BASE = 'http://localhost:3001/api';
 const CLOUD_API_BASES = ['https://drivercalc.onrender.com/api', 'https://drivecalc.onrender.com/api'];
@@ -6726,8 +6728,9 @@ function closeFriendsView() {
     setActiveMenu(homeBtn);
 }
 
-function normalizeAiChatText(value = '') {
-    return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 320);
+function normalizeAiChatText(value = '', maxLen = AI_CHAT_INPUT_MAX_CHARS) {
+    const safeMax = Math.max(1, Number(maxLen) || AI_CHAT_INPUT_MAX_CHARS);
+    return String(value || '').replace(/\s+/g, ' ').trim().slice(0, safeMax);
 }
 
 function getAiProviderLabel(source = '') {
@@ -6781,7 +6784,10 @@ function loadAiChatHistory() {
             ? parsed
                 .map((item) => ({
                     role: item?.role === 'user' ? 'user' : 'assistant',
-                    text: normalizeAiChatText(item?.text || ''),
+                    text: normalizeAiChatText(
+                        item?.text || '',
+                        item?.role === 'user' ? AI_CHAT_INPUT_MAX_CHARS : AI_CHAT_REPLY_MAX_CHARS
+                    ),
                     timestamp: Number(item?.timestamp) || Date.now()
                 }))
                 .filter((item) => item.text)
@@ -6817,7 +6823,10 @@ function renderAiChatHistory() {
 }
 
 function pushAiChatMessage(role = 'assistant', text = '') {
-    const normalizedText = normalizeAiChatText(text);
+    const normalizedText = normalizeAiChatText(
+        text,
+        role === 'user' ? AI_CHAT_INPUT_MAX_CHARS : AI_CHAT_REPLY_MAX_CHARS
+    );
     if (!normalizedText) return;
     aiChatHistory.push({
         role: role === 'user' ? 'user' : 'assistant',
@@ -6905,7 +6914,7 @@ function buildLocalAiChatFallback(question = '') {
 }
 
 async function requestAiChatReply(question = '') {
-    const message = normalizeAiChatText(question);
+    const message = normalizeAiChatText(question, AI_CHAT_INPUT_MAX_CHARS);
     if (!message) return { reply: '', source: 'local' };
     const history = aiChatHistory.slice(-8).map((item) => ({
         role: item.role === 'user' ? 'user' : 'assistant',
@@ -6918,7 +6927,7 @@ async function requestAiChatReply(question = '') {
             history,
             context: buildAiChatContextPayload()
         });
-        const reply = normalizeAiChatText(response?.reply || response?.message || '');
+        const reply = normalizeAiChatText(response?.reply || response?.message || '', AI_CHAT_REPLY_MAX_CHARS);
         if (reply) {
             return {
                 reply,
@@ -6944,7 +6953,7 @@ async function requestTravelAiEnhancement(context = {}) {
         });
         const rawReply = String(response?.reply || response?.message || '').trim();
         if (!rawReply) return null;
-        const normalizedReply = normalizeAiChatText(rawReply);
+        const normalizedReply = normalizeAiChatText(rawReply, AI_CHAT_REPLY_MAX_CHARS);
         const parsedTips = extractTravelAiTipsFromReply(rawReply);
         return {
             source: String(response?.source || 'remote').trim().toLowerCase() || 'remote',
@@ -6957,7 +6966,7 @@ async function requestTravelAiEnhancement(context = {}) {
 
 async function sendAiChatMessage() {
     if (aiChatPending) return;
-    const message = normalizeAiChatText(aiChatInput?.value || '');
+    const message = normalizeAiChatText(aiChatInput?.value || '', AI_CHAT_INPUT_MAX_CHARS);
     if (!message) {
         setAiChatStatus('Scrivi una domanda prima di inviare.');
         return;
@@ -6980,7 +6989,7 @@ async function sendAiChatMessage() {
 
     try {
         const answerPayload = await requestAiChatReply(message);
-        const answer = normalizeAiChatText(answerPayload?.reply || '');
+        const answer = normalizeAiChatText(answerPayload?.reply || '', AI_CHAT_REPLY_MAX_CHARS);
         const sourceLabel = getAiProviderLabel(answerPayload?.source || '');
         if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
         pushAiChatMessage('assistant', answer || 'Non ho trovato una risposta utile. Riprova con una domanda piu specifica.');
