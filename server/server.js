@@ -1675,30 +1675,12 @@ app.get('/api/google/place-autocomplete', async (req, res) => {
         return res.json({ status: 'INVALID_REQUEST', predictions: [] });
     }
 
-    try {
-        const body = {
-            input,
-            languageCode: String(req.query.languageCode || 'it').trim() || 'it'
-        };
-        const regionCode = String(req.query.regionCode || '').trim().toUpperCase();
-        if (regionCode) body.regionCode = regionCode;
+    const languageCode = String(req.query.languageCode || 'it').trim() || 'it';
+    const regionCode = String(req.query.regionCode || '').trim().toUpperCase();
 
-        const apiRes = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
-                'X-Goog-FieldMask': 'suggestions.placePrediction.place,suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat.mainText,suggestions.placePrediction.structuredFormat.secondaryText'
-            },
-            body: JSON.stringify(body)
-        });
-        if (!apiRes.ok) {
-            const errText = await apiRes.text();
-            return res.status(502).json({ error: 'Errore Places Autocomplete API', detail: errText });
-        }
-        const data = await apiRes.json();
-        const suggestions = Array.isArray(data?.suggestions) ? data.suggestions : [];
-        const predictions = suggestions
+    const mapAutocompletePredictions = (payload = {}) => {
+        const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+        return suggestions
             .map((item) => item?.placePrediction)
             .filter(Boolean)
             .map((prediction = {}) => {
@@ -1719,10 +1701,104 @@ app.get('/api/google/place-autocomplete', async (req, res) => {
                 };
             })
             .filter((item) => item.place_id && item.description);
+    };
+
+    const mapSearchTextPredictions = (payload = {}) => {
+        const places = Array.isArray(payload?.places) ? payload.places : [];
+        return places.map((place = {}) => {
+            const placeId = String(place.id || '').trim();
+            const mainText = String(place?.displayName?.text || '').trim();
+            const secondaryText = String(place?.formattedAddress || '').trim();
+            return {
+                place_id: placeId,
+                description: [mainText, secondaryText].filter(Boolean).join(', ') || mainText || secondaryText || placeId,
+                structured_formatting: {
+                    main_text: mainText || secondaryText || placeId,
+                    secondary_text: secondaryText || ''
+                }
+            };
+        }).filter((item) => item.place_id && item.description);
+    };
+
+    try {
+        const autocompleteBody = {
+            input,
+            languageCode
+        };
+        if (regionCode) autocompleteBody.regionCode = regionCode;
+
+        let predictions = [];
+        let autocompleteErrorDetail = '';
+
+        try {
+            const apiRes = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+                    'X-Goog-FieldMask': 'suggestions.placePrediction.place,suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat.mainText,suggestions.placePrediction.structuredFormat.secondaryText'
+                },
+                body: JSON.stringify(autocompleteBody)
+            });
+            if (!apiRes.ok) {
+                autocompleteErrorDetail = await apiRes.text().catch(() => '');
+            } else {
+                const data = await apiRes.json();
+                predictions = mapAutocompletePredictions(data);
+            }
+        } catch (err) {
+            autocompleteErrorDetail = String(err?.message || 'Autocomplete request failed');
+        }
+
+        // Amplia i risultati con Text Search per coprire più POI reali (bar, ristoranti, negozi, monumenti, ecc.)
+        if (predictions.length < 8) {
+            const searchBody = {
+                textQuery: input,
+                languageCode
+            };
+            if (regionCode) searchBody.regionCode = regionCode;
+            try {
+                const searchRes = await fetch('https://places.googleapis.com/v1/places:searchText', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+                        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location'
+                    },
+                    body: JSON.stringify(searchBody)
+                });
+                if (searchRes.ok) {
+                    const searchData = await searchRes.json();
+                    const searchPredictions = mapSearchTextPredictions(searchData);
+                    const seen = new Set(predictions.map((item) => String(item.place_id).toLowerCase()));
+                    searchPredictions.forEach((item) => {
+                        const key = String(item.place_id || '').toLowerCase();
+                        if (!key || seen.has(key)) return;
+                        seen.add(key);
+                        predictions.push(item);
+                    });
+                } else if (!predictions.length) {
+                    const searchErr = await searchRes.text().catch(() => '');
+                    return res.status(502).json({
+                        error: 'Errore Places API',
+                        detail: searchErr || autocompleteErrorDetail || 'Nessun risultato Places disponibile',
+                        predictions: []
+                    });
+                }
+            } catch (err) {
+                if (!predictions.length) {
+                    return res.status(502).json({
+                        error: 'Errore Places API',
+                        detail: autocompleteErrorDetail || String(err?.message || 'Places request failed'),
+                        predictions: []
+                    });
+                }
+            }
+        }
 
         return res.json({
             status: 'OK',
-            predictions
+            predictions: predictions.slice(0, 12)
         });
     } catch (err) {
         return res.status(502).json({ error: 'Errore Places Autocomplete API' });
