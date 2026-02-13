@@ -1529,7 +1529,7 @@ app.get('/api/health/google', async (req, res) => {
             'Maps JavaScript API',
             'Routes API',
             'Geocoding API',
-            'Places API'
+            'Places API (New)'
         ],
         upstreamChecked: false
     };
@@ -1676,33 +1676,53 @@ app.get('/api/google/place-autocomplete', async (req, res) => {
     }
 
     try {
-        const params = new URLSearchParams({
+        const body = {
             input,
-            language: 'it',
-            components: 'country:it',
-            key: GOOGLE_MAPS_API_KEY
+            languageCode: String(req.query.languageCode || 'it').trim() || 'it'
+        };
+        const regionCode = String(req.query.regionCode || '').trim().toUpperCase();
+        if (regionCode) body.regionCode = regionCode;
+
+        const apiRes = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+                'X-Goog-FieldMask': 'suggestions.placePrediction.place,suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat.mainText,suggestions.placePrediction.structuredFormat.secondaryText'
+            },
+            body: JSON.stringify(body)
         });
-        const sessionToken = String(req.query.sessionToken || '').trim();
-        if (sessionToken) params.set('sessiontoken', sessionToken);
-        const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`;
-        const apiRes = await fetch(url);
         if (!apiRes.ok) {
             const errText = await apiRes.text();
             return res.status(502).json({ error: 'Errore Places Autocomplete API', detail: errText });
         }
         const data = await apiRes.json();
-        const status = String(data?.status || '').toUpperCase();
-        if (status && status !== 'OK' && status !== 'ZERO_RESULTS') {
-            return res.status(502).json({
-                error: 'Errore Places Autocomplete API',
-                detail: data?.error_message || status,
-                status,
-                predictions: []
-            });
-        }
+        const suggestions = Array.isArray(data?.suggestions) ? data.suggestions : [];
+        const predictions = suggestions
+            .map((item) => item?.placePrediction)
+            .filter(Boolean)
+            .map((prediction = {}) => {
+                const placeId = String(
+                    prediction.placeId ||
+                    String(prediction.place || '').replace(/^places\//, '')
+                ).trim();
+                const description = String(prediction?.text?.text || '').trim();
+                const mainText = String(prediction?.structuredFormat?.mainText?.text || '').trim();
+                const secondaryText = String(prediction?.structuredFormat?.secondaryText?.text || '').trim();
+                return {
+                    place_id: placeId,
+                    description: description || [mainText, secondaryText].filter(Boolean).join(', '),
+                    structured_formatting: {
+                        main_text: mainText || description || placeId,
+                        secondary_text: secondaryText || ''
+                    }
+                };
+            })
+            .filter((item) => item.place_id && item.description);
+
         return res.json({
-            status: status || 'OK',
-            predictions: Array.isArray(data?.predictions) ? data.predictions : []
+            status: 'OK',
+            predictions
         });
     } catch (err) {
         return res.status(502).json({ error: 'Errore Places Autocomplete API' });
@@ -1715,29 +1735,39 @@ app.get('/api/google/place-geocode', async (req, res) => {
     if (!placeId) return res.status(400).json({ error: 'placeId obbligatorio' });
 
     try {
-        const url = `https://maps.googleapis.com/maps/api/geocode/json?place_id=${encodeURIComponent(placeId)}&language=it&region=IT&key=${GOOGLE_MAPS_API_KEY}`;
-        const apiRes = await fetch(url);
+        const params = new URLSearchParams({
+            languageCode: String(req.query.languageCode || 'it').trim() || 'it'
+        });
+        const regionCode = String(req.query.regionCode || '').trim().toUpperCase();
+        if (regionCode) params.set('regionCode', regionCode);
+        const url = `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?${params.toString()}`;
+        const apiRes = await fetch(url, {
+            headers: {
+                'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+                'X-Goog-FieldMask': 'id,displayName,formattedAddress,location'
+            }
+        });
         if (!apiRes.ok) {
             const errText = await apiRes.text();
-            return res.status(502).json({ error: 'Errore Geocoding API', detail: errText });
+            return res.status(502).json({ error: 'Errore Places Details API', detail: errText });
         }
         const data = await apiRes.json();
-        const status = String(data?.status || '').toUpperCase();
-        if (status === 'ZERO_RESULTS') {
-            return res.status(404).json({ error: 'Luogo non trovato', status, results: [] });
+        const lat = Number(data?.location?.latitude);
+        const lng = Number(data?.location?.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            return res.status(404).json({ error: 'Luogo non trovato', status: 'ZERO_RESULTS' });
         }
-        if (status && status !== 'OK') {
-            return res.status(502).json({
-                error: 'Errore Geocoding API',
-                detail: data?.error_message || status,
-                status
-            });
-        }
-        const result = Array.isArray(data?.results) ? data.results[0] : null;
-        if (!result) return res.status(404).json({ error: 'Luogo non trovato', status: status || 'ZERO_RESULTS' });
-        return res.json({ status: status || 'OK', result });
+        const result = {
+            place_id: String(data?.id || placeId),
+            name: String(data?.displayName?.text || '').trim(),
+            formatted_address: String(data?.formattedAddress || '').trim(),
+            geometry: {
+                location: { lat, lng }
+            }
+        };
+        return res.json({ status: 'OK', result });
     } catch (err) {
-        return res.status(502).json({ error: 'Errore Geocoding API' });
+        return res.status(502).json({ error: 'Errore Places Details API' });
     }
 });
 

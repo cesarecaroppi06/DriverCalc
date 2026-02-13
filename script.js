@@ -3304,7 +3304,7 @@ function formatGoogleAutocompleteLabel(prediction = {}) {
 }
 
 async function fetchGooglePlaceSuggestions(query, signal) {
-    if (!hasGoogleKey()) return [];
+    if (!USE_GOOGLE_MAPS) return [];
     const input = String(query || '').trim();
     if (!input || input.length < 2) return [];
     const url = `${getApiBase()}/google/place-autocomplete?input=${encodeURIComponent(input)}`;
@@ -3324,7 +3324,7 @@ async function fetchGooglePlaceSuggestions(query, signal) {
 }
 
 async function geocodePlaceIdGoogle(placeId = '') {
-    if (!hasGoogleKey()) throw new Error('Google Maps non disponibile');
+    if (!USE_GOOGLE_MAPS) throw new Error('Google Maps non disponibile');
     const safePlaceId = String(placeId || '').trim();
     if (!safePlaceId) throw new Error('place_id non valido');
     const url = `${getApiBase()}/google/place-geocode?placeId=${encodeURIComponent(safePlaceId)}`;
