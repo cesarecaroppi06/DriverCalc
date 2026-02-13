@@ -6757,7 +6757,7 @@ function extractTravelAiTipsFromReply(reply = '') {
 
 function getAiChatFallbackGreeting() {
     if (!lastCalculatedTrip) {
-        return 'Ciao! Posso aiutarti su costi viaggio, pedaggi, consumi, meteo e ottimizzazione del percorso. Calcola una tratta per risposte ancora piu precise.';
+        return 'Ciao! Sono la chat AI di DriveCalc: posso aiutarti sia sui viaggi sia su domande generali.';
     }
     return `Hai una tratta attiva: ${lastCalculatedTrip.departure || '-'} -> ${lastCalculatedTrip.arrival || '-'} (${lastCalculatedTrip.distance || '-'} km). Chiedimi pure come ottimizzarla.`;
 }
@@ -6901,7 +6901,7 @@ function buildLocalAiChatFallback(question = '') {
         return 'Per risparmiare: velocita costante, pressione gomme corretta e partenza fuori picchi di traffico 7:30-9:30 e 17:30-19:30.';
     }
 
-    return 'Posso aiutarti su meteo, consumi, pedaggi, orario di partenza e ottimizzazione del viaggio. Fai una domanda specifica e ti rispondo subito.';
+    return 'La chat AI remota non è disponibile in questo momento. Quando è attiva posso conversare su qualsiasi argomento; intanto posso aiutarti soprattutto su viaggio, costi e meteo.';
 }
 
 async function requestAiChatReply(question = '') {

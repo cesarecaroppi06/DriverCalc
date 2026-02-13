@@ -339,6 +339,7 @@ function buildLocalAiChatReply(message = '', context = {}) {
     const q = normalizeAiChatText(message, AI_CHAT_MAX_MESSAGE_CHARS).toLowerCase();
     const trip = context && typeof context === 'object' ? (context.trip || null) : null;
     const travelAi = context && typeof context === 'object' ? (context.travelAi || null) : null;
+    const remoteUnavailable = !!(context && typeof context === 'object' && context.__remoteAiUnavailable);
 
     if (q.includes('meteo')) {
         if (travelAi && travelAi.weatherLine) {
@@ -376,7 +377,10 @@ function buildLocalAiChatReply(message = '', context = {}) {
         return `Tratta attuale: ${trip.departure || '-'} -> ${trip.arrival || '-'} (${Number(trip.distanceKm || 0).toFixed(0)} km), totale stimato ${formatMoney(trip.totalCost)}. Dimmi cosa vuoi ottimizzare.`;
     }
 
-    return 'Posso aiutarti su meteo, pedaggi, consumi, costi e orario migliore di partenza. Fai una domanda specifica e ti rispondo subito.';
+    if (remoteUnavailable) {
+        return 'La chat AI avanzata è momentaneamente non disponibile (configurazione provider). Appena la chiave Gemini è valida posso conversare su qualsiasi argomento.';
+    }
+    return 'Posso conversare su qualsiasi argomento (studio, tecnologia, cultura, lavoro, viaggi). Fai una domanda e andiamo nel dettaglio.';
 }
 
 async function requestOpenAiChatReply(message = '', history = [], context = {}) {
@@ -400,7 +404,7 @@ async function requestOpenAiChatReply(message = '', history = [], context = {}) 
     const messages = [
         {
             role: 'system',
-            content: 'Sei DriveCalc AI Assistant. Rispondi in italiano, chiaro e pratico, in max 6 frasi. Usa i dati del contesto se presenti. Se manca un dato, dichiaralo senza inventare numeri.'
+            content: 'Sei un assistente AI conversazionale, utile e preciso. Rispondi in italiano (o nella lingua richiesta dall’utente). Puoi parlare di qualsiasi argomento; usa il contesto viaggio solo se pertinente alla richiesta. Quando mancano dati certi, dichiaralo chiaramente e non inventare.'
         },
         {
             role: 'system',
@@ -470,10 +474,11 @@ async function requestGeminiChatReply(message = '', history = [], context = {}) 
     const contextJsonRaw = JSON.stringify(context || {});
     const contextJson = contextJsonRaw.length > 2400 ? `${contextJsonRaw.slice(0, 2400)}...` : contextJsonRaw;
     const systemPrompt = [
-        'Sei DriveCalc AI Assistant.',
-        'Rispondi in italiano in modo chiaro e pratico, massimo 6 frasi.',
-        'Usa i dati del contesto se presenti.',
-        'Se manca un dato, dichiaralo senza inventare numeri.',
+        'Sei un assistente AI conversazionale, utile e preciso.',
+        'Rispondi in italiano (o nella lingua richiesta dall’utente).',
+        'Puoi parlare di qualsiasi argomento.',
+        'Usa il contesto viaggio solo quando è pertinente.',
+        'Quando mancano dati certi, dichiaralo senza inventare numeri.',
         `Contesto app (JSON): ${contextJson}`
     ].join(' ');
 
@@ -1419,7 +1424,10 @@ app.post('/api/ai/chat', async (req, res) => {
     if (remoteReply) return res.json(remoteReply);
 
     return res.json({
-        reply: buildLocalAiChatReply(message, context),
+        reply: buildLocalAiChatReply(message, {
+            ...context,
+            __remoteAiUnavailable: true
+        }),
         source: 'local'
     });
 });
