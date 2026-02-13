@@ -1312,6 +1312,7 @@ async function resolveLocation(roleLabel, addressInput, citySelect) {
     if (addressValue) {
         const pickedKind = addressInput?.dataset?.kind || '';
         const pickedCity = addressInput?.dataset?.city || '';
+        const pickedPlaceId = String(addressInput?.dataset?.placeId || '').trim();
         const lat = parseFloat(addressInput?.dataset?.lat || '');
         const lng = parseFloat(addressInput?.dataset?.lng || '');
 
@@ -1319,6 +1320,29 @@ async function resolveLocation(roleLabel, addressInput, citySelect) {
             const cityValue = pickedCity || addressValue;
             const [lon, cityLat] = await geocodeCity(cityValue);
             return { label: cityValue, lat: cityLat, lng: lon, kind: 'city', city: cityValue };
+        }
+
+        if (pickedPlaceId) {
+            try {
+                const resolved = await geocodePlaceIdGoogle(pickedPlaceId);
+                const resolvedLabel = resolved.label || addressValue;
+                addressInput.value = resolvedLabel;
+                addressInput.dataset.kind = 'address';
+                addressInput.dataset.city = '';
+                addressInput.dataset.placeId = pickedPlaceId;
+                addressInput.dataset.lat = String(resolved.lat);
+                addressInput.dataset.lng = String(resolved.lng);
+                return {
+                    label: resolvedLabel,
+                    lat: resolved.lat,
+                    lng: resolved.lng,
+                    kind: 'address',
+                    address: resolvedLabel,
+                    placeId: pickedPlaceId
+                };
+            } catch (e) {
+                // fallback below
+            }
         }
 
         if (Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -1340,13 +1364,33 @@ async function resolveLocation(roleLabel, addressInput, citySelect) {
                     addressInput.value = best.city;
                     addressInput.dataset.kind = 'city';
                     addressInput.dataset.city = best.city;
+                    addressInput.dataset.placeId = '';
                     addressInput.dataset.lat = '';
                     addressInput.dataset.lng = '';
                     return { label: best.city, lat: cityLat, lng: lon, kind: 'city', city: best.city };
                 }
+                if (best.kind === 'place' && best.placeId) {
+                    const resolved = await geocodePlaceIdGoogle(best.placeId);
+                    const resolvedLabel = resolved.label || best.label || addressValue;
+                    addressInput.value = resolvedLabel;
+                    addressInput.dataset.kind = 'address';
+                    addressInput.dataset.city = '';
+                    addressInput.dataset.placeId = best.placeId;
+                    addressInput.dataset.lat = String(resolved.lat);
+                    addressInput.dataset.lng = String(resolved.lng);
+                    return {
+                        label: resolvedLabel,
+                        lat: resolved.lat,
+                        lng: resolved.lng,
+                        kind: 'address',
+                        address: resolvedLabel,
+                        placeId: best.placeId
+                    };
+                }
                 addressInput.value = best.label;
                 addressInput.dataset.kind = 'address';
                 addressInput.dataset.city = '';
+                addressInput.dataset.placeId = '';
                 addressInput.dataset.lat = String(best.lat);
                 addressInput.dataset.lng = String(best.lng);
                 return { label: best.label, lat: best.lat, lng: best.lng, kind: 'address', address: best.label };
@@ -1358,6 +1402,7 @@ async function resolveLocation(roleLabel, addressInput, citySelect) {
             const coords = await geocodeAddress(addressValue, citySelect?.value || '');
             addressInput.dataset.kind = 'address';
             addressInput.dataset.city = '';
+            addressInput.dataset.placeId = '';
             addressInput.dataset.lat = String(coords.lat);
             addressInput.dataset.lng = String(coords.lng);
             return { label: addressValue, lat: coords.lat, lng: coords.lng, kind: 'address', address: addressValue };
@@ -1406,6 +1451,7 @@ function applyLocationToForm(entry) {
             departureAddressInput.value = entry.departureAddress || entry.departure || '';
             departureAddressInput.dataset.kind = 'address';
             departureAddressInput.dataset.city = '';
+            departureAddressInput.dataset.placeId = '';
             departureAddressInput.dataset.lat = entry.departureLat ? String(entry.departureLat) : '';
             departureAddressInput.dataset.lng = entry.departureLng ? String(entry.departureLng) : '';
         }
@@ -1417,6 +1463,7 @@ function applyLocationToForm(entry) {
             departureAddressInput.value = depCity;
             departureAddressInput.dataset.kind = depCity ? 'city' : '';
             departureAddressInput.dataset.city = depCity;
+            departureAddressInput.dataset.placeId = '';
             departureAddressInput.dataset.lat = '';
             departureAddressInput.dataset.lng = '';
         }
@@ -1427,6 +1474,7 @@ function applyLocationToForm(entry) {
             arrivalAddressInput.value = entry.arrivalAddress || entry.arrival || '';
             arrivalAddressInput.dataset.kind = 'address';
             arrivalAddressInput.dataset.city = '';
+            arrivalAddressInput.dataset.placeId = '';
             arrivalAddressInput.dataset.lat = entry.arrivalLat ? String(entry.arrivalLat) : '';
             arrivalAddressInput.dataset.lng = entry.arrivalLng ? String(entry.arrivalLng) : '';
         }
@@ -1438,6 +1486,7 @@ function applyLocationToForm(entry) {
             arrivalAddressInput.value = arrCity;
             arrivalAddressInput.dataset.kind = arrCity ? 'city' : '';
             arrivalAddressInput.dataset.city = arrCity;
+            arrivalAddressInput.dataset.placeId = '';
             arrivalAddressInput.dataset.lat = '';
             arrivalAddressInput.dataset.lng = '';
         }
@@ -3246,8 +3295,54 @@ function fetchCitySuggestions(query) {
         }));
 }
 
+function formatGoogleAutocompleteLabel(prediction = {}) {
+    const structured = prediction.structured_formatting || {};
+    const mainText = String(structured.main_text || '').trim();
+    const secondaryText = String(structured.secondary_text || '').trim();
+    if (mainText && secondaryText) return `${mainText}, ${secondaryText}`;
+    return String(prediction.description || mainText || '').trim();
+}
+
+async function fetchGooglePlaceSuggestions(query, signal) {
+    if (!hasGoogleKey()) return [];
+    const input = String(query || '').trim();
+    if (!input || input.length < 2) return [];
+    const url = `${getApiBase()}/google/place-autocomplete?input=${encodeURIComponent(input)}`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal });
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => ({}));
+    const predictions = Array.isArray(data.predictions) ? data.predictions : [];
+    return predictions.map((prediction) => {
+        const placeId = String(prediction.place_id || '').trim();
+        const label = formatGoogleAutocompleteLabel(prediction);
+        return {
+            kind: 'place',
+            placeId,
+            label
+        };
+    }).filter((item) => item.placeId && item.label).slice(0, 8);
+}
+
+async function geocodePlaceIdGoogle(placeId = '') {
+    if (!hasGoogleKey()) throw new Error('Google Maps non disponibile');
+    const safePlaceId = String(placeId || '').trim();
+    if (!safePlaceId) throw new Error('place_id non valido');
+    const url = `${getApiBase()}/google/place-geocode?placeId=${encodeURIComponent(safePlaceId)}`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error('Google Place geocoding failed');
+    const data = await res.json().catch(() => ({}));
+    const result = data.result || (Array.isArray(data.results) ? data.results[0] : null);
+    const location = result?.geometry?.location;
+    const lat = Number(location?.lat);
+    const lng = Number(location?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('No coordinates found for place_id');
+    const label = String(result?.formatted_address || result?.name || '').trim();
+    return { lat, lng, label: label || null };
+}
+
 async function fetchUnifiedLocationSuggestions(query, signal) {
     const cityItems = fetchCitySuggestions(query);
+    const googlePlaceItems = await fetchGooglePlaceSuggestions(query, signal).catch(() => []);
     const addressItems = await fetchAddressSuggestions(query, '', signal).catch(() => []);
     const mappedAddresses = addressItems.map(item => ({
         kind: 'address',
@@ -3256,10 +3351,12 @@ async function fetchUnifiedLocationSuggestions(query, signal) {
         lng: item.lng
     }));
 
-    const all = [...cityItems, ...mappedAddresses];
+    const all = [...cityItems, ...googlePlaceItems, ...mappedAddresses];
     const seen = new Set();
     return all.filter(item => {
-        const key = `${item.kind}|${(item.city || item.label || '').toLowerCase()}`;
+        const key = item.kind === 'place'
+            ? `${item.kind}|${String(item.placeId || '').toLowerCase()}`
+            : `${item.kind}|${(item.city || item.label || '').toLowerCase()}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -3287,12 +3384,21 @@ function setupAddressAutocomplete(input, resultsEl, citySelect) {
             if (item.kind === 'city') {
                 input.value = item.city || item.label || '';
                 input.dataset.city = item.city || '';
+                input.dataset.placeId = '';
                 input.dataset.lat = '';
                 input.dataset.lng = '';
                 if (citySelect) citySelect.value = item.city || '';
+            } else if (item.kind === 'place') {
+                input.value = item.label || '';
+                input.dataset.city = '';
+                input.dataset.placeId = item.placeId || '';
+                input.dataset.lat = '';
+                input.dataset.lng = '';
+                if (citySelect) citySelect.value = '';
             } else {
                 input.value = item.label;
                 input.dataset.city = '';
+                input.dataset.placeId = '';
                 input.dataset.lat = String(item.lat);
                 input.dataset.lng = String(item.lng);
                 if (citySelect) citySelect.value = '';
@@ -3306,6 +3412,7 @@ function setupAddressAutocomplete(input, resultsEl, citySelect) {
         const value = e.target.value.trim();
         input.dataset.kind = '';
         input.dataset.city = '';
+        input.dataset.placeId = '';
         input.dataset.lat = '';
         input.dataset.lng = '';
         if (citySelect) citySelect.value = '';
@@ -7732,6 +7839,7 @@ function resetCalculator() {
         departureAddressInput.value = '';
         departureAddressInput.dataset.kind = '';
         departureAddressInput.dataset.city = '';
+        departureAddressInput.dataset.placeId = '';
         departureAddressInput.dataset.lat = '';
         departureAddressInput.dataset.lng = '';
     }
@@ -7739,6 +7847,7 @@ function resetCalculator() {
         arrivalAddressInput.value = '';
         arrivalAddressInput.dataset.kind = '';
         arrivalAddressInput.dataset.city = '';
+        arrivalAddressInput.dataset.placeId = '';
         arrivalAddressInput.dataset.lat = '';
         arrivalAddressInput.dataset.lng = '';
     }
@@ -7901,6 +8010,7 @@ useLocationBtn?.addEventListener('click', async () => {
             departureAddressInput.value = fullAddress;
             departureAddressInput.dataset.kind = 'address';
             departureAddressInput.dataset.city = city || '';
+            departureAddressInput.dataset.placeId = '';
             departureAddressInput.dataset.lat = String(lat);
             departureAddressInput.dataset.lng = String(lng);
         }

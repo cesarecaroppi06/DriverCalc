@@ -1528,7 +1528,8 @@ app.get('/api/health/google', async (req, res) => {
         requiredGoogleApis: [
             'Maps JavaScript API',
             'Routes API',
-            'Geocoding API'
+            'Geocoding API',
+            'Places API'
         ],
         upstreamChecked: false
     };
@@ -1664,6 +1665,79 @@ app.post('/api/google/routes', async (req, res) => {
         return res.json(data);
     } catch (err) {
         return res.status(502).json({ error: 'Errore Routes API' });
+    }
+});
+
+app.get('/api/google/place-autocomplete', async (req, res) => {
+    if (!GOOGLE_MAPS_API_KEY) return res.status(500).json({ error: 'Google API key mancante' });
+    const input = String(req.query.input || '').trim();
+    if (!input || input.length < 2) {
+        return res.json({ status: 'INVALID_REQUEST', predictions: [] });
+    }
+
+    try {
+        const params = new URLSearchParams({
+            input,
+            language: 'it',
+            components: 'country:it',
+            key: GOOGLE_MAPS_API_KEY
+        });
+        const sessionToken = String(req.query.sessionToken || '').trim();
+        if (sessionToken) params.set('sessiontoken', sessionToken);
+        const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`;
+        const apiRes = await fetch(url);
+        if (!apiRes.ok) {
+            const errText = await apiRes.text();
+            return res.status(502).json({ error: 'Errore Places Autocomplete API', detail: errText });
+        }
+        const data = await apiRes.json();
+        const status = String(data?.status || '').toUpperCase();
+        if (status && status !== 'OK' && status !== 'ZERO_RESULTS') {
+            return res.status(502).json({
+                error: 'Errore Places Autocomplete API',
+                detail: data?.error_message || status,
+                status,
+                predictions: []
+            });
+        }
+        return res.json({
+            status: status || 'OK',
+            predictions: Array.isArray(data?.predictions) ? data.predictions : []
+        });
+    } catch (err) {
+        return res.status(502).json({ error: 'Errore Places Autocomplete API' });
+    }
+});
+
+app.get('/api/google/place-geocode', async (req, res) => {
+    if (!GOOGLE_MAPS_API_KEY) return res.status(500).json({ error: 'Google API key mancante' });
+    const placeId = String(req.query.placeId || '').trim();
+    if (!placeId) return res.status(400).json({ error: 'placeId obbligatorio' });
+
+    try {
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?place_id=${encodeURIComponent(placeId)}&language=it&region=IT&key=${GOOGLE_MAPS_API_KEY}`;
+        const apiRes = await fetch(url);
+        if (!apiRes.ok) {
+            const errText = await apiRes.text();
+            return res.status(502).json({ error: 'Errore Geocoding API', detail: errText });
+        }
+        const data = await apiRes.json();
+        const status = String(data?.status || '').toUpperCase();
+        if (status === 'ZERO_RESULTS') {
+            return res.status(404).json({ error: 'Luogo non trovato', status, results: [] });
+        }
+        if (status && status !== 'OK') {
+            return res.status(502).json({
+                error: 'Errore Geocoding API',
+                detail: data?.error_message || status,
+                status
+            });
+        }
+        const result = Array.isArray(data?.results) ? data.results[0] : null;
+        if (!result) return res.status(404).json({ error: 'Luogo non trovato', status: status || 'ZERO_RESULTS' });
+        return res.json({ status: status || 'OK', result });
+    } catch (err) {
+        return res.status(502).json({ error: 'Errore Geocoding API' });
     }
 });
 
