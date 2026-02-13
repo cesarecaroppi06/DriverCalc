@@ -41,7 +41,7 @@ const AI_CHAT_MAX_MESSAGE_CHARS = 1800;
 const AI_CHAT_MAX_REPLY_CHARS = 9000;
 const AI_CHAT_REMOTE_TIMEOUT_MS = 60000;
 const AI_CHAT_MAX_OUTPUT_TOKENS = 3072;
-const AI_CHAT_GEMINI_CONTINUATION_STEPS = 3;
+const AI_CHAT_GEMINI_CONTINUATION_STEPS = 8;
 const AI_CHAT_RATE_WINDOW_MS = 60 * 1000;
 const AI_CHAT_RATE_MAX_REQUESTS = 12;
 const aiChatRateBuckets = new Map();
@@ -463,6 +463,7 @@ async function requestGeminiChatReply(message = '', history = [], context = {}) 
 
     const safeMessage = normalizeAiChatText(message, AI_CHAT_MAX_MESSAGE_CHARS);
     if (!safeMessage) return null;
+    const wantsDetailedAnswer = /dettagli|dettagliat|approfond|spiega|spiegami|analizza|analisi|paragraf|tutorial|guida|passo\s*passo|completo|esteso|almeno\s+\d+/i.test(safeMessage);
 
     const safeHistory = Array.isArray(history)
         ? history
@@ -567,14 +568,28 @@ async function requestGeminiChatReply(message = '', history = [], context = {}) 
 
         combinedText = normalizeAiChatText(combinedText, AI_CHAT_MAX_REPLY_CHARS);
         finishReason = String(turn?.finishReason || '').toUpperCase();
-        const canContinue = finishReason === 'MAX_TOKENS' && combinedText.length < (AI_CHAT_MAX_REPLY_CHARS - 120);
+        const trimmedCombined = combinedText.trim();
+        const endsLikeCompletedSentence = /[.!?…]["')\]]?\s*$/.test(trimmedCombined);
+        const underDetailedTarget = wantsDetailedAnswer && trimmedCombined.length < 1200;
+        const looksAbrupt = trimmedCombined.length < 180 || !endsLikeCompletedSentence;
+        const canContinue =
+            step < AI_CHAT_GEMINI_CONTINUATION_STEPS &&
+            combinedText.length < (AI_CHAT_MAX_REPLY_CHARS - 120) &&
+            (
+                finishReason === 'MAX_TOKENS' ||
+                underDetailedTarget ||
+                looksAbrupt
+            );
         if (!canContinue) break;
 
-        const modelTail = combinedText.slice(-1800);
+        const modelTail = combinedText.slice(-2400);
+        const continuePrompt = wantsDetailedAnswer
+            ? 'Continua in modo dettagliato dal punto esatto in cui eri arrivato, senza ripetere parti già scritte, fino a completare bene la richiesta.'
+            : 'Continua dal punto esatto in cui eri arrivato. Non ripetere parti già scritte.';
         rollingContents = [
             ...contents,
             { role: 'model', parts: [{ text: modelTail }] },
-            { role: 'user', parts: [{ text: 'Continua esattamente da dove eri arrivato. Non ripetere parti già scritte.' }] }
+            { role: 'user', parts: [{ text: continuePrompt }] }
         ];
     }
 
