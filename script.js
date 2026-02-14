@@ -6733,6 +6733,29 @@ function normalizeAiChatText(value = '', maxLen = AI_CHAT_INPUT_MAX_CHARS) {
     return String(value || '').replace(/\s+/g, ' ').trim().slice(0, safeMax);
 }
 
+function normalizeAiAssistantText(value = '', maxLen = AI_CHAT_REPLY_MAX_CHARS) {
+    const safeMax = Math.max(1, Number(maxLen) || AI_CHAT_REPLY_MAX_CHARS);
+    let normalized = String(value || '').replace(/\r\n?/g, '\n');
+
+    // Strip common markdown markers so replies stay clean in plain-text bubbles.
+    normalized = normalized
+        .replace(/\*\*(\S(?:[^*\n]*\S)?)\*\*/g, '$1')
+        .replace(/\*(\S(?:[^*\n]*\S)?)\*/g, '$1')
+        .replace(/__(\S(?:[^_\n]*\S)?)__/g, '$1')
+        .replace(/_(\S(?:[^_\n]*\S)?)_/g, '$1')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/(^|\n)\s*[*•]\s+/g, '$1- ')
+        .replace(/(^|\s)\*(?=\s|$)/g, '$1');
+
+    normalized = normalized
+        .split('\n')
+        .map((line) => line.replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .join('\n');
+
+    return normalized.slice(0, safeMax);
+}
+
 function getAiProviderLabel(source = '') {
     const normalized = String(source || '').trim().toLowerCase();
     if (normalized === 'gemini') return 'Gemini';
@@ -6784,10 +6807,9 @@ function loadAiChatHistory() {
             ? parsed
                 .map((item) => ({
                     role: item?.role === 'user' ? 'user' : 'assistant',
-                    text: normalizeAiChatText(
-                        item?.text || '',
-                        item?.role === 'user' ? AI_CHAT_INPUT_MAX_CHARS : AI_CHAT_REPLY_MAX_CHARS
-                    ),
+                    text: item?.role === 'user'
+                        ? normalizeAiChatText(item?.text || '', AI_CHAT_INPUT_MAX_CHARS)
+                        : normalizeAiAssistantText(item?.text || '', AI_CHAT_REPLY_MAX_CHARS),
                     timestamp: Number(item?.timestamp) || Date.now()
                 }))
                 .filter((item) => item.text)
@@ -6823,10 +6845,9 @@ function renderAiChatHistory() {
 }
 
 function pushAiChatMessage(role = 'assistant', text = '') {
-    const normalizedText = normalizeAiChatText(
-        text,
-        role === 'user' ? AI_CHAT_INPUT_MAX_CHARS : AI_CHAT_REPLY_MAX_CHARS
-    );
+    const normalizedText = role === 'user'
+        ? normalizeAiChatText(text, AI_CHAT_INPUT_MAX_CHARS)
+        : normalizeAiAssistantText(text, AI_CHAT_REPLY_MAX_CHARS);
     if (!normalizedText) return;
     aiChatHistory.push({
         role: role === 'user' ? 'user' : 'assistant',
@@ -6927,7 +6948,7 @@ async function requestAiChatReply(question = '') {
             history,
             context: buildAiChatContextPayload()
         });
-        const reply = normalizeAiChatText(response?.reply || response?.message || '', AI_CHAT_REPLY_MAX_CHARS);
+        const reply = normalizeAiAssistantText(response?.reply || response?.message || '', AI_CHAT_REPLY_MAX_CHARS);
         if (reply) {
             return {
                 reply,
@@ -6953,7 +6974,7 @@ async function requestTravelAiEnhancement(context = {}) {
         });
         const rawReply = String(response?.reply || response?.message || '').trim();
         if (!rawReply) return null;
-        const normalizedReply = normalizeAiChatText(rawReply, AI_CHAT_REPLY_MAX_CHARS);
+        const normalizedReply = normalizeAiAssistantText(rawReply, AI_CHAT_REPLY_MAX_CHARS);
         const parsedTips = extractTravelAiTipsFromReply(rawReply);
         return {
             source: String(response?.source || 'remote').trim().toLowerCase() || 'remote',
@@ -6989,7 +7010,7 @@ async function sendAiChatMessage() {
 
     try {
         const answerPayload = await requestAiChatReply(message);
-        const answer = normalizeAiChatText(answerPayload?.reply || '', AI_CHAT_REPLY_MAX_CHARS);
+        const answer = normalizeAiAssistantText(answerPayload?.reply || '', AI_CHAT_REPLY_MAX_CHARS);
         const sourceLabel = getAiProviderLabel(answerPayload?.source || '');
         if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
         pushAiChatMessage('assistant', answer || 'Non ho trovato una risposta utile. Riprova con una domanda piu specifica.');

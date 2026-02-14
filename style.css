@@ -754,6 +754,15 @@ select:focus, input:focus {
     gap: 12px;
 }
 
+.ai-chat-card,
+.ai-chat-card .modal-header h3,
+.ai-chat-card .modal-subtitle,
+#aiChatStatus,
+#aiChatInput,
+.ai-chat-bubble {
+    font-family: 'Google Sans', 'Google Sans Text', 'Product Sans', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
 .ai-chat-messages {
     min-height: 280px;
     max-height: min(58vh, 520px);
@@ -783,8 +792,10 @@ select:focus, input:focus {
     max-width: min(88%, 620px);
     padding: 10px 12px;
     border-radius: 12px;
-    line-height: 1.45;
-    font-size: 14px;
+    line-height: 1.58;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+    font-weight: 400;
     white-space: pre-wrap;
     word-break: break-word;
 }
@@ -809,6 +820,8 @@ select:focus, input:focus {
 
 .ai-chat-actions input {
     flex: 1;
+    font-size: 15px;
+    letter-spacing: 0.01em;
 }
 
 .fuel-finder-card {
