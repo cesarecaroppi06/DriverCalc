@@ -1006,24 +1006,29 @@ select:focus, input:focus {
 }
 
 .fuel-map-marker {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 72px;
-    height: 30px;
-    padding: 0 10px;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 255, 255, 0.95);
+    background: #ef4444;
+    box-shadow: 0 2px 8px rgba(153, 27, 27, 0.26);
+}
+
+.leaflet-tooltip.fuel-marker-tooltip {
+    background: rgba(11, 16, 33, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #f8fafc;
     border-radius: 999px;
-    border: 2px solid rgba(255, 255, 255, 0.95);
-    background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
-    color: #fff;
-    font-weight: 700;
+    padding: 4px 8px;
     font-size: 11px;
-    line-height: 1;
-    white-space: nowrap;
+    font-weight: 700;
     letter-spacing: 0.2px;
-    box-shadow: 0 8px 18px rgba(153, 27, 27, 0.34);
-    transform: translateY(-2px);
-    pointer-events: auto;
+    box-shadow: 0 8px 18px rgba(4, 8, 18, 0.38);
+}
+
+.leaflet-tooltip-top.fuel-marker-tooltip::before {
+    border-top-color: rgba(11, 16, 33, 0.92);
 }
 
 .modal-header {
@@ -1219,9 +1224,8 @@ select:focus, input:focus {
         height: min(34vh, 250px);
     }
     .fuel-map-marker {
-        min-width: 66px;
-        height: 28px;
-        font-size: 10px;
+        width: 9px;
+        height: 9px;
     }
 }
 

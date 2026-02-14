@@ -426,6 +426,13 @@ let userLocationMarkerGoogle = null;
 let userLocationMarkerLeaflet = null;
 let lastUserLocation = null;
 let activeMapProvider = null;
+const FUEL_FINDER_DEFAULT_RADIUS_KM = 2;
+const FUEL_MARKER_DETAIL_ZOOM = 14;
+const FUEL_MARKER_LABEL_LIMIT = 90;
+const FUEL_MARKER_HIGHLIGHT_Z_INDEX = 3200;
+let googleFuelZoomListener = null;
+let leafletFuelZoomListener = null;
+let leafletFuelCanvasRenderer = null;
 
 function hasLeaflet() {
     return typeof window !== 'undefined' && typeof window.L !== 'undefined';
@@ -494,6 +501,7 @@ function destroyLeafletMap(mapEl) {
         leafletMapInstance.remove();
         leafletMapInstance = null;
     }
+    leafletFuelCanvasRenderer = null;
     clearMapContainer(mapEl);
 }
 
@@ -561,7 +569,8 @@ async function ensureMapReady(preferredProvider) {
             if (googleMapInstance) {
                 destroyGoogleMap(mapEl);
             }
-            leafletMapInstance = L.map(mapEl, { zoomControl: true }).setView([41.9028, 12.4964], 6);
+            leafletMapInstance = L.map(mapEl, { zoomControl: true, preferCanvas: true }).setView([41.9028, 12.4964], 6);
+            leafletFuelCanvasRenderer = L.canvas({ padding: 0.35 });
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; OpenStreetMap contributors'
             }).addTo(leafletMapInstance);
@@ -603,6 +612,10 @@ function clearGoogleRoute() {
 }
 
 function clearGoogleFuelStations() {
+    if (googleFuelZoomListener && window.google && google.maps?.event) {
+        google.maps.event.removeListener(googleFuelZoomListener);
+    }
+    googleFuelZoomListener = null;
     googleFuelMarkers.forEach((marker) => marker.setMap(null));
     googleFuelMarkers = [];
     if (googleFuelRadiusCircle) {
@@ -728,6 +741,10 @@ function clearLeafletRoute() {
 }
 
 function clearLeafletFuelStations() {
+    if (leafletFuelZoomListener && leafletMapInstance) {
+        leafletMapInstance.off('zoomend', leafletFuelZoomListener);
+    }
+    leafletFuelZoomListener = null;
     leafletFuelMarkers.forEach((marker) => marker.remove());
     leafletFuelMarkers = [];
     if (leafletFuelRadiusCircle) {
@@ -757,6 +774,106 @@ function buildFuelMarkerPriceLabel(station = {}, fuelType = 'benzina') {
     return `€${price.toFixed(3)}${suffix}`;
 }
 
+function shouldShowFuelMarkerPriceLabels(mapZoom, markerCount = 0) {
+    const zoom = Number(mapZoom);
+    if (!Number.isFinite(zoom)) return false;
+    return zoom >= FUEL_MARKER_DETAIL_ZOOM && Number(markerCount) <= FUEL_MARKER_LABEL_LIMIT;
+}
+
+function buildGoogleFuelMarkerIcon({ highlighted = false, detailed = false } = {}) {
+    const baseScale = detailed ? 7.2 : 5.4;
+    return {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: highlighted ? baseScale + 1.1 : baseScale,
+        fillColor: highlighted ? '#f97316' : '#dc2626',
+        fillOpacity: detailed ? 0.95 : 0.88,
+        strokeColor: '#ffffff',
+        strokeWeight: detailed ? 1.9 : 1.4
+    };
+}
+
+function applyGoogleFuelMarkerAppearance(marker, { showLabel = false, highlighted = false } = {}) {
+    if (!marker || !window.google || !google.maps) return;
+    const labelText = String(marker.__fuelPriceLabel || '').trim();
+    const detailed = !!showLabel || !!highlighted;
+    marker.setIcon(buildGoogleFuelMarkerIcon({ highlighted, detailed }));
+    if (detailed && labelText) {
+        marker.setLabel({
+            text: labelText,
+            color: '#ffffff',
+            fontSize: highlighted ? '11px' : '10px',
+            fontWeight: '700'
+        });
+        marker.setZIndex(highlighted ? FUEL_MARKER_HIGHLIGHT_Z_INDEX : 1100);
+    } else {
+        marker.setLabel(null);
+        marker.setZIndex(undefined);
+    }
+}
+
+function refreshGoogleFuelMarkerDetails() {
+    if (!googleMapInstance || !googleFuelMarkers.length) return;
+    const showLabels = shouldShowFuelMarkerPriceLabels(googleMapInstance.getZoom(), googleFuelMarkers.length);
+    googleFuelMarkers.forEach((marker) => {
+        const hovered = marker.__fuelHovered === true;
+        applyGoogleFuelMarkerAppearance(marker, {
+            showLabel: showLabels,
+            highlighted: hovered
+        });
+    });
+}
+
+function buildLeafletFuelMarkerStyle({ highlighted = false, detailed = false } = {}) {
+    return {
+        radius: highlighted ? 7.4 : (detailed ? 5.6 : 4.3),
+        color: '#ffffff',
+        weight: highlighted ? 2 : 1.4,
+        fillColor: highlighted ? '#f97316' : '#ef4444',
+        fillOpacity: highlighted ? 0.97 : (detailed ? 0.91 : 0.84)
+    };
+}
+
+function setLeafletFuelMarkerTooltipPermanent(marker, permanent) {
+    if (!marker) return;
+    const forcePermanent = !!permanent;
+    if (marker.__fuelTooltipPermanent === forcePermanent && marker.getTooltip()) return;
+    const labelText = escapeFuelPopupText(String(marker.__fuelPriceLabel || 'Prezzo n/d'));
+    marker.unbindTooltip();
+    marker.bindTooltip(labelText, {
+        className: 'fuel-marker-tooltip',
+        direction: 'top',
+        offset: [0, -10],
+        opacity: 0.95,
+        permanent: forcePermanent
+    });
+    marker.__fuelTooltipPermanent = forcePermanent;
+    if (forcePermanent) marker.openTooltip();
+}
+
+function applyLeafletFuelMarkerAppearance(marker, { showLabel = false, highlighted = false } = {}) {
+    if (!marker || typeof marker.setStyle !== 'function') return;
+    const detailed = !!showLabel || !!highlighted;
+    marker.setStyle(buildLeafletFuelMarkerStyle({ highlighted, detailed }));
+    setLeafletFuelMarkerTooltipPermanent(marker, !!showLabel);
+    if (highlighted || showLabel) {
+        marker.openTooltip();
+    } else {
+        marker.closeTooltip();
+    }
+}
+
+function refreshLeafletFuelMarkerDetails() {
+    if (!leafletMapInstance || !leafletFuelMarkers.length) return;
+    const showLabels = shouldShowFuelMarkerPriceLabels(leafletMapInstance.getZoom(), leafletFuelMarkers.length);
+    leafletFuelMarkers.forEach((marker) => {
+        const hovered = marker.__fuelHovered === true;
+        applyLeafletFuelMarkerAppearance(marker, {
+            showLabel: showLabels,
+            highlighted: hovered
+        });
+    });
+}
+
 function buildFuelStationPopupHtml(station = {}, fuelType = 'benzina') {
     const title = escapeFuelPopupText(station.brand || station.name || 'Benzinaio');
     const address = escapeFuelPopupText(station.address || 'Indirizzo non disponibile');
@@ -773,7 +890,7 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
     const freshnessMaxHours = Number(options.freshnessMaxHours || 72);
     const statusTextWhenEmpty = String(options.statusTextWhenEmpty || '').trim();
     const radiusKm = getFuelFinderRadiusKm(
-        options.radiusKm || fuelFinderRadius?.value || fuelFinderLastMeta?.radiusKm || 5
+        options.radiusKm || fuelFinderRadius?.value || fuelFinderLastMeta?.radiusKm || FUEL_FINDER_DEFAULT_RADIUS_KM
     );
     const stationsWithCoords = Array.isArray(stations)
         ? stations.filter((station) => Number.isFinite(Number(station.lat)) && Number.isFinite(Number(station.lng)))
@@ -792,7 +909,7 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
     mapSection.style.display = 'block';
     if (mapStatus) {
         if (validStations.length) {
-            mapStatus.textContent = `Benzinai su mappa entro ${radiusKm} km (prezzi verificati, aggiornati max ${freshnessMaxHours}h).`;
+            mapStatus.textContent = `Benzinai su mappa entro ${radiusKm} km (prezzi verificati, aggiornati max ${freshnessMaxHours}h). Zoom o passa sopra un punto per più dettagli.`;
         } else if (statusTextWhenEmpty) {
             mapStatus.textContent = statusTextWhenEmpty;
         } else {
@@ -847,20 +964,21 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
                 position,
                 map: googleMapInstance,
                 title: `${station.brand || station.name || 'Benzinaio'} - ${formatFuelFinderPrice(station.price, fuelType)}`,
-                label: {
-                    text: buildFuelMarkerPriceLabel(station, fuelType),
-                    color: '#ffffff',
-                    fontSize: '11px',
-                    fontWeight: '700'
-                },
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 17,
-                    fillColor: '#dc2626',
-                    fillOpacity: 0.94,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 2
-                }
+                optimized: true,
+                icon: buildGoogleFuelMarkerIcon()
+            });
+            marker.__fuelPriceLabel = buildFuelMarkerPriceLabel(station, fuelType);
+            marker.__fuelHovered = false;
+            marker.addListener('mouseover', () => {
+                marker.__fuelHovered = true;
+                applyGoogleFuelMarkerAppearance(marker, {
+                    showLabel: true,
+                    highlighted: true
+                });
+            });
+            marker.addListener('mouseout', () => {
+                marker.__fuelHovered = false;
+                refreshGoogleFuelMarkerDetails();
             });
             marker.addListener('click', () => {
                 googleFuelInfoWindow.setContent(buildFuelStationPopupHtml(station, fuelType));
@@ -874,6 +992,13 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
             bounds.extend(position);
         });
 
+        if (googleFuelZoomListener && google.maps?.event) {
+            google.maps.event.removeListener(googleFuelZoomListener);
+        }
+        googleFuelZoomListener = googleMapInstance.addListener('zoom_changed', () => {
+            refreshGoogleFuelMarkerDetails();
+        });
+
         if (validStations.length > 1 || targetCenter) {
             googleMapInstance.fitBounds(bounds, 56);
         } else if (validStations.length === 1) {
@@ -883,6 +1008,7 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
             googleMapInstance.setCenter(targetCenter);
             googleMapInstance.setZoom(getFuelFinderZoomForRadiusKm(radiusKm));
         }
+        refreshGoogleFuelMarkerDetails();
         if (google.maps?.event) google.maps.event.trigger(googleMapInstance, 'resize');
         scheduleGoogleErrorCheck(document.getElementById('map'));
         return;
@@ -912,16 +1038,30 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
         validStations.forEach((station) => {
             const lat = Number(station.lat);
             const lng = Number(station.lng);
-            const label = escapeFuelPopupText(buildFuelMarkerPriceLabel(station, fuelType));
-            const marker = L.marker([lat, lng], {
-                title: `${station.brand || station.name || 'Benzinaio'} - ${formatFuelFinderPrice(station.price, fuelType)}`,
-                icon: L.divIcon({
-                    className: 'fuel-map-marker-wrapper',
-                    html: `<span class="fuel-map-marker">${label}</span>`,
-                    iconSize: [84, 30],
-                    iconAnchor: [42, 15]
-                })
+            const marker = L.circleMarker([lat, lng], {
+                ...buildLeafletFuelMarkerStyle(),
+                renderer: leafletFuelCanvasRenderer || undefined
             }).addTo(leafletMapInstance);
+            marker.__fuelPriceLabel = buildFuelMarkerPriceLabel(station, fuelType);
+            marker.__fuelHovered = false;
+            marker.__fuelTooltipPermanent = false;
+            marker.bindTooltip(escapeFuelPopupText(marker.__fuelPriceLabel), {
+                className: 'fuel-marker-tooltip',
+                direction: 'top',
+                offset: [0, -10],
+                opacity: 0.95
+            });
+            marker.on('mouseover', () => {
+                marker.__fuelHovered = true;
+                applyLeafletFuelMarkerAppearance(marker, {
+                    showLabel: true,
+                    highlighted: true
+                });
+            });
+            marker.on('mouseout', () => {
+                marker.__fuelHovered = false;
+                refreshLeafletFuelMarkerDetails();
+            });
             marker.bindPopup(buildFuelStationPopupHtml(station, fuelType));
             marker.on('click', () => {
                 selectFuelFinderStationFromMap(station);
@@ -934,6 +1074,14 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
             }
         });
 
+        if (leafletFuelZoomListener && leafletMapInstance) {
+            leafletMapInstance.off('zoomend', leafletFuelZoomListener);
+        }
+        leafletFuelZoomListener = () => {
+            refreshLeafletFuelMarkerDetails();
+        };
+        leafletMapInstance.on('zoomend', leafletFuelZoomListener);
+
         if (bounds) {
             leafletMapInstance.flyToBounds(bounds, { padding: [28, 28], duration: 0.45 });
         } else if (targetCenter) {
@@ -941,6 +1089,7 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
                 duration: 0.35
             });
         }
+        refreshLeafletFuelMarkerDetails();
         leafletMapInstance.invalidateSize();
     }
 }
@@ -5660,7 +5809,7 @@ let fuelFinderRequestId = 0;
 let selectedFuelFinderStationKey = '';
 let fuelFinderLastMeta = {
     fuelType: 'benzina',
-    radiusKm: 5,
+    radiusKm: FUEL_FINDER_DEFAULT_RADIUS_KM,
     freshnessMaxHours: 72
 };
 let shareSettings = {
@@ -7419,10 +7568,12 @@ function getFuelFinderStoredPosition() {
 }
 
 function getFuelFinderRadiusKm(rawValue) {
-    return Math.max(1, Math.min(20, Number(rawValue || 5)));
+    const parsed = Number(rawValue);
+    const base = Number.isFinite(parsed) && parsed > 0 ? parsed : FUEL_FINDER_DEFAULT_RADIUS_KM;
+    return Math.max(1, Math.min(20, base));
 }
 
-function getFuelFinderZoomForRadiusKm(radiusKm = 5) {
+function getFuelFinderZoomForRadiusKm(radiusKm = FUEL_FINDER_DEFAULT_RADIUS_KM) {
     const safeRadiusKm = getFuelFinderRadiusKm(radiusKm);
     if (safeRadiusKm <= 2) return 14;
     if (safeRadiusKm <= 5) return 13;
@@ -7431,7 +7582,7 @@ function getFuelFinderZoomForRadiusKm(radiusKm = 5) {
     return 10;
 }
 
-function filterFuelStationsByRadius(items = [], radiusKm = 5) {
+function filterFuelStationsByRadius(items = [], radiusKm = FUEL_FINDER_DEFAULT_RADIUS_KM) {
     const safeRadiusKm = getFuelFinderRadiusKm(radiusKm);
     if (!Array.isArray(items)) return [];
     return items.filter((item) => {
@@ -7442,7 +7593,7 @@ function filterFuelStationsByRadius(items = [], radiusKm = 5) {
 }
 
 function buildFuelFinderRequestPayload(position) {
-    const radiusKm = getFuelFinderRadiusKm(fuelFinderRadius?.value || 5);
+    const radiusKm = getFuelFinderRadiusKm(fuelFinderRadius?.value || FUEL_FINDER_DEFAULT_RADIUS_KM);
     const fuelType = normalizeFuelFinderType(fuelFinderFuelType?.value || fuelTypeSelect?.value || 'benzina');
     return {
         lat: Number(position.lat),
@@ -7547,7 +7698,7 @@ function syncFuelFinderTypeFromTrip() {
 function getFuelFinderViewMeta() {
     return {
         fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
-        radiusKm: getFuelFinderRadiusKm(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
+        radiusKm: getFuelFinderRadiusKm(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || FUEL_FINDER_DEFAULT_RADIUS_KM),
         freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
     };
 }
@@ -7601,7 +7752,7 @@ function getFuelFinderMapCenterFromState(items = []) {
 function renderFuelFinderResults(items = [], meta = {}) {
     if (!fuelStationsList || !fuelStationsEmpty || !fuelFinderSummary) return;
     const fuelType = normalizeFuelFinderType(meta.fuelType || fuelFinderFuelType?.value || 'benzina');
-    const radiusKm = getFuelFinderRadiusKm(meta.radiusKm || fuelFinderRadius?.value || fuelFinderLastMeta?.radiusKm || 5);
+    const radiusKm = getFuelFinderRadiusKm(meta.radiusKm || fuelFinderRadius?.value || fuelFinderLastMeta?.radiusKm || FUEL_FINDER_DEFAULT_RADIUS_KM);
     const freshnessMaxHours = Math.max(1, Number(meta.freshnessMaxHours || fuelFinderLastMeta?.freshnessMaxHours || 72));
     const emptyStateText = String(meta.emptyStateText || '').trim();
     const filteredByRadius = filterFuelStationsByRadius(items, radiusKm);
@@ -7815,7 +7966,7 @@ async function runFuelFinderSearch({ useLastKnown = true } = {}) {
         clearFuelStationsOnMap();
         const viewMeta = {
             fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
-            radiusKm: getFuelFinderRadiusKm(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
+            radiusKm: getFuelFinderRadiusKm(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || FUEL_FINDER_DEFAULT_RADIUS_KM),
             freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
         };
         renderFuelFinderResults([], {
@@ -7883,7 +8034,7 @@ function openFuelFinder() {
     setActiveMenu(fuelFinderBtn);
     const viewMeta = {
         fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
-        radiusKm: getFuelFinderRadiusKm(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
+        radiusKm: getFuelFinderRadiusKm(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || FUEL_FINDER_DEFAULT_RADIUS_KM),
         freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
     };
     const fallbackCenter = getFuelFinderStoredPosition();
