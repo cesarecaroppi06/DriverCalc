@@ -824,6 +824,11 @@ select:focus, input:focus {
     letter-spacing: 0.01em;
 }
 
+.ai-chat-actions .pill-btn {
+    min-width: 118px;
+    white-space: nowrap;
+}
+
 .fuel-finder-card {
     width: min(860px, 100%);
     max-height: min(88vh, 900px);

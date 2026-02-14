@@ -3670,6 +3670,7 @@ const closeAiChatBtn = document.getElementById('closeAiChat');
 const aiChatMessages = document.getElementById('aiChatMessages');
 const aiChatInput = document.getElementById('aiChatInput');
 const aiChatSendBtn = document.getElementById('aiChatSendBtn');
+const newAiChatBtn = document.getElementById('newAiChatBtn');
 const aiChatStatus = document.getElementById('aiChatStatus');
 const authEmailInput = document.getElementById('authEmail');
 const authUsernameInput = document.getElementById('authUsername');
@@ -6745,7 +6746,9 @@ function normalizeAiAssistantText(value = '', maxLen = AI_CHAT_REPLY_MAX_CHARS) 
         .replace(/_(\S(?:[^_\n]*\S)?)_/g, '$1')
         .replace(/`([^`]+)`/g, '$1')
         .replace(/(^|\n)\s*[*•]\s+/g, '$1- ')
-        .replace(/(^|\s)\*(?=\s|$)/g, '$1');
+        .replace(/(^|\s)\*(?=\s|$)/g, '$1')
+        .replace(/\\\*/g, '')
+        .replace(/\*/g, '');
 
     normalized = normalized
         .split('\n')
@@ -6863,6 +6866,19 @@ function setAiChatBusy(isBusy) {
     aiChatPending = !!isBusy;
     if (aiChatSendBtn) aiChatSendBtn.disabled = aiChatPending;
     if (aiChatInput) aiChatInput.disabled = aiChatPending;
+}
+
+function startNewAiChat() {
+    if (aiChatPending) {
+        setAiChatStatus('Attendi la risposta in corso prima di iniziare una nuova chat.');
+        return;
+    }
+    aiChatHistory = [];
+    persistAiChatHistory();
+    renderAiChatHistory();
+    if (aiChatInput) aiChatInput.value = '';
+    setAiChatStatus('Nuova chat avviata.');
+    aiChatInput?.focus();
 }
 
 function buildAiChatContextPayload() {
@@ -8225,6 +8241,7 @@ fuelFinderRadius?.addEventListener('change', () => {
 aiChatSendBtn?.addEventListener('click', () => {
     sendAiChatMessage().catch(() => {});
 });
+newAiChatBtn?.addEventListener('click', startNewAiChat);
 aiChatInput?.addEventListener('keypress', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
