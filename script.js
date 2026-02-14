@@ -3661,9 +3661,11 @@ const findFuelStationsBtn = document.getElementById('findFuelStationsBtn');
 const fuelFinderFuelType = document.getElementById('fuelFinderFuelType');
 const fuelFinderRadius = document.getElementById('fuelFinderRadius');
 const fuelFinderStatus = document.getElementById('fuelFinderStatus');
+const fuelFinderMapMount = document.getElementById('fuelFinderMapMount');
 const fuelFinderSummary = document.getElementById('fuelFinderSummary');
 const fuelStationsList = document.getElementById('fuelStationsList');
 const fuelStationsEmpty = document.getElementById('fuelStationsEmpty');
+const mapSectionHomeMount = document.getElementById('mapSectionHomeMount');
 const aiChatBtn = document.getElementById('aiChatBtn');
 const aiChatOverlay = document.getElementById('aiChatOverlay');
 const closeAiChatBtn = document.getElementById('closeAiChat');
@@ -3767,6 +3769,8 @@ const useLocationBtn = document.getElementById('useLocationBtn');
 const closeMyCarConsentBtn = document.getElementById('closeMyCarConsent');
 const cancelMyCarConsentBtn = document.getElementById('cancelMyCarConsent');
 const acceptMyCarConsentBtn = document.getElementById('acceptMyCarConsent');
+const MAP_SECTION_DEFAULT_TITLE = 'Percorso e benzinai su mappa';
+const MAP_SECTION_FUEL_FINDER_TITLE = 'Benzinai trovati su mappa';
 
 const MODAL_ANIMATION_MS = 180;
 const PRIMARY_MODAL_OVERLAYS = [
@@ -3818,11 +3822,13 @@ function hideModalOverlay(overlay, { immediate = false } = {}) {
     overlay.setAttribute('aria-hidden', 'true');
     if (immediate) {
         overlay.style.display = 'none';
+        handleOverlayPostHide(overlay);
         return;
     }
     overlay._hideTimer = window.setTimeout(() => {
         overlay.style.display = 'none';
         overlay._hideTimer = null;
+        handleOverlayPostHide(overlay);
     }, MODAL_ANIMATION_MS);
 }
 
@@ -3843,6 +3849,45 @@ function isAnyBlockingOverlayOpen() {
         friendRequestsOverlay,
         myCarConsentOverlay
     ].some((overlay) => isOverlayOpen(overlay));
+}
+
+function getMapSectionNode() {
+    return document.getElementById('mapSection');
+}
+
+function updateMapSectionTitle(title = MAP_SECTION_DEFAULT_TITLE) {
+    const heading = document.querySelector('#mapSection .map-header h3');
+    if (heading) heading.textContent = title;
+}
+
+function moveMapSectionToFuelFinder() {
+    const mapSection = getMapSectionNode();
+    if (!mapSection || !fuelFinderMapMount) return;
+    if (mapSection.parentElement !== fuelFinderMapMount) {
+        fuelFinderMapMount.appendChild(mapSection);
+    }
+    mapSection.classList.add('map-section-inline-fuel-finder');
+    updateMapSectionTitle(MAP_SECTION_FUEL_FINDER_TITLE);
+}
+
+function restoreMapSectionToHome() {
+    const mapSection = getMapSectionNode();
+    if (!mapSection) return;
+    if (mapSectionHomeMount && mapSection.parentElement !== mapSectionHomeMount.parentElement) {
+        mapSectionHomeMount.insertAdjacentElement('afterend', mapSection);
+    } else if (mapSectionHomeMount && mapSection.previousElementSibling !== mapSectionHomeMount) {
+        mapSectionHomeMount.insertAdjacentElement('afterend', mapSection);
+    }
+    mapSection.classList.remove('map-section-inline-fuel-finder');
+    updateMapSectionTitle(MAP_SECTION_DEFAULT_TITLE);
+    mapSection.style.display = mapSectionVisibleBeforeFuelFinder ? 'block' : 'none';
+    mapSectionVisibleBeforeFuelFinder = false;
+}
+
+function handleOverlayPostHide(overlay) {
+    if (overlay === fuelFinderOverlay) {
+        restoreMapSectionToHome();
+    }
 }
 
 function wireModalBackdropCloseHandlers() {
@@ -5545,6 +5590,8 @@ let aiChatPending = false;
 let fuelFinderPending = false;
 let fuelFinderLastPosition = null;
 let fuelFinderLastResults = [];
+let mapSectionVisibleBeforeFuelFinder = false;
+let fuelFinderRequestId = 0;
 let fuelFinderLastMeta = {
     fuelType: 'benzina',
     radiusKm: 5,
@@ -7387,6 +7434,23 @@ function syncFuelFinderTypeFromTrip() {
     }
 }
 
+function getFuelFinderMapCenterFromState(items = []) {
+    if (fuelFinderLastPosition?.lat && fuelFinderLastPosition?.lng) {
+        return {
+            lat: Number(fuelFinderLastPosition.lat),
+            lng: Number(fuelFinderLastPosition.lng)
+        };
+    }
+    const firstWithCoords = Array.isArray(items)
+        ? items.find((station) => Number.isFinite(Number(station?.lat)) && Number.isFinite(Number(station?.lng)))
+        : null;
+    if (!firstWithCoords) return null;
+    return {
+        lat: Number(firstWithCoords.lat),
+        lng: Number(firstWithCoords.lng)
+    };
+}
+
 function renderFuelFinderResults(items = [], meta = {}) {
     if (!fuelStationsList || !fuelStationsEmpty || !fuelFinderSummary) return;
     const fuelType = normalizeFuelFinderType(meta.fuelType || fuelFinderFuelType?.value || 'benzina');
@@ -7525,6 +7589,9 @@ function locateUserPosition() {
 async function runFuelFinderSearch({ useLastKnown = false } = {}) {
     if (fuelFinderPending) return;
     if (!fuelStationsList) return;
+    if (!isOverlayOpen(fuelFinderOverlay)) return;
+    moveMapSectionToFuelFinder();
+    const requestId = ++fuelFinderRequestId;
 
     setFuelFinderBusy(true);
     setFuelFinderStatus('Ricerca benzinai in corso...');
@@ -7543,6 +7610,7 @@ async function runFuelFinderSearch({ useLastKnown = false } = {}) {
 
         const payload = buildFuelFinderRequestPayload(position);
         const result = await apiRequest('/fuel-stations/nearby', 'POST', payload);
+        if (requestId !== fuelFinderRequestId) return;
         const items = Array.isArray(result?.items) ? result.items : [];
         const freshnessMaxHours = Math.max(1, Number(result?.freshnessMaxHours || 72));
         fuelFinderLastResults = items;
@@ -7551,13 +7619,14 @@ async function runFuelFinderSearch({ useLastKnown = false } = {}) {
             radiusKm: payload.radiusKm,
             freshnessMaxHours
         };
+        await renderFuelStationsOnMap(items, position, {
+            fuelType: payload.fuelType,
+            freshnessMaxHours
+        });
+        if (requestId !== fuelFinderRequestId) return;
         renderFuelFinderResults(items, {
             fuelType: payload.fuelType,
             radiusKm: payload.radiusKm,
-            freshnessMaxHours
-        });
-        await renderFuelStationsOnMap(items, position, {
-            fuelType: payload.fuelType,
             freshnessMaxHours
         });
 
@@ -7567,6 +7636,7 @@ async function runFuelFinderSearch({ useLastKnown = false } = {}) {
             setFuelFinderStatus(`Ricerca completata: ${items.length} benzinai affidabili mostrati anche sulla mappa.`);
         }
     } catch (err) {
+        if (requestId !== fuelFinderRequestId) return;
         clearFuelStationsOnMap();
         renderFuelFinderResults([], {
             fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
@@ -7583,16 +7653,33 @@ function openFuelFinder() {
     if (!fuelFinderOverlay) return;
     closeAccountSubPanels({ clearSearch: false });
     closePrimaryModalOverlays(fuelFinderOverlay);
+    moveMapSectionToFuelFinder();
+    const mapSection = getMapSectionNode();
+    if (mapSection) {
+        mapSectionVisibleBeforeFuelFinder = mapSection.style.display !== 'none';
+        mapSection.style.display = 'none';
+    }
 
     syncFuelFinderTypeFromTrip();
     showModalOverlay(fuelFinderOverlay);
     setActiveMenu(fuelFinderBtn);
     if (fuelFinderLastResults.length) {
-        renderFuelFinderResults(fuelFinderLastResults, {
+        const viewMeta = {
             fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
             radiusKm: Number(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
             freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
-        });
+        };
+        const center = getFuelFinderMapCenterFromState(fuelFinderLastResults);
+        const requestId = ++fuelFinderRequestId;
+        renderFuelStationsOnMap(fuelFinderLastResults, center, {
+            fuelType: viewMeta.fuelType,
+            freshnessMaxHours: viewMeta.freshnessMaxHours
+        })
+            .catch(() => {})
+            .finally(() => {
+                if (requestId !== fuelFinderRequestId) return;
+                renderFuelFinderResults(fuelFinderLastResults, viewMeta);
+            });
         setFuelFinderStatus('Usa "Trova vicino a me" per aggiornare con la tua posizione attuale.');
     } else {
         setFuelFinderStatus('Premi "Trova vicino a me" per avviare la ricerca.');
@@ -7601,6 +7688,7 @@ function openFuelFinder() {
 }
 
 function closeFuelFinder() {
+    fuelFinderRequestId += 1;
     hideModalOverlay(fuelFinderOverlay);
     setActiveMenu(homeBtn);
 }

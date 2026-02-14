@@ -865,6 +865,32 @@ select:focus, input:focus {
     line-height: 1.4;
 }
 
+.fuel-finder-map-mount {
+    display: flex;
+    flex-direction: column;
+}
+
+.fuel-finder-map-mount .map-section {
+    margin-top: 10px;
+    margin-bottom: 2px;
+    padding: 12px;
+}
+
+.fuel-finder-map-mount .map-header h3 {
+    font-size: 16px;
+    letter-spacing: 0.2px;
+    text-transform: none;
+    color: #dbe8ff;
+}
+
+.fuel-finder-map-mount .map-canvas {
+    height: min(38vh, 320px);
+}
+
+.map-section-inline-fuel-finder {
+    scroll-margin-top: 12px;
+}
+
 .fuel-stations-list {
     max-height: min(48vh, 460px);
 }
@@ -1139,6 +1165,9 @@ select:focus, input:focus {
     }
     .fuel-stations-list {
         max-height: 42vh;
+    }
+    .fuel-finder-map-mount .map-canvas {
+        height: min(34vh, 250px);
     }
     .fuel-map-marker {
         min-width: 66px;
