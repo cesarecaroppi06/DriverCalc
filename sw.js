@@ -1,9 +1,9 @@
-const CACHE_VERSION = 'drivecalc-cache-v25';
+const CACHE_VERSION = 'drivecalc-cache-v26';
 const APP_SHELL = [
   './',
   'index.html',
-  'style.css?v=22',
-  'script.js?v=46',
+  'style.css?v=23',
+  'script.js?v=47',
   'car_models.json',
   'background-travel.jpg',
   'header-hero.jpg',
@@ -68,6 +68,22 @@ self.addEventListener('fetch', (event) => {
   const isApi = url.pathname.startsWith('/api/');
   if (isApi) {
     event.respondWith(fetch(request));
+    return;
+  }
+
+  const isStaticCodeAsset = /\.(css|js)$/i.test(url.pathname);
+  if (isStaticCodeAsset) {
+    event.respondWith(
+      fetch(request, { cache: 'no-store' })
+        .then((networkResponse) => {
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_VERSION).then((cache) => {
+            cache.put(request, responseClone).catch(() => {});
+          });
+          return networkResponse;
+        })
+        .catch(() => caches.match(request))
+    );
     return;
   }
 
