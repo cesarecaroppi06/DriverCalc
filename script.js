@@ -7720,6 +7720,8 @@ function openFuelFinder() {
     if (!fuelFinderOverlay) return;
     closeAccountSubPanels({ clearSearch: false });
     closePrimaryModalOverlays(fuelFinderOverlay);
+    const fuelFinderCard = fuelFinderOverlay.querySelector('.fuel-finder-card');
+    if (fuelFinderCard) fuelFinderCard.scrollTop = 0;
     moveMapSectionToFuelFinder();
     const mapSection = getMapSectionNode();
     if (mapSection) {

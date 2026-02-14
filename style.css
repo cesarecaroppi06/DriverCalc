@@ -3969,3 +3969,54 @@ body.app-ready .info-page {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* Full-page experience for Smart Fuel Finder */
+#fuelFinderOverlay.fuel-finder-overlay-full {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+}
+
+#fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-card {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    padding: clamp(14px, 2.2vw, 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    gap: 14px;
+}
+
+#fuelFinderOverlay.fuel-finder-overlay-full .modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 4px 0 8px 0;
+    background: linear-gradient(180deg, rgba(6, 12, 26, 0.98), rgba(6, 12, 26, 0.78), rgba(6, 12, 26, 0));
+    backdrop-filter: blur(2px);
+}
+
+#fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-map-mount .map-canvas {
+    height: min(44vh, 460px);
+}
+
+#fuelFinderOverlay.fuel-finder-overlay-full .fuel-stations-list {
+    max-height: none;
+    overflow: visible;
+}
+
+#fuelFinderOverlay.fuel-finder-overlay-full .fuel-station-item {
+    padding: 16px 18px;
+}
+
+@media (max-width: 768px) {
+    #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-card {
+        padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    }
+
+    #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-map-mount .map-canvas {
+        height: min(38vh, 300px);
+    }
+}
