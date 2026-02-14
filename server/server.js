@@ -197,6 +197,85 @@ app.use(express.json({ limit: '5mb' }));
 const WEB_ROOT = path.resolve(__dirname, '..');
 const WEB_INDEX_PATH = path.join(WEB_ROOT, 'index.html');
 const HAS_WEB_CLIENT = fs.existsSync(WEB_INDEX_PATH);
+const SITEMAP_ROUTE_ENTRIES = [
+    { path: '/', fileName: 'index.html', changefreq: 'weekly', priority: '1.0' },
+    { path: '/guida-costo-viaggio-auto.html', fileName: 'guida-costo-viaggio-auto.html', changefreq: 'monthly', priority: '0.8' },
+    { path: '/guida-pedaggi-autostrada-italia.html', fileName: 'guida-pedaggi-autostrada-italia.html', changefreq: 'monthly', priority: '0.8' },
+    { path: '/guida-risparmio-carburante-viaggio.html', fileName: 'guida-risparmio-carburante-viaggio.html', changefreq: 'monthly', priority: '0.8' }
+];
+
+function normalizeForwardedHeaderValue(value = '') {
+    const raw = String(value || '').split(',')[0].trim();
+    return raw.replace(/\s+/g, '');
+}
+
+function getRequestOrigin(req) {
+    const forwardedProto = normalizeForwardedHeaderValue(req?.headers?.['x-forwarded-proto']);
+    const forwardedHost = normalizeForwardedHeaderValue(req?.headers?.['x-forwarded-host']);
+    const host = forwardedHost || normalizeForwardedHeaderValue(req?.headers?.host);
+    if (!host) return '';
+    const protoCandidate = String(forwardedProto || req?.protocol || 'https').toLowerCase();
+    const proto = protoCandidate === 'http' || protoCandidate === 'https' ? protoCandidate : 'https';
+    return `${proto}://${host}`;
+}
+
+function escapeXml(value = '') {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
+function getSitemapLastmodDate(fileName = '') {
+    const safeName = String(fileName || '').trim();
+    if (!safeName) return new Date().toISOString().slice(0, 10);
+    const filePath = path.join(WEB_ROOT, safeName);
+    try {
+        const stats = fs.statSync(filePath);
+        return new Date(stats.mtimeMs || Date.now()).toISOString().slice(0, 10);
+    } catch (_err) {
+        return new Date().toISOString().slice(0, 10);
+    }
+}
+
+function buildSitemapXml(origin = '') {
+    const base = String(origin || '').replace(/\/+$/, '');
+    const urlNodes = SITEMAP_ROUTE_ENTRIES.map((entry) => {
+        const pathname = String(entry.path || '/').startsWith('/') ? String(entry.path || '/') : `/${entry.path}`;
+        const loc = `${base}${pathname === '/' ? '/' : pathname}`;
+        const lastmod = getSitemapLastmodDate(entry.fileName);
+        const changefreq = escapeXml(entry.changefreq || 'monthly');
+        const priority = escapeXml(entry.priority || '0.8');
+        return [
+            '  <url>',
+            `    <loc>${escapeXml(loc)}</loc>`,
+            `    <lastmod>${escapeXml(lastmod)}</lastmod>`,
+            `    <changefreq>${changefreq}</changefreq>`,
+            `    <priority>${priority}</priority>`,
+            '  </url>'
+        ].join('\n');
+    }).join('\n');
+
+    return [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+        urlNodes,
+        '</urlset>'
+    ].join('\n');
+}
+
+function buildRobotsTxt(origin = '') {
+    const base = String(origin || '').replace(/\/+$/, '');
+    const sitemapPath = base ? `${base}/sitemap.xml` : '/sitemap.xml';
+    return [
+        'User-agent: *',
+        'Allow: /',
+        '',
+        `Sitemap: ${sitemapPath}`
+    ].join('\n');
+}
 
 function registerWebClientRoutes() {
     if (!HAS_WEB_CLIENT) return;
@@ -224,10 +303,20 @@ function registerWebClientRoutes() {
         'car_models.json',
         'logo.png',
         'background-travel.jpg',
-        'header-hero.jpg',
-        'robots.txt',
-        'sitemap.xml'
+        'header-hero.jpg'
     ];
+
+    app.get('/robots.txt', (req, res) => {
+        const origin = getRequestOrigin(req);
+        res.setHeader('Cache-Control', 'public, max-age=1800');
+        res.type('text/plain; charset=utf-8').send(buildRobotsTxt(origin));
+    });
+
+    app.get('/sitemap.xml', (req, res) => {
+        const origin = getRequestOrigin(req);
+        res.setHeader('Cache-Control', 'public, max-age=1800');
+        res.type('application/xml; charset=utf-8').send(buildSitemapXml(origin));
+    });
 
     staticFiles.forEach((fileName) => {
         const filePath = path.join(WEB_ROOT, fileName);
