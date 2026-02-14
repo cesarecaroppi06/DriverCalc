@@ -3842,7 +3842,6 @@ main,
 }
 
 body.app-booting header,
-body.app-booting .settings-menu,
 body.app-booting main,
 body.app-booting .info-page {
     opacity: 0;
@@ -3850,12 +3849,21 @@ body.app-booting .info-page {
     filter: saturate(0.86);
 }
 
+body.app-booting .settings-menu {
+    opacity: 0;
+    filter: saturate(0.86);
+}
+
 body.app-ready header,
-body.app-ready .settings-menu,
 body.app-ready main,
 body.app-ready .info-page {
     opacity: 1;
     transform: translateY(0);
+    filter: none;
+}
+
+body.app-ready .settings-menu {
+    opacity: 1;
     filter: none;
 }
 
@@ -4018,5 +4026,81 @@ body.app-ready .info-page {
 
     #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-map-mount .map-canvas {
         height: min(38vh, 300px);
+    }
+}
+
+/* Mobile reliability pass */
+@media (max-width: 768px) {
+    body.mobile-menu-open {
+        overflow: hidden;
+    }
+
+    .settings-menu .settings-install-btn {
+        display: none;
+    }
+
+    .settings-menu-close {
+        width: 40px;
+        height: 40px;
+        flex: 0 0 40px;
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    .mobile-top-actions {
+        position: sticky;
+        top: 10px;
+        z-index: 1090;
+        padding: 8px;
+        border-radius: 14px;
+        background: rgba(7, 14, 30, 0.74);
+        border: 1px solid rgba(148, 176, 224, 0.2);
+        backdrop-filter: blur(8px);
+    }
+
+    .mobile-menu-toggle,
+    .mobile-install-btn {
+        min-height: 44px;
+    }
+
+    main,
+    .info-page {
+        padding: 18px;
+    }
+}
+
+@media (max-width: 560px) {
+    .mobile-top-actions {
+        top: 8px;
+        gap: 8px;
+        padding: 7px;
+    }
+
+    .mobile-menu-toggle,
+    .mobile-install-btn {
+        padding: 10px 11px;
+        font-size: 13px;
+    }
+
+    header {
+        padding: 34px 16px 24px;
+    }
+
+    header h1 {
+        font-size: clamp(44px, 14vw, 60px);
+    }
+
+    .subtitle {
+        font-size: 16px;
+    }
+
+    .form-group label {
+        font-size: 15px;
+    }
+
+    .calculate-btn,
+    .reset-btn,
+    .pill-btn {
+        min-height: 44px;
     }
 }

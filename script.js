@@ -8173,25 +8173,33 @@ async function openMyCar() {
 }
 
 // Gestione viste (calcolatore vs pagina info)
+function isMobileViewport() {
+    return window.matchMedia('(max-width: 768px)').matches;
+}
+
 function setActiveMenu(button) {
     settingsMenuButtons.forEach(btn => btn.classList.remove('active'));
     if (button) {
         button.classList.add('active');
     }
-    if (window.matchMedia('(max-width: 768px)').matches) {
+    if (isMobileViewport()) {
         closeSettingsMenu();
     }
 }
 
 function openSettingsMenu() {
-    if (!settingsMenu) return;
+    if (!settingsMenu || !isMobileViewport()) return;
     document.body.classList.add('mobile-menu-open');
+    document.body.style.overflow = 'hidden';
+    settingsMenu.setAttribute('aria-hidden', 'false');
     if (mobileMenuBackdrop) mobileMenuBackdrop.style.display = 'block';
     if (mobileMenuToggle) mobileMenuToggle.setAttribute('aria-expanded', 'true');
 }
 
 function closeSettingsMenu() {
     document.body.classList.remove('mobile-menu-open');
+    document.body.style.overflow = '';
+    settingsMenu?.setAttribute('aria-hidden', 'true');
     if (mobileMenuBackdrop) mobileMenuBackdrop.style.display = 'none';
     if (mobileMenuToggle) mobileMenuToggle.setAttribute('aria-expanded', 'false');
 }
@@ -8207,8 +8215,13 @@ function toggleSettingsMenu() {
 
 function syncSettingsMenuCloseVisibility() {
     if (!closeSettingsMenuBtn) return;
-    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    const isMobile = isMobileViewport();
     closeSettingsMenuBtn.style.display = isMobile ? 'inline-flex' : 'none';
+}
+
+function closeSettingsMenuAfterAction() {
+    if (!isMobileViewport()) return;
+    closeSettingsMenu();
 }
 
 function showCalculatorView() {
@@ -8327,6 +8340,9 @@ closeInfoViewBtn?.addEventListener('click', showCalculatorView);
 mobileMenuToggle?.addEventListener('click', toggleSettingsMenu);
 closeSettingsMenuBtn?.addEventListener('click', closeSettingsMenu);
 mobileMenuBackdrop?.addEventListener('click', closeSettingsMenu);
+settingsMenuButtons.forEach((btn) => {
+    btn.addEventListener('click', closeSettingsMenuAfterAction);
+});
 favoritesBtn?.addEventListener('click', openFavorites);
 closeFavoritesBtn?.addEventListener('click', closeFavorites);
 saveFavoriteBtn?.addEventListener('click', saveCurrentToFavorites);
@@ -8709,7 +8725,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const handleViewportResize = debounce(() => {
             syncSettingsMenuCloseVisibility();
-            if (!window.matchMedia('(max-width: 768px)').matches) {
+            if (!isMobileViewport()) {
                 closeSettingsMenu();
             }
         }, 120);
