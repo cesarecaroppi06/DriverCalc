@@ -3754,3 +3754,159 @@ main > .calculator-section > .form-group input::placeholder {
         transform: translateY(0);
     }
 }
+
+/* ===== Interaction polish pass ===== */
+:root {
+    --motion-fast: 140ms;
+    --motion-base: 220ms;
+    --motion-slow: 320ms;
+    --ease-standard: cubic-bezier(0.22, 0.7, 0.2, 1);
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+header,
+.settings-menu,
+main,
+.info-page {
+    transition:
+        opacity var(--motion-base) var(--ease-standard),
+        transform var(--motion-base) var(--ease-standard),
+        filter var(--motion-base) var(--ease-standard);
+}
+
+body.app-booting header,
+body.app-booting .settings-menu,
+body.app-booting main,
+body.app-booting .info-page {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: saturate(0.86);
+}
+
+body.app-ready header,
+body.app-ready .settings-menu,
+body.app-ready main,
+body.app-ready .info-page {
+    opacity: 1;
+    transform: translateY(0);
+    filter: none;
+}
+
+.modal-overlay {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+        opacity var(--motion-base) var(--ease-standard),
+        visibility 0s linear var(--motion-base);
+}
+
+.modal-overlay.is-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
+}
+
+.modal-card {
+    opacity: 0;
+    transform: translateY(14px) scale(0.986);
+    transition:
+        opacity var(--motion-base) var(--ease-standard),
+        transform var(--motion-base) var(--ease-standard);
+}
+
+.modal-overlay.is-open .modal-card {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.settings-menu ul button,
+.pill-btn,
+.favorite-btn,
+.reset-btn,
+.calculate-btn,
+.result-card,
+.favorite-item,
+.ai-chat-bubble {
+    transition:
+        transform var(--motion-fast) var(--ease-standard),
+        box-shadow var(--motion-fast) var(--ease-standard),
+        border-color var(--motion-fast) var(--ease-standard),
+        background-color var(--motion-fast) var(--ease-standard);
+}
+
+.settings-menu ul button:hover,
+.pill-btn:hover,
+.favorite-btn:hover,
+.reset-btn:hover,
+.calculate-btn:hover,
+.result-card:hover,
+.favorite-item:hover {
+    transform: translateY(-2px);
+}
+
+.ai-chat-messages,
+.favorites-list,
+.companions-list,
+.fuel-stations-list {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(165, 199, 255, 0.45) rgba(255, 255, 255, 0.02);
+}
+
+.ai-chat-messages::-webkit-scrollbar,
+.favorites-list::-webkit-scrollbar,
+.companions-list::-webkit-scrollbar,
+.fuel-stations-list::-webkit-scrollbar {
+    width: 10px;
+}
+
+.ai-chat-messages::-webkit-scrollbar-thumb,
+.favorites-list::-webkit-scrollbar-thumb,
+.companions-list::-webkit-scrollbar-thumb,
+.fuel-stations-list::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    background: rgba(165, 199, 255, 0.4);
+}
+
+.ai-chat-actions {
+    align-items: stretch;
+}
+
+.ai-chat-actions .pill-btn {
+    min-height: 44px;
+}
+
+@media (max-width: 768px) {
+    .modal-overlay {
+        padding: 10px;
+    }
+
+    .modal-card {
+        width: min(100%, 760px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

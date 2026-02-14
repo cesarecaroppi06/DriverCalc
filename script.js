@@ -3768,6 +3768,108 @@ const closeMyCarConsentBtn = document.getElementById('closeMyCarConsent');
 const cancelMyCarConsentBtn = document.getElementById('cancelMyCarConsent');
 const acceptMyCarConsentBtn = document.getElementById('acceptMyCarConsent');
 
+const MODAL_ANIMATION_MS = 180;
+const PRIMARY_MODAL_OVERLAYS = [
+    authOverlay,
+    securityOverlay,
+    friendsOverlay,
+    favoritesOverlay,
+    companionsOverlay,
+    budgetOverlay,
+    aiChatOverlay,
+    fuelFinderOverlay
+];
+
+if (typeof document !== 'undefined' && document.body) {
+    document.body.classList.add('app-booting');
+}
+
+function debounce(fn, waitMs = 140) {
+    let timeoutId = null;
+    return (...args) => {
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = window.setTimeout(() => {
+            timeoutId = null;
+            fn(...args);
+        }, waitMs);
+    };
+}
+
+function showModalOverlay(overlay) {
+    if (!overlay) return;
+    if (overlay._hideTimer) {
+        clearTimeout(overlay._hideTimer);
+        overlay._hideTimer = null;
+    }
+    overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => {
+        overlay.classList.add('is-open');
+    });
+}
+
+function hideModalOverlay(overlay, { immediate = false } = {}) {
+    if (!overlay) return;
+    if (overlay._hideTimer) {
+        clearTimeout(overlay._hideTimer);
+        overlay._hideTimer = null;
+    }
+    overlay.classList.remove('is-open');
+    overlay.setAttribute('aria-hidden', 'true');
+    if (immediate) {
+        overlay.style.display = 'none';
+        return;
+    }
+    overlay._hideTimer = window.setTimeout(() => {
+        overlay.style.display = 'none';
+        overlay._hideTimer = null;
+    }, MODAL_ANIMATION_MS);
+}
+
+function closePrimaryModalOverlays(exceptOverlay = null) {
+    PRIMARY_MODAL_OVERLAYS.forEach((overlay) => {
+        if (!overlay || overlay === exceptOverlay) return;
+        hideModalOverlay(overlay, { immediate: true });
+    });
+}
+
+function isOverlayOpen(overlay) {
+    return !!overlay && overlay.style.display === 'flex';
+}
+
+function isAnyBlockingOverlayOpen() {
+    return [
+        ...PRIMARY_MODAL_OVERLAYS,
+        friendRequestsOverlay,
+        myCarConsentOverlay
+    ].some((overlay) => isOverlayOpen(overlay));
+}
+
+function wireModalBackdropCloseHandlers() {
+    const handlersById = {
+        authOverlay: closeAuth,
+        securityOverlay: closeSecurity,
+        friendRequestsOverlay: closeFriendRequestsView,
+        friendsOverlay: closeFriendsView,
+        favoritesOverlay: closeFavorites,
+        aiChatOverlay: closeAiChat,
+        fuelFinderOverlay: closeFuelFinder,
+        companionsOverlay: closeCompanions,
+        budgetOverlay: closeBudget,
+        myCarConsentOverlay: closeMyCarConsent
+    };
+
+    Object.entries(handlersById).forEach(([id, handler]) => {
+        const overlay = document.getElementById(id);
+        if (!overlay || overlay.dataset.backdropCloseBound === '1') return;
+        overlay.dataset.backdropCloseBound = '1';
+        overlay.addEventListener('click', (event) => {
+            if (event.target !== overlay) return;
+            if (typeof handler === 'function') handler();
+        });
+    });
+}
+
 // Inizializza i select con tutte le città (fallback API per tratte mancanti)
 function initializeCities() {
     departureSelect.innerHTML = '<option value="">Seleziona città...</option>';
@@ -4078,11 +4180,11 @@ function buildMyCarPhotoKey(modelId) {
 }
 
 function openMyCarConsent() {
-    if (myCarConsentOverlay) myCarConsentOverlay.style.display = 'flex';
+    showModalOverlay(myCarConsentOverlay);
 }
 
 function closeMyCarConsent() {
-    if (myCarConsentOverlay) myCarConsentOverlay.style.display = 'none';
+    hideModalOverlay(myCarConsentOverlay);
 }
 
 async function handleMyCarPhotoSelected(file) {
@@ -6240,8 +6342,8 @@ async function clearAuth({ remote = true } = {}) {
     setSecurityStatus('');
     if (accountCurrentPassword) accountCurrentPassword.value = '';
     if (accountNewPassword) accountNewPassword.value = '';
-    if (friendsOverlay) friendsOverlay.style.display = 'none';
-    if (securityOverlay) securityOverlay.style.display = 'none';
+    hideModalOverlay(friendsOverlay, { immediate: true });
+    hideModalOverlay(securityOverlay, { immediate: true });
 
     if (remote) {
         try {
@@ -6585,20 +6687,25 @@ async function openFavorites() {
     if (favoritesOverlay) {
         closeAccountSubPanels({ clearSearch: false });
         if (authToken) await loadFavorites();
-        favoritesOverlay.style.display = 'flex';
+        closePrimaryModalOverlays(favoritesOverlay);
+        showModalOverlay(favoritesOverlay);
         setActiveMenu(favoritesBtn);
         renderFavorites();
     }
 }
 
 function closeFavorites() {
-    if (favoritesOverlay) favoritesOverlay.style.display = 'none';
+    hideModalOverlay(favoritesOverlay);
     setActiveMenu(homeBtn);
 }
 
 function setFriendRequestsWindowState(isOpen) {
     if (friendRequestsOverlay) {
-        friendRequestsOverlay.style.display = isOpen ? 'flex' : 'none';
+        if (isOpen) {
+            showModalOverlay(friendRequestsOverlay);
+        } else {
+            hideModalOverlay(friendRequestsOverlay);
+        }
     }
     if (accountFriendRequestsToggle) {
         accountFriendRequestsToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
@@ -6627,9 +6734,9 @@ function setSecurityStatus(message = '') {
 function openAuth() {
     if (!authOverlay) return;
     closeAccountSubPanels({ clearSearch: false });
-    if (securityOverlay) securityOverlay.style.display = 'none';
+    closePrimaryModalOverlays(authOverlay);
     setSecurityStatus('');
-    authOverlay.style.display = 'flex';
+    showModalOverlay(authOverlay);
     setActiveMenu(accountBtn);
     updateAuthUI(authToken ? 'Account connesso' : 'Accedi o registrati');
     setAuthFeedback('');
@@ -6657,8 +6764,8 @@ function openSecurity() {
     }
     if (!securityOverlay) return;
     closeAccountSubPanels({ clearSearch: false });
-    if (authOverlay) authOverlay.style.display = 'none';
-    securityOverlay.style.display = 'flex';
+    closePrimaryModalOverlays(securityOverlay);
+    showModalOverlay(securityOverlay);
     setActiveMenu(securityBtn);
     setSecurityStatus('');
     if (accountCurrentPassword) accountCurrentPassword.value = '';
@@ -6667,7 +6774,7 @@ function openSecurity() {
 }
 
 function closeSecurity() {
-    if (securityOverlay) securityOverlay.style.display = 'none';
+    hideModalOverlay(securityOverlay);
     setSecurityStatus('');
     if (accountCurrentPassword) accountCurrentPassword.value = '';
     if (accountNewPassword) accountNewPassword.value = '';
@@ -6700,9 +6807,8 @@ async function openFriendsView() {
     }
     if (!friendsOverlay) return;
     closeAccountSubPanels({ clearSearch: false });
-    if (authOverlay) authOverlay.style.display = 'none';
-    if (securityOverlay) securityOverlay.style.display = 'none';
-    friendsOverlay.style.display = 'flex';
+    closePrimaryModalOverlays(friendsOverlay);
+    showModalOverlay(friendsOverlay);
     setActiveMenu(friendsBtn);
     setFriendsStatus('Clicca un amico per vedere profilo e condivisioni');
     try {
@@ -6713,7 +6819,7 @@ async function openFriendsView() {
 }
 
 function closeAuth() {
-    if (authOverlay) authOverlay.style.display = 'none';
+    hideModalOverlay(authOverlay);
     closeAccountSubPanels();
     setAuthFeedback('');
     setActiveMenu(homeBtn);
@@ -6725,7 +6831,7 @@ function closeFriendRequestsView() {
 }
 
 function closeFriendsView() {
-    if (friendsOverlay) friendsOverlay.style.display = 'none';
+    hideModalOverlay(friendsOverlay);
     setActiveMenu(homeBtn);
 }
 
@@ -6835,6 +6941,7 @@ function renderAiChatHistory() {
         ? aiChatHistory
         : [{ role: 'assistant', text: getAiChatFallbackGreeting(), timestamp: Date.now() }];
 
+    const fragment = document.createDocumentFragment();
     items.forEach((item) => {
         const row = document.createElement('div');
         row.className = `ai-chat-row ${item.role === 'user' ? 'user' : 'assistant'}`;
@@ -6842,8 +6949,9 @@ function renderAiChatHistory() {
         bubble.className = 'ai-chat-bubble';
         bubble.textContent = item.text || '';
         row.appendChild(bubble);
-        aiChatMessages.appendChild(row);
+        fragment.appendChild(row);
     });
+    aiChatMessages.appendChild(fragment);
     aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
 }
 
@@ -6865,7 +6973,9 @@ function pushAiChatMessage(role = 'assistant', text = '') {
 function setAiChatBusy(isBusy) {
     aiChatPending = !!isBusy;
     if (aiChatSendBtn) aiChatSendBtn.disabled = aiChatPending;
+    if (newAiChatBtn) newAiChatBtn.disabled = aiChatPending;
     if (aiChatInput) aiChatInput.disabled = aiChatPending;
+    if (aiChatMessages) aiChatMessages.setAttribute('aria-busy', aiChatPending ? 'true' : 'false');
 }
 
 function startNewAiChat() {
@@ -7044,14 +7154,8 @@ async function sendAiChatMessage() {
 function openAiChat() {
     if (!aiChatOverlay) return;
     closeAccountSubPanels({ clearSearch: false });
-    if (authOverlay) authOverlay.style.display = 'none';
-    if (securityOverlay) securityOverlay.style.display = 'none';
-    if (friendsOverlay) friendsOverlay.style.display = 'none';
-    if (favoritesOverlay) favoritesOverlay.style.display = 'none';
-    if (companionsOverlay) companionsOverlay.style.display = 'none';
-    if (budgetOverlay) budgetOverlay.style.display = 'none';
-
-    aiChatOverlay.style.display = 'flex';
+    closePrimaryModalOverlays(aiChatOverlay);
+    showModalOverlay(aiChatOverlay);
     setActiveMenu(aiChatBtn);
     renderAiChatHistory();
     setAiChatStatus('Pronto. Scrivi la tua domanda.');
@@ -7059,7 +7163,7 @@ function openAiChat() {
 }
 
 function closeAiChat() {
-    if (aiChatOverlay) aiChatOverlay.style.display = 'none';
+    hideModalOverlay(aiChatOverlay);
     setAiChatStatus('');
     setActiveMenu(homeBtn);
 }
@@ -7255,7 +7359,7 @@ async function showTripFuelStationsOnMap() {
             freshnessMaxHours
         });
 
-        if (fuelFinderOverlay && fuelFinderOverlay.style.display === 'flex') {
+        if (isOverlayOpen(fuelFinderOverlay)) {
             renderFuelFinderResults(items, {
                 fuelType: payload.fuelType,
                 radiusKm: payload.radiusKm,
@@ -7478,16 +7582,10 @@ async function runFuelFinderSearch({ useLastKnown = false } = {}) {
 function openFuelFinder() {
     if (!fuelFinderOverlay) return;
     closeAccountSubPanels({ clearSearch: false });
-    if (authOverlay) authOverlay.style.display = 'none';
-    if (securityOverlay) securityOverlay.style.display = 'none';
-    if (friendsOverlay) friendsOverlay.style.display = 'none';
-    if (favoritesOverlay) favoritesOverlay.style.display = 'none';
-    if (companionsOverlay) companionsOverlay.style.display = 'none';
-    if (budgetOverlay) budgetOverlay.style.display = 'none';
-    if (aiChatOverlay) aiChatOverlay.style.display = 'none';
+    closePrimaryModalOverlays(fuelFinderOverlay);
 
     syncFuelFinderTypeFromTrip();
-    fuelFinderOverlay.style.display = 'flex';
+    showModalOverlay(fuelFinderOverlay);
     setActiveMenu(fuelFinderBtn);
     if (fuelFinderLastResults.length) {
         renderFuelFinderResults(fuelFinderLastResults, {
@@ -7503,7 +7601,7 @@ function openFuelFinder() {
 }
 
 function closeFuelFinder() {
-    if (fuelFinderOverlay) fuelFinderOverlay.style.display = 'none';
+    hideModalOverlay(fuelFinderOverlay);
     setActiveMenu(homeBtn);
 }
 
@@ -7711,9 +7809,9 @@ function renderCompanionHistory() {
 async function openCompanions() {
     if (authToken) await loadCompanionTrips();
     closeAccountSubPanels({ clearSearch: false });
-    if (securityOverlay) securityOverlay.style.display = 'none';
+    closePrimaryModalOverlays(companionsOverlay);
     setActiveMenu(companionsBtn);
-    if (companionsOverlay) companionsOverlay.style.display = 'flex';
+    showModalOverlay(companionsOverlay);
     currentCompanions = [];
     if (companionsTripInfo) {
         companionsTripInfo.textContent = lastCalculatedTrip
@@ -7727,7 +7825,7 @@ async function openCompanions() {
 }
 
 function closeCompanions() {
-    if (companionsOverlay) companionsOverlay.style.display = 'none';
+    hideModalOverlay(companionsOverlay);
     setActiveMenu(homeBtn);
 }
 
@@ -7871,13 +7969,14 @@ function renderBudget() {
 async function openBudget() {
     if (authToken) await loadCompletedTrips();
     closeAccountSubPanels({ clearSearch: false });
+    closePrimaryModalOverlays(budgetOverlay);
     setActiveMenu(budgetBtn);
-    if (budgetOverlay) budgetOverlay.style.display = 'flex';
+    showModalOverlay(budgetOverlay);
     renderBudget();
 }
 
 function closeBudget() {
-    if (budgetOverlay) budgetOverlay.style.display = 'none';
+    hideModalOverlay(budgetOverlay);
     setActiveMenu(homeBtn);
 }
 
@@ -8089,7 +8188,7 @@ closeCompanionsBtn?.addEventListener('click', closeCompanions);
 addCompanionBtn?.addEventListener('click', addCompanion);
 saveCompanionTripBtn?.addEventListener('click', saveCompanionTrip);
 completedTripCheckbox?.addEventListener('change', syncCompletedFlag);
-companionNameInput?.addEventListener('keypress', (e) => {
+companionNameInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         e.preventDefault();
         addCompanion();
@@ -8101,7 +8200,7 @@ securityBtn?.addEventListener('click', openSecurity);
 closeSecurityBtn?.addEventListener('click', closeSecurity);
 closeFriendRequestsBtn?.addEventListener('click', closeFriendRequestsView);
 accountFriendRequestsToggle?.addEventListener('click', () => {
-    const isOpen = friendRequestsOverlay?.style.display === 'flex';
+    const isOpen = isOverlayOpen(friendRequestsOverlay);
     if (isOpen) {
         closeFriendRequestsView();
         return;
@@ -8212,7 +8311,7 @@ friendSearchInput?.addEventListener('input', (e) => {
         fetchFriendSearchSuggestions(value);
     }, 220);
 });
-friendSearchInput?.addEventListener('keypress', (e) => {
+friendSearchInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         e.preventDefault();
         sendFriendRequest();
@@ -8242,7 +8341,7 @@ aiChatSendBtn?.addEventListener('click', () => {
     sendAiChatMessage().catch(() => {});
 });
 newAiChatBtn?.addEventListener('click', startNewAiChat);
-aiChatInput?.addEventListener('keypress', (e) => {
+aiChatInput?.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     sendAiChatMessage().catch(() => {});
@@ -8259,35 +8358,35 @@ document.addEventListener('keydown', (e) => {
         if (imagePreviewOverlay && imagePreviewOverlay.style.display === 'flex') {
             closeImagePreview();
         }
-        if (favoritesOverlay && favoritesOverlay.style.display === 'flex') {
+        if (isOverlayOpen(favoritesOverlay)) {
             closeFavorites();
         }
-        if (companionsOverlay && companionsOverlay.style.display === 'flex') {
+        if (isOverlayOpen(companionsOverlay)) {
             closeCompanions();
         }
-        if (budgetOverlay && budgetOverlay.style.display === 'flex') {
+        if (isOverlayOpen(budgetOverlay)) {
             closeBudget();
         }
-        if (myCarConsentOverlay && myCarConsentOverlay.style.display === 'flex') {
+        if (isOverlayOpen(myCarConsentOverlay)) {
             closeMyCarConsent();
         }
-        if (friendRequestsOverlay && friendRequestsOverlay.style.display === 'flex') {
+        if (isOverlayOpen(friendRequestsOverlay)) {
             closeFriendRequestsView();
             return;
         }
-        if (authOverlay && authOverlay.style.display === 'flex') {
+        if (isOverlayOpen(authOverlay)) {
             closeAuth();
         }
-        if (securityOverlay && securityOverlay.style.display === 'flex') {
+        if (isOverlayOpen(securityOverlay)) {
             closeSecurity();
         }
-        if (friendsOverlay && friendsOverlay.style.display === 'flex') {
+        if (isOverlayOpen(friendsOverlay)) {
             closeFriendsView();
         }
-        if (fuelFinderOverlay && fuelFinderOverlay.style.display === 'flex') {
+        if (isOverlayOpen(fuelFinderOverlay)) {
             closeFuelFinder();
         }
-        if (aiChatOverlay && aiChatOverlay.style.display === 'flex') {
+        if (isOverlayOpen(aiChatOverlay)) {
             closeAiChat();
         }
     }
@@ -8312,8 +8411,10 @@ document.addEventListener('click', (e) => {
 });
 
 // Enter per calcolare
-document.addEventListener('keypress', (e) => {
+document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
+        if (isAnyBlockingOverlayOpen()) return;
+        if (infoPage && infoPage.style.display === 'block') return;
         const tagName = (e.target && e.target.tagName ? e.target.tagName : '').toLowerCase();
         if (tagName === 'input' || tagName === 'textarea' || tagName === 'select' || e.target?.isContentEditable) {
             return;
@@ -8426,62 +8527,74 @@ async function handleInstallAppClick() {
 
 // Inizializza al caricamento
 document.addEventListener('DOMContentLoaded', async () => {
-    registerServiceWorker().catch(() => {});
-    window.addEventListener('beforeinstallprompt', (event) => {
-        event.preventDefault();
-        deferredInstallPrompt = event;
-        updateInstallButtonState();
-    });
-    window.addEventListener('appinstalled', () => {
-        deferredInstallPrompt = null;
-        updateInstallButtonState();
-    });
-    installAppButtons.forEach((btn) => {
-        btn.addEventListener('click', () => {
-            handleInstallAppClick().catch(() => {});
+    try {
+        registerServiceWorker().catch(() => {});
+        wireModalBackdropCloseHandlers();
+        window.addEventListener('beforeinstallprompt', (event) => {
+            event.preventDefault();
+            deferredInstallPrompt = event;
+            updateInstallButtonState();
         });
-    });
-    updateInstallButtonState();
-    closeSettingsMenu();
-    syncSettingsMenuCloseVisibility();
-    loadAiChatHistory();
-    loadFuelFinderPosition();
-    window.addEventListener('resize', () => {
+        window.addEventListener('appinstalled', () => {
+            deferredInstallPrompt = null;
+            updateInstallButtonState();
+        });
+        installAppButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                handleInstallAppClick().catch(() => {});
+            });
+        });
+        updateInstallButtonState();
+        closeSettingsMenu();
         syncSettingsMenuCloseVisibility();
-        if (!window.matchMedia('(max-width: 768px)').matches) {
-            closeSettingsMenu();
-        }
-    });
-    initializeCities();
-    const mapSection = document.getElementById('mapSection');
-    if (mapSection) mapSection.style.display = 'none';
-    setupAddressAutocomplete(departureAddressInput, departureAddressResults, departureSelect);
-    setupAddressAutocomplete(arrivalAddressInput, arrivalAddressResults, arrivalSelect);
-    await loadCarModelsFromJson();
-    tagModelOptionsByBrand();
-    snapshotCarOptionsStructure();
-    snapshotBrandOptions();
-    await filterModelsByBrand();
-    updateMyCarPreview();
-    updateAuthUI();
-    closeAccountSubPanels({ clearSearch: false });
-    updateFriendRequestsBadge();
-    setSecurityStatus('');
-    const hasSession = await restoreAuthSession();
-    if (hasSession || isAuthenticated()) {
-        try {
-            await loadAllRemoteData();
-        } catch (e) {
-            updateAuthUI('Token non valido, rifai login');
-            await clearAuth({ remote: false });
+        loadAiChatHistory();
+        loadFuelFinderPosition();
+
+        const handleViewportResize = debounce(() => {
+            syncSettingsMenuCloseVisibility();
+            if (!window.matchMedia('(max-width: 768px)').matches) {
+                closeSettingsMenu();
+            }
+        }, 120);
+        window.addEventListener('resize', handleViewportResize);
+
+        initializeCities();
+        const mapSection = document.getElementById('mapSection');
+        if (mapSection) mapSection.style.display = 'none';
+        setupAddressAutocomplete(departureAddressInput, departureAddressResults, departureSelect);
+        setupAddressAutocomplete(arrivalAddressInput, arrivalAddressResults, arrivalSelect);
+        await loadCarModelsFromJson();
+        tagModelOptionsByBrand();
+        snapshotCarOptionsStructure();
+        snapshotBrandOptions();
+        await filterModelsByBrand();
+        updateMyCarPreview();
+        updateAuthUI();
+        closeAccountSubPanels({ clearSearch: false });
+        updateFriendRequestsBadge();
+        setSecurityStatus('');
+        const hasSession = await restoreAuthSession();
+        if (hasSession || isAuthenticated()) {
+            try {
+                await loadAllRemoteData();
+            } catch (e) {
+                updateAuthUI('Token non valido, rifai login');
+                await clearAuth({ remote: false });
+                await loadFavorites();
+                await loadCompanionTrips();
+                await loadCompletedTrips();
+            }
+        } else {
             await loadFavorites();
             await loadCompanionTrips();
             await loadCompletedTrips();
         }
-    } else {
-        await loadFavorites();
-        await loadCompanionTrips();
-        await loadCompletedTrips();
+        showCalculatorView();
+    } finally {
+        requestAnimationFrame(() => {
+            if (!document.body) return;
+            document.body.classList.remove('app-booting');
+            document.body.classList.add('app-ready');
+        });
     }
-    showCalculatorView();
 });
