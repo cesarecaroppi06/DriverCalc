@@ -4002,6 +4002,7 @@ body.app-ready .settings-menu {
     padding: 0;
     align-items: stretch;
     justify-content: stretch;
+    z-index: 2300;
 }
 
 #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-card {
@@ -4058,6 +4059,12 @@ body.app-ready .settings-menu {
 
     #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-map-mount .map-canvas {
         height: min(38vh, 300px);
+    }
+
+    body.fuel-finder-open .mobile-top-actions {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
     }
 }
 

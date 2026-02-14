@@ -419,7 +419,9 @@ let leafletRouteLayer = null;
 let leafletRouteMarkers = [];
 let googleFuelMarkers = [];
 let googleFuelInfoWindow = null;
+let googleFuelRadiusCircle = null;
 let leafletFuelMarkers = [];
+let leafletFuelRadiusCircle = null;
 let userLocationMarkerGoogle = null;
 let userLocationMarkerLeaflet = null;
 let lastUserLocation = null;
@@ -543,7 +545,9 @@ async function ensureMapReady(preferredProvider) {
                 center: { lat: 41.9028, lng: 12.4964 },
                 zoom: 6,
                 mapTypeControl: false,
-                streetViewControl: false
+                streetViewControl: false,
+                fullscreenControl: false,
+                gestureHandling: 'greedy'
             });
             scheduleGoogleErrorCheck(mapEl);
         }
@@ -601,6 +605,10 @@ function clearGoogleRoute() {
 function clearGoogleFuelStations() {
     googleFuelMarkers.forEach((marker) => marker.setMap(null));
     googleFuelMarkers = [];
+    if (googleFuelRadiusCircle) {
+        googleFuelRadiusCircle.setMap(null);
+        googleFuelRadiusCircle = null;
+    }
     if (googleFuelInfoWindow) {
         googleFuelInfoWindow.close();
     }
@@ -722,6 +730,10 @@ function clearLeafletRoute() {
 function clearLeafletFuelStations() {
     leafletFuelMarkers.forEach((marker) => marker.remove());
     leafletFuelMarkers = [];
+    if (leafletFuelRadiusCircle) {
+        leafletFuelRadiusCircle.remove();
+        leafletFuelRadiusCircle = null;
+    }
 }
 
 function clearFuelStationsOnMap() {
@@ -760,26 +772,31 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
     const fuelType = normalizeFuelFinderType(options.fuelType || 'benzina');
     const freshnessMaxHours = Number(options.freshnessMaxHours || 72);
     const statusTextWhenEmpty = String(options.statusTextWhenEmpty || '').trim();
-    const validStations = Array.isArray(stations)
+    const radiusKm = getFuelFinderRadiusKm(
+        options.radiusKm || fuelFinderRadius?.value || fuelFinderLastMeta?.radiusKm || 5
+    );
+    const stationsWithCoords = Array.isArray(stations)
         ? stations.filter((station) => Number.isFinite(Number(station.lat)) && Number.isFinite(Number(station.lng)))
         : [];
+    const validStations = filterFuelStationsByRadius(stationsWithCoords, radiusKm);
     const targetCenter = center && Number.isFinite(Number(center.lat)) && Number.isFinite(Number(center.lng))
         ? { lat: Number(center.lat), lng: Number(center.lng) }
         : (lastUserLocation ? { lat: Number(lastUserLocation.lat), lng: Number(lastUserLocation.lng) } : null);
 
     clearFuelStationsOnMap();
 
-    const provider = await ensureMapReady(activeMapProvider || 'leaflet');
+    const preferredProvider = hasGoogleKey() ? 'google' : (activeMapProvider || 'leaflet');
+    const provider = await ensureMapReady(preferredProvider);
     if (!provider || !mapSection) return;
 
     mapSection.style.display = 'block';
     if (mapStatus) {
         if (validStations.length) {
-            mapStatus.textContent = `Benzinai su mappa (prezzi verificati, aggiornati max ${freshnessMaxHours}h).`;
+            mapStatus.textContent = `Benzinai su mappa entro ${radiusKm} km (prezzi verificati, aggiornati max ${freshnessMaxHours}h).`;
         } else if (statusTextWhenEmpty) {
             mapStatus.textContent = statusTextWhenEmpty;
         } else {
-            mapStatus.textContent = "Nessun benzinaio affidabile da mostrare su mappa in quest'area.";
+            mapStatus.textContent = `Nessun benzinaio affidabile entro ${radiusKm} km in quest'area.`;
         }
     }
 
@@ -797,12 +814,32 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
             }
         }
 
+        if (targetCenter) {
+            googleFuelRadiusCircle = new google.maps.Circle({
+                map: googleMapInstance,
+                center: targetCenter,
+                radius: radiusKm * 1000,
+                strokeColor: '#3b82f6',
+                strokeOpacity: 0.55,
+                strokeWeight: 2,
+                fillColor: '#3b82f6',
+                fillOpacity: 0.08
+            });
+        }
+
         if (!googleFuelInfoWindow) {
             googleFuelInfoWindow = new google.maps.InfoWindow();
         }
 
         const bounds = new google.maps.LatLngBounds();
         if (targetCenter) bounds.extend(targetCenter);
+        if (googleFuelRadiusCircle?.getBounds) {
+            const circleBounds = googleFuelRadiusCircle.getBounds();
+            if (circleBounds) {
+                bounds.extend(circleBounds.getNorthEast());
+                bounds.extend(circleBounds.getSouthWest());
+            }
+        }
 
         validStations.forEach((station) => {
             const position = { lat: Number(station.lat), lng: Number(station.lng) };
@@ -837,14 +874,14 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
             bounds.extend(position);
         });
 
-        if (validStations.length > 1 || (validStations.length && targetCenter)) {
-            googleMapInstance.fitBounds(bounds);
+        if (validStations.length > 1 || targetCenter) {
+            googleMapInstance.fitBounds(bounds, 56);
         } else if (validStations.length === 1) {
             googleMapInstance.setCenter({ lat: Number(validStations[0].lat), lng: Number(validStations[0].lng) });
             googleMapInstance.setZoom(14);
         } else if (targetCenter) {
             googleMapInstance.setCenter(targetCenter);
-            googleMapInstance.setZoom(13);
+            googleMapInstance.setZoom(getFuelFinderZoomForRadiusKm(radiusKm));
         }
         if (google.maps?.event) google.maps.event.trigger(googleMapInstance, 'resize');
         scheduleGoogleErrorCheck(document.getElementById('map'));
@@ -852,7 +889,7 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
     }
 
     if (provider === 'leaflet' && leafletMapInstance) {
-        const boundsPoints = [];
+        let bounds = null;
         if (targetCenter) {
             if (!userLocationMarkerLeaflet) {
                 userLocationMarkerLeaflet = L.marker([targetCenter.lat, targetCenter.lng], {
@@ -861,7 +898,15 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
             } else {
                 userLocationMarkerLeaflet.setLatLng([targetCenter.lat, targetCenter.lng]);
             }
-            boundsPoints.push([targetCenter.lat, targetCenter.lng]);
+            bounds = L.latLngBounds([[targetCenter.lat, targetCenter.lng], [targetCenter.lat, targetCenter.lng]]);
+            leafletFuelRadiusCircle = L.circle([targetCenter.lat, targetCenter.lng], {
+                radius: radiusKm * 1000,
+                color: '#3b82f6',
+                weight: 2,
+                fillColor: '#3b82f6',
+                fillOpacity: 0.08
+            }).addTo(leafletMapInstance);
+            bounds.extend(leafletFuelRadiusCircle.getBounds());
         }
 
         validStations.forEach((station) => {
@@ -882,13 +927,19 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
                 selectFuelFinderStationFromMap(station);
             });
             leafletFuelMarkers.push(marker);
-            boundsPoints.push([lat, lng]);
+            if (!bounds) {
+                bounds = L.latLngBounds([[lat, lng], [lat, lng]]);
+            } else {
+                bounds.extend([lat, lng]);
+            }
         });
 
-        if (boundsPoints.length > 1) {
-            leafletMapInstance.fitBounds(boundsPoints, { padding: [28, 28] });
-        } else if (boundsPoints.length === 1) {
-            leafletMapInstance.setView(boundsPoints[0], 14);
+        if (bounds) {
+            leafletMapInstance.flyToBounds(bounds, { padding: [28, 28], duration: 0.45 });
+        } else if (targetCenter) {
+            leafletMapInstance.flyTo([targetCenter.lat, targetCenter.lng], getFuelFinderZoomForRadiusKm(radiusKm), {
+                duration: 0.35
+            });
         }
         leafletMapInstance.invalidateSize();
     }
@@ -3892,8 +3943,14 @@ function restoreMapSectionToHome() {
     mapSectionVisibleBeforeFuelFinder = false;
 }
 
+function setFuelFinderBodyState(isOpen) {
+    if (!document.body) return;
+    document.body.classList.toggle('fuel-finder-open', !!isOpen);
+}
+
 function handleOverlayPostHide(overlay) {
     if (overlay === fuelFinderOverlay) {
+        setFuelFinderBodyState(false);
         restoreMapSectionToHome();
     }
 }
@@ -7361,8 +7418,31 @@ function getFuelFinderStoredPosition() {
     return { lat, lng };
 }
 
+function getFuelFinderRadiusKm(rawValue) {
+    return Math.max(1, Math.min(20, Number(rawValue || 5)));
+}
+
+function getFuelFinderZoomForRadiusKm(radiusKm = 5) {
+    const safeRadiusKm = getFuelFinderRadiusKm(radiusKm);
+    if (safeRadiusKm <= 2) return 14;
+    if (safeRadiusKm <= 5) return 13;
+    if (safeRadiusKm <= 10) return 12;
+    if (safeRadiusKm <= 15) return 11;
+    return 10;
+}
+
+function filterFuelStationsByRadius(items = [], radiusKm = 5) {
+    const safeRadiusKm = getFuelFinderRadiusKm(radiusKm);
+    if (!Array.isArray(items)) return [];
+    return items.filter((item) => {
+        const distanceKm = Number(item?.distanceKm);
+        if (!Number.isFinite(distanceKm)) return true;
+        return distanceKm <= safeRadiusKm;
+    });
+}
+
 function buildFuelFinderRequestPayload(position) {
-    const radiusKm = Math.max(1, Math.min(20, Number(fuelFinderRadius?.value || 5)));
+    const radiusKm = getFuelFinderRadiusKm(fuelFinderRadius?.value || 5);
     const fuelType = normalizeFuelFinderType(fuelFinderFuelType?.value || fuelTypeSelect?.value || 'benzina');
     return {
         lat: Number(position.lat),
@@ -7419,7 +7499,8 @@ async function showTripFuelStationsOnMap() {
     setTripActionFeedback('Ricerca benzinai affidabili lungo la tratta...');
     try {
         const result = await apiRequest('/fuel-stations/nearby', 'POST', payload);
-        const items = Array.isArray(result?.items) ? result.items : [];
+        const rawItems = Array.isArray(result?.items) ? result.items : [];
+        const items = filterFuelStationsByRadius(rawItems, payload.radiusKm);
         const freshnessMaxHours = Math.max(1, Number(result?.freshnessMaxHours || 72));
 
         fuelFinderLastResults = items;
@@ -7431,6 +7512,7 @@ async function showTripFuelStationsOnMap() {
 
         await renderFuelStationsOnMap(items, center, {
             fuelType: payload.fuelType,
+            radiusKm: payload.radiusKm,
             freshnessMaxHours
         });
 
@@ -7465,7 +7547,7 @@ function syncFuelFinderTypeFromTrip() {
 function getFuelFinderViewMeta() {
     return {
         fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
-        radiusKm: Number(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
+        radiusKm: getFuelFinderRadiusKm(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
         freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
     };
 }
@@ -7519,10 +7601,12 @@ function getFuelFinderMapCenterFromState(items = []) {
 function renderFuelFinderResults(items = [], meta = {}) {
     if (!fuelStationsList || !fuelStationsEmpty || !fuelFinderSummary) return;
     const fuelType = normalizeFuelFinderType(meta.fuelType || fuelFinderFuelType?.value || 'benzina');
+    const radiusKm = getFuelFinderRadiusKm(meta.radiusKm || fuelFinderRadius?.value || fuelFinderLastMeta?.radiusKm || 5);
     const freshnessMaxHours = Math.max(1, Number(meta.freshnessMaxHours || fuelFinderLastMeta?.freshnessMaxHours || 72));
     const emptyStateText = String(meta.emptyStateText || '').trim();
-    let sorted = Array.isArray(items)
-        ? items
+    const filteredByRadius = filterFuelStationsByRadius(items, radiusKm);
+    let sorted = Array.isArray(filteredByRadius)
+        ? filteredByRadius
             .map((item) => ({
                 ...item,
                 price: Number(item.price)
@@ -7560,7 +7644,7 @@ function renderFuelFinderResults(items = [], meta = {}) {
     fuelStationsEmpty.style.display = 'none';
     const cheapest = sorted[0];
     const totalCount = sorted.length;
-    const radiusLabel = `${Number(meta.radiusKm || fuelFinderRadius?.value || 5)} km`;
+    const radiusLabel = `${radiusKm} km`;
     fuelFinderSummary.style.display = 'block';
     fuelFinderSummary.textContent = `Miglior prezzo affidabile entro ${radiusLabel}: ${formatFuelFinderPrice(cheapest.price, fuelType)} da ${cheapest.brand || cheapest.name || 'benzinaio'} (${formatFuelFinderDistance(cheapest.distanceKm)}). Dati aggiornati max ${freshnessMaxHours}h (${totalCount} risultati).`;
 
@@ -7699,7 +7783,8 @@ async function runFuelFinderSearch({ useLastKnown = true } = {}) {
         const payload = buildFuelFinderRequestPayload(position);
         const result = await apiRequest('/fuel-stations/nearby', 'POST', payload);
         if (requestId !== fuelFinderRequestId) return;
-        const items = Array.isArray(result?.items) ? result.items : [];
+        const rawItems = Array.isArray(result?.items) ? result.items : [];
+        const items = filterFuelStationsByRadius(rawItems, payload.radiusKm);
         const freshnessMaxHours = Math.max(1, Number(result?.freshnessMaxHours || 72));
         fuelFinderLastResults = items;
         fuelFinderLastMeta = {
@@ -7709,6 +7794,7 @@ async function runFuelFinderSearch({ useLastKnown = true } = {}) {
         };
         await renderFuelStationsOnMap(items, position, {
             fuelType: payload.fuelType,
+            radiusKm: payload.radiusKm,
             freshnessMaxHours
         });
         if (requestId !== fuelFinderRequestId) return;
@@ -7729,7 +7815,7 @@ async function runFuelFinderSearch({ useLastKnown = true } = {}) {
         clearFuelStationsOnMap();
         const viewMeta = {
             fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
-            radiusKm: Number(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
+            radiusKm: getFuelFinderRadiusKm(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
             freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
         };
         renderFuelFinderResults([], {
@@ -7738,6 +7824,7 @@ async function runFuelFinderSearch({ useLastKnown = true } = {}) {
         });
         renderFuelStationsOnMap([], getFuelFinderStoredPosition(), {
             fuelType: viewMeta.fuelType,
+            radiusKm: viewMeta.radiusKm,
             freshnessMaxHours: viewMeta.freshnessMaxHours,
             statusTextWhenEmpty: 'Mappa pronta. Controlla la connessione e riprova la ricerca.'
         }).catch(() => {});
@@ -7762,6 +7849,7 @@ async function centerFuelFinderOnUserPosition() {
         const viewMeta = getFuelFinderViewMeta();
         await renderFuelStationsOnMap([], position, {
             fuelType: viewMeta.fuelType,
+            radiusKm: viewMeta.radiusKm,
             freshnessMaxHours: viewMeta.freshnessMaxHours,
             statusTextWhenEmpty: 'Posizione attuale centrata sulla mappa.'
         });
@@ -7790,11 +7878,12 @@ function openFuelFinder() {
     }
 
     syncFuelFinderTypeFromTrip();
+    setFuelFinderBodyState(true);
     showModalOverlay(fuelFinderOverlay);
     setActiveMenu(fuelFinderBtn);
     const viewMeta = {
         fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
-        radiusKm: Number(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
+        radiusKm: getFuelFinderRadiusKm(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
         freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
     };
     const fallbackCenter = getFuelFinderStoredPosition();
@@ -7804,6 +7893,7 @@ function openFuelFinder() {
         const requestId = ++fuelFinderRequestId;
         renderFuelStationsOnMap(fuelFinderLastResults, center, {
             fuelType: viewMeta.fuelType,
+            radiusKm: viewMeta.radiusKm,
             freshnessMaxHours: viewMeta.freshnessMaxHours
         })
             .catch(() => {})
@@ -7820,6 +7910,7 @@ function openFuelFinder() {
         const requestId = ++fuelFinderRequestId;
         renderFuelStationsOnMap([], fallbackCenter, {
             fuelType: viewMeta.fuelType,
+            radiusKm: viewMeta.radiusKm,
             freshnessMaxHours: viewMeta.freshnessMaxHours,
             statusTextWhenEmpty: fallbackCenter
                 ? 'Mappa pronta sulla tua ultima posizione nota.'
@@ -7842,6 +7933,7 @@ function openFuelFinder() {
 
 function closeFuelFinder() {
     fuelFinderRequestId += 1;
+    setFuelFinderBodyState(false);
     hideModalOverlay(fuelFinderOverlay);
     setActiveMenu(homeBtn);
 }
