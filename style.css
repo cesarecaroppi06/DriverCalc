@@ -892,15 +892,45 @@ select:focus, input:focus {
 }
 
 .fuel-stations-list {
-    max-height: min(48vh, 460px);
+    max-height: min(60vh, 620px);
 }
 
 .fuel-station-item {
     align-items: flex-start;
+    padding: 14px 16px;
+    border-radius: 14px;
 }
 
 .fuel-station-item .favorite-meta {
     gap: 6px;
+}
+
+.fuel-station-item .favorite-meta strong {
+    font-size: 17px;
+}
+
+.fuel-station-item .favorite-meta > span {
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.fuel-station-item.is-selected {
+    border-color: rgba(96, 165, 250, 0.82);
+    background: linear-gradient(145deg, rgba(59, 130, 246, 0.22), rgba(16, 185, 129, 0.12));
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25), 0 16px 32px rgba(6, 16, 35, 0.34);
+}
+
+.fuel-station-selected-label {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(191, 219, 254, 0.7);
+    background: rgba(30, 64, 175, 0.35);
+    color: #e8f1ff;
+    font-size: 12px;
+    letter-spacing: 0.2px;
 }
 
 .fuel-station-top {
@@ -926,12 +956,12 @@ select:focus, input:focus {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 8px;
+    padding: 5px 10px;
     border-radius: 999px;
     border: 1px solid rgba(255, 255, 255, 0.16);
     background: rgba(255, 255, 255, 0.06);
     color: #deebff;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .fuel-station-chip-freshness.is-fresh {
@@ -1164,7 +1194,7 @@ select:focus, input:focus {
         width: 100%;
     }
     .fuel-stations-list {
-        max-height: 42vh;
+        max-height: 50vh;
     }
     .fuel-finder-map-mount .map-canvas {
         height: min(34vh, 250px);
