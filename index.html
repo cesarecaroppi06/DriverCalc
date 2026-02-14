@@ -843,10 +843,13 @@
                                 <option value="15">15 km</option>
                             </select>
                         </div>
-                        <button id="findFuelStationsBtn" class="pill-btn primary" type="button">Trova vicino a me</button>
+                        <div class="fuel-finder-actions">
+                            <button id="useFuelFinderLocationBtn" class="pill-btn" type="button">Usa la mia posizione</button>
+                            <button id="findFuelStationsBtn" class="pill-btn primary" type="button">Cerca benzinai</button>
+                        </div>
                     </div>
 
-                    <div id="fuelFinderStatus" class="helper-text">Premi "Trova vicino a me" per avviare la ricerca.</div>
+                    <div id="fuelFinderStatus" class="helper-text">Mappa pronta. Premi "Usa la mia posizione" per iniziare.</div>
                     <div id="fuelFinderMapMount" class="fuel-finder-map-mount"></div>
                     <div id="fuelFinderSummary" class="fuel-finder-summary" style="display:none;"></div>
                     <div id="fuelStationsEmpty" class="empty-state">Nessun risultato ancora disponibile.</div>

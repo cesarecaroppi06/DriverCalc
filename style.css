@@ -839,13 +839,25 @@ select:focus, input:focus {
 
 .fuel-finder-toolbar {
     display: grid;
-    grid-template-columns: repeat(2, minmax(170px, 1fr)) auto;
+    grid-template-columns: repeat(2, minmax(170px, 1fr)) minmax(280px, auto);
     gap: 10px;
     align-items: end;
 }
 
 .fuel-finder-toolbar .form-group {
     margin: 0;
+}
+
+.fuel-finder-actions {
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.fuel-finder-actions .pill-btn {
+    min-height: 44px;
+    white-space: nowrap;
 }
 
 .fuel-finder-toolbar .form-group label {
@@ -1190,7 +1202,14 @@ select:focus, input:focus {
     .fuel-finder-toolbar {
         grid-template-columns: 1fr;
     }
-    .fuel-finder-toolbar button {
+
+    .fuel-finder-actions {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .fuel-finder-actions button {
         width: 100%;
     }
     .fuel-stations-list {
@@ -4022,6 +4041,19 @@ body.app-ready .settings-menu {
 @media (max-width: 768px) {
     #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-card {
         padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    }
+
+    #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-toolbar {
+        grid-template-columns: 1fr;
+    }
+
+    #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-actions .pill-btn {
+        width: 100%;
     }
 
     #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-map-mount .map-canvas {

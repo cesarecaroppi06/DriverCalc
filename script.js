@@ -759,6 +759,7 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
     const mapStatus = document.getElementById('mapStatus');
     const fuelType = normalizeFuelFinderType(options.fuelType || 'benzina');
     const freshnessMaxHours = Number(options.freshnessMaxHours || 72);
+    const statusTextWhenEmpty = String(options.statusTextWhenEmpty || '').trim();
     const validStations = Array.isArray(stations)
         ? stations.filter((station) => Number.isFinite(Number(station.lat)) && Number.isFinite(Number(station.lng)))
         : [];
@@ -775,6 +776,8 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
     if (mapStatus) {
         if (validStations.length) {
             mapStatus.textContent = `Benzinai su mappa (prezzi verificati, aggiornati max ${freshnessMaxHours}h).`;
+        } else if (statusTextWhenEmpty) {
+            mapStatus.textContent = statusTextWhenEmpty;
         } else {
             mapStatus.textContent = "Nessun benzinaio affidabile da mostrare su mappa in quest'area.";
         }
@@ -3661,6 +3664,7 @@ const closeFriendsBtn = document.getElementById('closeFriends');
 const fuelFinderBtn = document.getElementById('fuelFinderBtn');
 const fuelFinderOverlay = document.getElementById('fuelFinderOverlay');
 const closeFuelFinderBtn = document.getElementById('closeFuelFinder');
+const useFuelFinderLocationBtn = document.getElementById('useFuelFinderLocationBtn');
 const findFuelStationsBtn = document.getElementById('findFuelStationsBtn');
 const fuelFinderFuelType = document.getElementById('fuelFinderFuelType');
 const fuelFinderRadius = document.getElementById('fuelFinderRadius');
@@ -7295,16 +7299,26 @@ function setFuelFinderStatus(message = '') {
     fuelFinderStatus.textContent = message || '';
 }
 
-function setFuelFinderBusy(isBusy) {
+function setFuelFinderBusy(isBusy, { mode = 'search' } = {}) {
     fuelFinderPending = !!isBusy;
-    if (!findFuelStationsBtn) return;
-    if (!findFuelStationsBtn.dataset.originalLabel) {
-        findFuelStationsBtn.dataset.originalLabel = findFuelStationsBtn.textContent || 'Trova vicino a me';
+    if (findFuelStationsBtn && !findFuelStationsBtn.dataset.originalLabel) {
+        findFuelStationsBtn.dataset.originalLabel = findFuelStationsBtn.textContent || 'Cerca benzinai';
     }
-    findFuelStationsBtn.disabled = fuelFinderPending;
-    findFuelStationsBtn.textContent = fuelFinderPending
-        ? 'Ricerca in corso...'
-        : (findFuelStationsBtn.dataset.originalLabel || 'Trova vicino a me');
+    if (useFuelFinderLocationBtn && !useFuelFinderLocationBtn.dataset.originalLabel) {
+        useFuelFinderLocationBtn.dataset.originalLabel = useFuelFinderLocationBtn.textContent || 'Usa la mia posizione';
+    }
+    if (findFuelStationsBtn) {
+        findFuelStationsBtn.disabled = fuelFinderPending;
+        findFuelStationsBtn.textContent = fuelFinderPending && mode === 'search'
+            ? 'Ricerca in corso...'
+            : (findFuelStationsBtn.dataset.originalLabel || 'Cerca benzinai');
+    }
+    if (useFuelFinderLocationBtn) {
+        useFuelFinderLocationBtn.disabled = fuelFinderPending;
+        useFuelFinderLocationBtn.textContent = fuelFinderPending && mode === 'locate'
+            ? 'Posizione in corso...'
+            : (useFuelFinderLocationBtn.dataset.originalLabel || 'Usa la mia posizione');
+    }
 }
 
 function persistFuelFinderPosition(position) {
@@ -7316,6 +7330,7 @@ function persistFuelFinderPosition(position) {
     };
     if (!Number.isFinite(payload.lat) || !Number.isFinite(payload.lng)) return;
     fuelFinderLastPosition = payload;
+    lastUserLocation = { lat: payload.lat, lng: payload.lng };
     try {
         localStorage.setItem(FUEL_FINDER_LAST_KEY, JSON.stringify(payload));
     } catch (e) {}
@@ -7335,7 +7350,15 @@ function loadFuelFinderPosition() {
             lng,
             ts: Number(parsed?.ts) || 0
         };
+        lastUserLocation = { lat, lng };
     } catch (e) {}
+}
+
+function getFuelFinderStoredPosition() {
+    const lat = Number(fuelFinderLastPosition?.lat);
+    const lng = Number(fuelFinderLastPosition?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
 }
 
 function buildFuelFinderRequestPayload(position) {
@@ -7497,6 +7520,7 @@ function renderFuelFinderResults(items = [], meta = {}) {
     if (!fuelStationsList || !fuelStationsEmpty || !fuelFinderSummary) return;
     const fuelType = normalizeFuelFinderType(meta.fuelType || fuelFinderFuelType?.value || 'benzina');
     const freshnessMaxHours = Math.max(1, Number(meta.freshnessMaxHours || fuelFinderLastMeta?.freshnessMaxHours || 72));
+    const emptyStateText = String(meta.emptyStateText || '').trim();
     let sorted = Array.isArray(items)
         ? items
             .map((item) => ({
@@ -7528,7 +7552,7 @@ function renderFuelFinderResults(items = [], meta = {}) {
     if (!sorted.length) {
         selectedFuelFinderStationKey = '';
         fuelStationsEmpty.style.display = 'block';
-        fuelStationsEmpty.textContent = `Nessun benzinaio con prezzo affidabile (aggiornato max ${freshnessMaxHours}h) trovato in quest'area.`;
+        fuelStationsEmpty.textContent = emptyStateText || `Nessun benzinaio con prezzo affidabile (aggiornato max ${freshnessMaxHours}h) trovato in quest'area.`;
         fuelFinderSummary.style.display = 'none';
         return;
     }
@@ -7651,7 +7675,7 @@ function locateUserPosition() {
     });
 }
 
-async function runFuelFinderSearch({ useLastKnown = false } = {}) {
+async function runFuelFinderSearch({ useLastKnown = true } = {}) {
     if (fuelFinderPending) return;
     if (!fuelStationsList) return;
     if (!isOverlayOpen(fuelFinderOverlay)) return;
@@ -7659,17 +7683,15 @@ async function runFuelFinderSearch({ useLastKnown = false } = {}) {
     moveMapSectionToFuelFinder();
     const requestId = ++fuelFinderRequestId;
 
-    setFuelFinderBusy(true);
+    setFuelFinderBusy(true, { mode: 'search' });
     setFuelFinderStatus('Ricerca benzinai in corso...');
     let position = null;
 
     try {
-        if (useLastKnown && fuelFinderLastPosition?.lat && fuelFinderLastPosition?.lng) {
-            position = {
-                lat: Number(fuelFinderLastPosition.lat),
-                lng: Number(fuelFinderLastPosition.lng)
-            };
-        } else {
+        if (useLastKnown) {
+            position = getFuelFinderStoredPosition();
+        }
+        if (!position) {
             position = await locateUserPosition();
             persistFuelFinderPosition(position);
         }
@@ -7697,20 +7719,59 @@ async function runFuelFinderSearch({ useLastKnown = false } = {}) {
         });
 
         if (!items.length) {
-            setFuelFinderStatus(`Nessun prezzo affidabile trovato (aggiornamento max ${freshnessMaxHours}h). Prova ad aumentare il raggio.`);
+            setFuelFinderStatus(`Nessun benzinaio trovato entro ${payload.radiusKm} km. Prova ad aumentare il raggio.`);
         } else {
-            setFuelFinderStatus(`Ricerca completata: ${items.length} benzinai affidabili mostrati anche sulla mappa.`);
+            setFuelFinderStatus(`Ricerca completata: ${items.length} benzinai entro ${payload.radiusKm} km mostrati su mappa e lista.`);
         }
     } catch (err) {
         if (requestId !== fuelFinderRequestId) return;
         selectedFuelFinderStationKey = '';
         clearFuelStationsOnMap();
-        renderFuelFinderResults([], {
+        const viewMeta = {
             fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
             radiusKm: Number(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
             freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
+        };
+        renderFuelFinderResults([], {
+            ...viewMeta,
+            emptyStateText: 'Ricerca non disponibile in questo momento. Riprova tra poco.'
         });
+        renderFuelStationsOnMap([], getFuelFinderStoredPosition(), {
+            fuelType: viewMeta.fuelType,
+            freshnessMaxHours: viewMeta.freshnessMaxHours,
+            statusTextWhenEmpty: 'Mappa pronta. Controlla la connessione e riprova la ricerca.'
+        }).catch(() => {});
         setFuelFinderStatus(err?.message || 'Ricerca non disponibile al momento.');
+    } finally {
+        setFuelFinderBusy(false);
+    }
+}
+
+async function centerFuelFinderOnUserPosition() {
+    if (fuelFinderPending) return;
+    if (!isOverlayOpen(fuelFinderOverlay)) return;
+    selectedFuelFinderStationKey = '';
+    moveMapSectionToFuelFinder();
+    setFuelFinderBusy(true, { mode: 'locate' });
+    setFuelFinderStatus('Recupero posizione in corso...');
+
+    try {
+        const position = await locateUserPosition();
+        persistFuelFinderPosition(position);
+        fuelFinderLastResults = [];
+        const viewMeta = getFuelFinderViewMeta();
+        await renderFuelStationsOnMap([], position, {
+            fuelType: viewMeta.fuelType,
+            freshnessMaxHours: viewMeta.freshnessMaxHours,
+            statusTextWhenEmpty: 'Posizione attuale centrata sulla mappa.'
+        });
+        renderFuelFinderResults([], {
+            ...viewMeta,
+            emptyStateText: 'Posizione aggiornata. Premi "Cerca benzinai" per caricare i distributori vicini.'
+        });
+        setFuelFinderStatus('Posizione aggiornata. Ora imposta carburante e raggio, poi premi "Cerca benzinai".');
+    } catch (err) {
+        setFuelFinderStatus(err?.message || 'Impossibile recuperare la posizione attuale.');
     } finally {
         setFuelFinderBusy(false);
     }
@@ -7726,18 +7787,19 @@ function openFuelFinder() {
     const mapSection = getMapSectionNode();
     if (mapSection) {
         mapSectionVisibleBeforeFuelFinder = mapSection.style.display !== 'none';
-        mapSection.style.display = 'none';
     }
 
     syncFuelFinderTypeFromTrip();
     showModalOverlay(fuelFinderOverlay);
     setActiveMenu(fuelFinderBtn);
+    const viewMeta = {
+        fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
+        radiusKm: Number(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
+        freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
+    };
+    const fallbackCenter = getFuelFinderStoredPosition();
+
     if (fuelFinderLastResults.length) {
-        const viewMeta = {
-            fuelType: fuelFinderFuelType?.value || fuelFinderLastMeta.fuelType || 'benzina',
-            radiusKm: Number(fuelFinderRadius?.value || fuelFinderLastMeta.radiusKm || 5),
-            freshnessMaxHours: Number(fuelFinderLastMeta.freshnessMaxHours || 72)
-        };
         const center = getFuelFinderMapCenterFromState(fuelFinderLastResults);
         const requestId = ++fuelFinderRequestId;
         renderFuelStationsOnMap(fuelFinderLastResults, center, {
@@ -7749,11 +7811,33 @@ function openFuelFinder() {
                 if (requestId !== fuelFinderRequestId) return;
                 renderFuelFinderResults(fuelFinderLastResults, viewMeta);
             });
-        setFuelFinderStatus('Usa "Trova vicino a me" per aggiornare con la tua posizione attuale.');
+        setFuelFinderStatus('Visualizzo gli ultimi risultati. Usa "Usa la mia posizione" per aggiornare o "Cerca benzinai" per rifare la ricerca.');
     } else {
-        setFuelFinderStatus('Premi "Trova vicino a me" per avviare la ricerca.');
+        renderFuelFinderResults([], {
+            ...viewMeta,
+            emptyStateText: 'Nessun risultato ancora disponibile. Premi "Cerca benzinai" per iniziare.'
+        });
+        const requestId = ++fuelFinderRequestId;
+        renderFuelStationsOnMap([], fallbackCenter, {
+            fuelType: viewMeta.fuelType,
+            freshnessMaxHours: viewMeta.freshnessMaxHours,
+            statusTextWhenEmpty: fallbackCenter
+                ? 'Mappa pronta sulla tua ultima posizione nota.'
+                : 'Mappa pronta. Premi "Usa la mia posizione" per centrare la ricerca.'
+        })
+            .catch(() => {})
+            .finally(() => {
+                if (requestId !== fuelFinderRequestId) return;
+                renderFuelFinderResults([], {
+                    ...viewMeta,
+                    emptyStateText: 'Nessun risultato ancora disponibile. Premi "Cerca benzinai" per iniziare.'
+                });
+            });
+        setFuelFinderStatus(fallbackCenter
+            ? 'Posizione caricata. Cambia carburante/raggio e premi "Cerca benzinai".'
+            : 'Premi "Usa la mia posizione", poi applica carburante e raggio con "Cerca benzinai".');
     }
-    findFuelStationsBtn?.focus();
+    useFuelFinderLocationBtn?.focus();
 }
 
 function closeFuelFinder() {
@@ -8493,22 +8577,25 @@ friendSearchInput?.addEventListener('keydown', (e) => {
 shareFavoritesToggle?.addEventListener('change', saveShareSettings);
 shareMyCarToggle?.addEventListener('change', saveShareSettings);
 shareCompanionsToggle?.addEventListener('change', saveShareSettings);
+useFuelFinderLocationBtn?.addEventListener('click', () => {
+    centerFuelFinderOnUserPosition().catch(() => {});
+});
 findFuelStationsBtn?.addEventListener('click', () => {
-    runFuelFinderSearch().catch(() => {});
+    runFuelFinderSearch({ useLastKnown: true }).catch(() => {});
 });
 fuelFinderFuelType?.addEventListener('change', () => {
-    if (fuelFinderLastPosition?.lat && fuelFinderLastPosition?.lng && !fuelFinderPending) {
+    if (getFuelFinderStoredPosition() && !fuelFinderPending) {
         runFuelFinderSearch({ useLastKnown: true }).catch(() => {});
         return;
     }
-    setFuelFinderStatus('Tipo carburante aggiornato. Premi "Trova vicino a me" per ottenere i nuovi prezzi.');
+    setFuelFinderStatus('Tipo carburante aggiornato. Premi "Cerca benzinai" per applicare il filtro alla tua posizione.');
 });
 fuelFinderRadius?.addEventListener('change', () => {
-    if (fuelFinderLastPosition?.lat && fuelFinderLastPosition?.lng && !fuelFinderPending) {
+    if (getFuelFinderStoredPosition() && !fuelFinderPending) {
         runFuelFinderSearch({ useLastKnown: true }).catch(() => {});
         return;
     }
-    setFuelFinderStatus('Raggio aggiornato. Premi "Trova vicino a me" per cercare.');
+    setFuelFinderStatus('Raggio aggiornato. Premi "Cerca benzinai" per applicare il filtro alla tua posizione.');
 });
 aiChatSendBtn?.addEventListener('click', () => {
     sendAiChatMessage().catch(() => {});
