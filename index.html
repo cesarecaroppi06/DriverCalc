@@ -612,12 +612,21 @@
                             </div>
                             <div id="authPasswordGroup" class="form-group">
                                 <label for="authPassword">Password</label>
-                                <input type="password" id="authPassword" placeholder="Almeno 6 caratteri" autocomplete="current-password">
+                                <div class="auth-password-field">
+                                    <input type="password" id="authPassword" placeholder="Almeno 6 caratteri" autocomplete="current-password">
+                                    <button id="authPasswordToggleBtn" class="auth-password-toggle" type="button" aria-label="Mostra password">Mostra</button>
+                                </div>
                             </div>
+                        </div>
+                        <div id="authInlineLinks" class="auth-inline-links">
+                            <button id="authForgotPasswordBtn" class="auth-inline-link" type="button">Password dimenticata?</button>
                         </div>
                         <div class="auth-actions">
                             <button id="loginBtn" class="pill-btn primary" type="button">Accedi</button>
                             <button id="registerBtn" class="pill-btn primary" type="button" style="display:none;">Registrati</button>
+                        </div>
+                        <div id="authDivider" class="auth-divider" aria-hidden="true">
+                            <span>Oppure</span>
                         </div>
                         <button id="authToggleBtn" class="auth-toggle-btn" type="button">Non hai un account? Registrati</button>
                         <div id="authStatus" class="helper-text"></div>

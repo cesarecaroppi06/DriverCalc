@@ -1356,93 +1356,126 @@ select:focus, input:focus {
 
 #accountGuestPanel.account-auth-panel {
     display: grid;
-    gap: 12px;
-    width: min(100%, 640px);
+    gap: 14px;
+    width: min(100%, 560px);
     margin: 6px auto 0;
-    padding: 18px;
-    border-radius: 18px;
+    padding: 20px 18px;
+    border-radius: 20px;
     border: 1px solid rgba(147, 197, 253, 0.34);
-    background: linear-gradient(158deg, rgba(7, 16, 34, 0.9), rgba(9, 23, 52, 0.64));
-    box-shadow: 0 16px 30px rgba(2, 6, 23, 0.38);
+    background: linear-gradient(160deg, rgba(6, 14, 30, 0.92), rgba(8, 20, 45, 0.72));
+    box-shadow: 0 18px 34px rgba(2, 6, 23, 0.4);
 }
 
 #accountGuestPanel.account-auth-panel .modal-subtitle {
     margin: 0;
     color: #cfe0ff;
-    line-height: 1.5;
+    line-height: 1.45;
+    text-align: left;
 }
 
 #accountGuestPanel.account-auth-panel .account-auth-grid {
-    width: min(100%, 560px);
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
     grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
+    gap: 10px;
 }
 
 #accountGuestPanel.account-auth-panel #authIdentifierGroup,
 #accountGuestPanel.account-auth-panel #authUsernameGroup,
 #accountGuestPanel.account-auth-panel #authEmailGroup {
     width: 100%;
-    max-width: 560px;
-    margin-inline: auto;
+    max-width: none;
+    margin-inline: 0;
 }
 
 #accountGuestPanel.account-auth-panel #authPasswordGroup {
     width: 100%;
-    max-width: 420px;
-    margin-inline: auto;
+    max-width: none;
+    margin-inline: 0;
 }
 
 #accountGuestPanel.account-auth-panel .form-group {
     margin-bottom: 0;
     display: grid;
-    gap: 6px;
+    gap: 0;
+    position: relative;
 }
 
 #accountGuestPanel.account-auth-panel .form-group label {
-    font-size: 13px;
-    letter-spacing: 0.2px;
-    color: #d6e4ff;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 #accountGuestPanel.account-auth-panel .form-group input {
-    min-height: 48px;
+    width: 100%;
+    min-height: 50px;
     padding: 0 14px;
     border-radius: 12px;
-    border: 1px solid rgba(173, 191, 224, 0.34);
-    background: rgba(11, 20, 43, 0.72);
+    border: 1px solid rgba(173, 191, 224, 0.28);
+    background: rgba(13, 24, 50, 0.74);
     color: #f8fbff;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
 }
 
 #accountGuestPanel.account-auth-panel .form-group input:hover {
     border-color: rgba(191, 219, 254, 0.56);
-    background: rgba(12, 23, 50, 0.84);
+    background: rgba(14, 27, 56, 0.86);
 }
 
 #accountGuestPanel.account-auth-panel .form-group input:focus {
     outline: none;
     border-color: rgba(147, 197, 253, 0.94);
-    background: rgba(14, 28, 58, 0.9);
+    background: rgba(14, 30, 62, 0.92);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.23), 0 12px 24px rgba(2, 6, 23, 0.3);
+    transform: translateY(-1px);
+}
+
+#accountGuestPanel.account-auth-panel .auth-password-field {
+    position: relative;
+}
+
+#accountGuestPanel.account-auth-panel .auth-password-field input {
+    padding-right: 88px;
+}
+
+#accountGuestPanel.account-auth-panel .auth-password-toggle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    min-width: 68px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid rgba(173, 191, 224, 0.32);
+    background: rgba(8, 16, 36, 0.68);
+    color: #bfdbfe;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+#accountGuestPanel.account-auth-panel .auth-password-toggle:hover {
+    border-color: rgba(125, 211, 252, 0.58);
+    color: #dbeafe;
 }
 
 #accountGuestPanel.account-auth-panel .auth-actions {
-    width: min(100%, 560px);
-    margin: 4px auto 0 auto;
-}
-
-#accountGuestPanel.account-auth-panel.is-login-mode .auth-actions,
-#accountGuestPanel.account-auth-panel.is-login-mode .auth-toggle-btn,
-#accountGuestPanel.account-auth-panel.is-login-mode #authStatus {
-    width: min(100%, 420px);
+    width: 100%;
+    margin: 2px 0 0;
 }
 
 #accountGuestPanel.account-auth-panel .auth-actions .pill-btn {
     width: 100%;
     justify-content: center;
-    min-height: 46px;
+    min-height: 48px;
     border-radius: 12px;
     font-weight: 700;
     letter-spacing: 0.2px;
@@ -1459,16 +1492,77 @@ select:focus, input:focus {
     box-shadow: 0 18px 30px rgba(14, 116, 218, 0.42);
 }
 
+#accountGuestPanel.account-auth-panel .auth-inline-links {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: -2px;
+}
+
+#accountGuestPanel.account-auth-panel .auth-inline-link {
+    border: 0;
+    background: transparent;
+    color: #93c5fd;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+}
+
+#accountGuestPanel.account-auth-panel .auth-inline-link:hover {
+    color: #bfdbfe;
+    text-decoration: underline;
+}
+
+#accountGuestPanel.account-auth-panel .auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #9caac5;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.35px;
+    text-transform: uppercase;
+}
+
+#accountGuestPanel.account-auth-panel .auth-divider::before,
+#accountGuestPanel.account-auth-panel .auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(173, 191, 224, 0.26);
+}
+
 #accountGuestPanel.account-auth-panel .auth-toggle-btn {
-    width: min(100%, 560px);
-    margin: 0 auto;
-    justify-self: center;
+    width: 100%;
+    margin: 0;
+    justify-self: stretch;
+    min-height: 46px;
+    border-radius: 12px;
+    border: 1px solid rgba(173, 191, 224, 0.28);
+    background: rgba(8, 16, 36, 0.44);
+    color: #dbeafe;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+    justify-content: center;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 14px;
+}
+
+#accountGuestPanel.account-auth-panel .auth-toggle-btn:hover {
+    text-decoration: none;
+    border-color: rgba(125, 211, 252, 0.56);
+    background: rgba(10, 24, 52, 0.58);
+    color: #f8fbff;
 }
 
 #accountGuestPanel.account-auth-panel #authStatus {
-    width: min(100%, 560px);
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
     min-height: 20px;
+    text-align: center;
 }
 
 #accountGuestPanel.account-auth-panel.is-register-mode .account-auth-grid {

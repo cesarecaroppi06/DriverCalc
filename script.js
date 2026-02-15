@@ -3889,6 +3889,10 @@ const authEmailGroup = document.getElementById('authEmailGroup');
 const authUsernameInput = document.getElementById('authUsername');
 const authUsernameGroup = document.getElementById('authUsernameGroup');
 const authPasswordInput = document.getElementById('authPassword');
+const authPasswordToggleBtn = document.getElementById('authPasswordToggleBtn');
+const authInlineLinks = document.getElementById('authInlineLinks');
+const authForgotPasswordBtn = document.getElementById('authForgotPasswordBtn');
+const authDivider = document.getElementById('authDivider');
 const authGuestSubtitle = document.getElementById('authGuestSubtitle');
 const loginBtn = document.getElementById('loginBtn');
 const registerBtn = document.getElementById('registerBtn');
@@ -5787,6 +5791,7 @@ let completedTrips = [];
 let myCarPhotos = {};
 let authToken = null;
 let authGuestMode = 'login';
+let authPasswordVisible = false;
 let currentUser = null;
 let accountProfile = null;
 let accountStats = null;
@@ -6010,6 +6015,18 @@ function renderAccountProfile() {
     if (accountStatKm) accountStatKm.textContent = Number(stats.totalCompletedKm || 0).toFixed(0);
 }
 
+function setAuthPasswordVisibility(visible = false) {
+    const nextVisible = !!visible;
+    authPasswordVisible = nextVisible;
+    if (authPasswordInput) {
+        authPasswordInput.type = nextVisible ? 'text' : 'password';
+    }
+    if (authPasswordToggleBtn) {
+        authPasswordToggleBtn.textContent = nextVisible ? 'Nascondi' : 'Mostra';
+        authPasswordToggleBtn.setAttribute('aria-label', nextVisible ? 'Nascondi password' : 'Mostra password');
+    }
+}
+
 function setGuestAuthMode(mode = 'login') {
     const safeMode = mode === 'register' ? 'register' : 'login';
     authGuestMode = safeMode;
@@ -6028,6 +6045,8 @@ function setGuestAuthMode(mode = 'login') {
 
     if (loginBtn) loginBtn.style.display = (!isLoggedIn && !isRegisterMode) ? 'inline-block' : 'none';
     if (registerBtn) registerBtn.style.display = (!isLoggedIn && isRegisterMode) ? 'inline-block' : 'none';
+    if (authInlineLinks) authInlineLinks.style.display = (!isLoggedIn && !isRegisterMode) ? 'flex' : 'none';
+    if (authDivider) authDivider.style.display = isLoggedIn ? 'none' : 'flex';
 
     if (authToggleBtn) {
         authToggleBtn.style.display = isLoggedIn ? 'none' : 'inline-flex';
@@ -6045,6 +6064,7 @@ function setGuestAuthMode(mode = 'login') {
     if (authPasswordInput) {
         authPasswordInput.autocomplete = isRegisterMode ? 'new-password' : 'current-password';
     }
+    setAuthPasswordVisibility(false);
 }
 
 function updateAuthUI(message = '') {
@@ -8841,6 +8861,14 @@ accountBtn?.addEventListener('click', openAuth);
 closeAuthBtn?.addEventListener('click', closeAuth);
 loginBtn?.addEventListener('click', () => handleAuth(false));
 registerBtn?.addEventListener('click', () => handleAuth(true));
+authPasswordToggleBtn?.addEventListener('click', () => {
+    setAuthPasswordVisibility(!authPasswordVisible);
+    authPasswordInput?.focus();
+});
+authForgotPasswordBtn?.addEventListener('click', () => {
+    setAuthFeedback('Recupero password non ancora disponibile. Usa email/username corretti o registrati.', 'info');
+    updateAuthUI('Per ora il recupero password non è attivo.');
+});
 authToggleBtn?.addEventListener('click', () => {
     if (authToken) return;
     const nextMode = authGuestMode === 'register' ? 'login' : 'register';
