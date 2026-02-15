@@ -4028,6 +4028,7 @@ function showModalOverlay(overlay) {
     requestAnimationFrame(() => {
         overlay.classList.add('is-open');
     });
+    syncMobileUiState();
 }
 
 function hideModalOverlay(overlay, { immediate = false } = {}) {
@@ -4038,15 +4039,18 @@ function hideModalOverlay(overlay, { immediate = false } = {}) {
     }
     overlay.classList.remove('is-open');
     overlay.setAttribute('aria-hidden', 'true');
+    syncMobileUiState();
     if (immediate) {
         overlay.style.display = 'none';
         handleOverlayPostHide(overlay);
+        syncMobileUiState();
         return;
     }
     overlay._hideTimer = window.setTimeout(() => {
         overlay.style.display = 'none';
         overlay._hideTimer = null;
         handleOverlayPostHide(overlay);
+        syncMobileUiState();
     }, MODAL_ANIMATION_MS);
 }
 
@@ -4067,6 +4071,17 @@ function isAnyBlockingOverlayOpen() {
         friendRequestsOverlay,
         myCarConsentOverlay
     ].some((overlay) => isOverlayOpen(overlay));
+}
+
+function syncMobileUiState() {
+    if (!document.body) return;
+    const infoVisible = !!(infoPage && infoPage.style.display === 'block');
+    const overlayVisible = isAnyBlockingOverlayOpen();
+    const menuOpen = document.body.classList.contains('mobile-menu-open');
+    const shouldHideTopActions = isMobileViewport() && (overlayVisible || infoVisible || menuOpen);
+
+    document.body.classList.toggle('info-view-open', infoVisible);
+    document.body.classList.toggle('mobile-actions-hidden', shouldHideTopActions);
 }
 
 function getMapSectionNode() {
@@ -4105,6 +4120,7 @@ function restoreMapSectionToHome() {
 function setFuelFinderBodyState(isOpen) {
     if (!document.body) return;
     document.body.classList.toggle('fuel-finder-open', !!isOpen);
+    syncMobileUiState();
 }
 
 function handleOverlayPostHide(overlay) {
@@ -8601,6 +8617,7 @@ function openSettingsMenu() {
     settingsMenu.setAttribute('aria-hidden', 'false');
     if (mobileMenuBackdrop) mobileMenuBackdrop.style.display = 'block';
     if (mobileMenuToggle) mobileMenuToggle.setAttribute('aria-expanded', 'true');
+    syncMobileUiState();
 }
 
 function closeSettingsMenu() {
@@ -8609,6 +8626,7 @@ function closeSettingsMenu() {
     settingsMenu?.setAttribute('aria-hidden', 'true');
     if (mobileMenuBackdrop) mobileMenuBackdrop.style.display = 'none';
     if (mobileMenuToggle) mobileMenuToggle.setAttribute('aria-expanded', 'false');
+    syncMobileUiState();
 }
 
 function toggleSettingsMenu() {
@@ -8634,12 +8652,14 @@ function closeSettingsMenuAfterAction() {
 function showCalculatorView() {
     if (mainPanel) mainPanel.style.display = 'block';
     if (infoPage) infoPage.style.display = 'none';
+    syncMobileUiState();
     setActiveMenu(homeBtn);
 }
 
 function showInfoView() {
     if (mainPanel) mainPanel.style.display = 'none';
     if (infoPage) infoPage.style.display = 'block';
+    syncMobileUiState();
     setActiveMenu(infoBtn);
     if (infoPage) {
         infoPage.scrollIntoView({ behavior: 'smooth' });
@@ -9160,6 +9180,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateInstallButtonState();
         closeSettingsMenu();
         syncSettingsMenuCloseVisibility();
+        syncMobileUiState();
         loadAiChatHistory();
         loadFuelFinderPosition();
 
@@ -9168,6 +9189,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!isMobileViewport()) {
                 closeSettingsMenu();
             }
+            syncMobileUiState();
         }, 120);
         window.addEventListener('resize', handleViewportResize);
 
