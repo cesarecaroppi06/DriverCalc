@@ -595,26 +595,31 @@
 
                     <div id="authFeedback" class="auth-feedback" style="display:none;"></div>
 
-                    <div id="accountGuestPanel" class="account-panel">
-                        <p class="modal-subtitle">Accedi o registrati per sincronizzare preferiti, amici, bilancio e la tua auto su tutti i dispositivi.</p>
+                    <div id="accountGuestPanel" class="account-panel account-auth-panel">
+                        <p id="authGuestSubtitle" class="modal-subtitle">Accedi al tuo account per sincronizzare preferiti, amici, bilancio e la tua auto su tutti i dispositivi.</p>
                         <div class="account-auth-grid">
-                            <div class="form-group">
-                                <label for="authUsername">Username (registrazione)</label>
+                            <div id="authIdentifierGroup" class="form-group">
+                                <label for="authIdentifier">Nome utente o email</label>
+                                <input type="text" id="authIdentifier" placeholder="es. cesare92 oppure nome@example.com" autocomplete="username">
+                            </div>
+                            <div id="authUsernameGroup" class="form-group" style="display:none;">
+                                <label for="authUsername">Nome utente</label>
                                 <input type="text" id="authUsername" placeholder="es. cesare92">
                             </div>
-                            <div class="form-group">
+                            <div id="authEmailGroup" class="form-group" style="display:none;">
                                 <label for="authEmail">Email</label>
-                                <input type="email" id="authEmail" placeholder="nome@example.com">
+                                <input type="email" id="authEmail" placeholder="nome@example.com" autocomplete="email">
                             </div>
-                            <div class="form-group">
+                            <div id="authPasswordGroup" class="form-group">
                                 <label for="authPassword">Password</label>
-                                <input type="password" id="authPassword" placeholder="Almeno 6 caratteri">
+                                <input type="password" id="authPassword" placeholder="Almeno 6 caratteri" autocomplete="current-password">
                             </div>
                         </div>
                         <div class="auth-actions">
-                            <button id="loginBtn" class="pill-btn primary">Accedi</button>
-                            <button id="registerBtn" class="pill-btn">Registrati</button>
+                            <button id="loginBtn" class="pill-btn primary" type="button">Accedi</button>
+                            <button id="registerBtn" class="pill-btn primary" type="button" style="display:none;">Registrati</button>
                         </div>
+                        <button id="authToggleBtn" class="auth-toggle-btn" type="button">Non hai un account? Registrati</button>
                         <div id="authStatus" class="helper-text"></div>
                     </div>
 

@@ -3882,11 +3882,17 @@ const aiChatInput = document.getElementById('aiChatInput');
 const aiChatSendBtn = document.getElementById('aiChatSendBtn');
 const newAiChatBtn = document.getElementById('newAiChatBtn');
 const aiChatStatus = document.getElementById('aiChatStatus');
+const authIdentifierInput = document.getElementById('authIdentifier');
+const authIdentifierGroup = document.getElementById('authIdentifierGroup');
 const authEmailInput = document.getElementById('authEmail');
+const authEmailGroup = document.getElementById('authEmailGroup');
 const authUsernameInput = document.getElementById('authUsername');
+const authUsernameGroup = document.getElementById('authUsernameGroup');
 const authPasswordInput = document.getElementById('authPassword');
+const authGuestSubtitle = document.getElementById('authGuestSubtitle');
 const loginBtn = document.getElementById('loginBtn');
 const registerBtn = document.getElementById('registerBtn');
+const authToggleBtn = document.getElementById('authToggleBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const authStatus = document.getElementById('authStatus');
 const authFeedback = document.getElementById('authFeedback');
@@ -5780,6 +5786,7 @@ let currentCompanions = [];
 let completedTrips = [];
 let myCarPhotos = {};
 let authToken = null;
+let authGuestMode = 'login';
 let currentUser = null;
 let accountProfile = null;
 let accountStats = null;
@@ -6003,16 +6010,54 @@ function renderAccountProfile() {
     if (accountStatKm) accountStatKm.textContent = Number(stats.totalCompletedKm || 0).toFixed(0);
 }
 
+function setGuestAuthMode(mode = 'login') {
+    const safeMode = mode === 'register' ? 'register' : 'login';
+    authGuestMode = safeMode;
+    const isRegisterMode = safeMode === 'register';
+    const isLoggedIn = !!authToken;
+    const guestModeActive = !isLoggedIn;
+
+    if (accountGuestPanel) {
+        accountGuestPanel.classList.toggle('is-register-mode', guestModeActive && isRegisterMode);
+        accountGuestPanel.classList.toggle('is-login-mode', guestModeActive && !isRegisterMode);
+    }
+
+    if (authIdentifierGroup) authIdentifierGroup.style.display = (!isLoggedIn && !isRegisterMode) ? 'block' : 'none';
+    if (authUsernameGroup) authUsernameGroup.style.display = (!isLoggedIn && isRegisterMode) ? 'block' : 'none';
+    if (authEmailGroup) authEmailGroup.style.display = (!isLoggedIn && isRegisterMode) ? 'block' : 'none';
+
+    if (loginBtn) loginBtn.style.display = (!isLoggedIn && !isRegisterMode) ? 'inline-block' : 'none';
+    if (registerBtn) registerBtn.style.display = (!isLoggedIn && isRegisterMode) ? 'inline-block' : 'none';
+
+    if (authToggleBtn) {
+        authToggleBtn.style.display = isLoggedIn ? 'none' : 'inline-flex';
+        authToggleBtn.textContent = isRegisterMode
+            ? 'Hai già un account? Accedi'
+            : 'Non hai un account? Registrati';
+    }
+
+    if (authGuestSubtitle) {
+        authGuestSubtitle.textContent = isRegisterMode
+            ? 'Crea il tuo account per sincronizzare preferiti, amici, bilancio e la tua auto.'
+            : 'Accedi al tuo account per sincronizzare preferiti, amici, bilancio e la tua auto su tutti i dispositivi.';
+    }
+
+    if (authPasswordInput) {
+        authPasswordInput.autocomplete = isRegisterMode ? 'new-password' : 'current-password';
+    }
+}
+
 function updateAuthUI(message = '') {
     if (authStatus) authStatus.textContent = message;
     if (accountStatus) accountStatus.textContent = message;
     if (logoutBtn) logoutBtn.style.display = authToken ? 'inline-block' : 'none';
-    if (loginBtn) loginBtn.style.display = authToken ? 'none' : 'inline-block';
-    if (registerBtn) registerBtn.style.display = authToken ? 'none' : 'inline-block';
     if (accountGuestPanel) accountGuestPanel.style.display = authToken ? 'none' : 'block';
     if (accountConnectedPanel) accountConnectedPanel.style.display = authToken ? 'block' : 'none';
     if (authToken) {
         renderAccountProfile();
+        setGuestAuthMode('login');
+    } else {
+        setGuestAuthMode(authGuestMode);
     }
 }
 
@@ -6652,28 +6697,41 @@ async function restoreAuthSession() {
 }
 
 async function handleAuth(isRegister) {
-    const email = (authEmailInput?.value || '').trim();
     const password = authPasswordInput?.value || '';
     const username = (authUsernameInput?.value || '').trim();
-    if (!email || !password) {
-        updateAuthUI('Inserisci email e password');
-        setAuthFeedback('Inserisci email e password', 'error');
+    const email = (authEmailInput?.value || '').trim();
+    const identifier = (authIdentifierInput?.value || '').trim();
+    const registerMode = !!isRegister;
+
+    if (registerMode) {
+        if (!username || !email || !password) {
+            updateAuthUI('Inserisci nome utente, email e password');
+            setAuthFeedback('Inserisci nome utente, email e password', 'error');
+            return;
+        }
+    } else if (!identifier || !password) {
+        updateAuthUI('Inserisci nome utente o email e password');
+        setAuthFeedback('Inserisci nome utente o email e password', 'error');
         return;
     }
+
     try {
-        const endpoint = isRegister ? '/auth/register' : '/auth/login';
+        const endpoint = registerMode ? '/auth/register' : '/auth/login';
         const json = await apiRequest(
             endpoint,
             'POST',
-            isRegister ? { email, password, username } : { email, password }
+            registerMode
+                ? { email, password, username }
+                : { identifier, email: identifier, password }
         );
         setAuth(json.token || 'cookie-session', json.user);
         accountProfile = json.user || accountProfile;
         accountStats = json.stats || accountStats;
-        updateAuthUI(isRegister ? 'Registrazione completata' : 'Accesso riuscito');
+        authGuestMode = 'login';
+        updateAuthUI(registerMode ? 'Registrazione completata' : 'Accesso riuscito');
         renderAccountProfile();
         setAuthFeedback(
-            isRegister
+            registerMode
                 ? `Benvenuto ${accountProfile?.username || ''}! Account creato con successo.`
                 : `Accesso eseguito: bentornato ${accountProfile?.username || accountProfile?.email || ''}.`,
             'success'
@@ -7000,10 +7058,12 @@ function openAuth() {
     setSecurityStatus('');
     showModalOverlay(authOverlay);
     setActiveMenu(accountBtn);
-    updateAuthUI(authToken ? 'Account connesso' : 'Accedi o registrati');
+    updateAuthUI(authToken ? 'Account connesso' : 'Accedi al tuo account');
     setAuthFeedback('');
 
     if (!authToken) {
+        setGuestAuthMode('login');
+        if (authIdentifierInput) authIdentifierInput.focus();
         closeAccountSubPanels();
         updateFriendRequestsBadge();
         return;
@@ -8781,6 +8841,28 @@ accountBtn?.addEventListener('click', openAuth);
 closeAuthBtn?.addEventListener('click', closeAuth);
 loginBtn?.addEventListener('click', () => handleAuth(false));
 registerBtn?.addEventListener('click', () => handleAuth(true));
+authToggleBtn?.addEventListener('click', () => {
+    if (authToken) return;
+    const nextMode = authGuestMode === 'register' ? 'login' : 'register';
+    setGuestAuthMode(nextMode);
+    setAuthFeedback('');
+    updateAuthUI(nextMode === 'register' ? 'Compila i campi per registrarti' : 'Inserisci nome utente o email e password');
+    if (nextMode === 'register') {
+        authUsernameInput?.focus();
+    } else {
+        authIdentifierInput?.focus();
+    }
+});
+authIdentifierInput?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    handleAuth(false);
+});
+authPasswordInput?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    handleAuth(authGuestMode === 'register');
+});
 logoutBtn?.addEventListener('click', () => {
     clearAuth().then(() => {
         updateAuthUI('Disconnesso');

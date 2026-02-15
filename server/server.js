@@ -1085,12 +1085,17 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
-    const { email, password } = req.body || {};
-    const normalizedEmail = normalizeEmail(email);
+    const { email, password, identifier } = req.body || {};
+    const rawIdentifier = String(identifier || email || '').trim();
+    const normalizedEmail = normalizeEmail(rawIdentifier);
+    const normalizedIdentifier = rawIdentifier.toLowerCase();
     const rawPassword = String(password || '');
-    if (!normalizedEmail || !rawPassword) return res.status(400).json({ error: 'Email e password sono obbligatorie' });
+    if (!rawIdentifier || !rawPassword) return res.status(400).json({ error: 'Nome utente/email e password sono obbligatori' });
     const db = readDb();
-    const user = db.users.find(u => u.email === normalizedEmail);
+    const user = db.users.find((u) => (
+        u.email === normalizedEmail
+        || String(u.username || '').trim().toLowerCase() === normalizedIdentifier
+    ));
     if (!user) return res.status(401).json({ error: 'Credenziali non valide' });
     const ok = await bcrypt.compare(rawPassword, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'Credenziali non valide' });
