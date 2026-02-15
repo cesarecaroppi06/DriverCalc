@@ -1379,6 +1379,20 @@ select:focus, input:focus {
     gap: 12px;
 }
 
+#accountGuestPanel.account-auth-panel #authIdentifierGroup,
+#accountGuestPanel.account-auth-panel #authUsernameGroup,
+#accountGuestPanel.account-auth-panel #authEmailGroup {
+    width: 100%;
+    max-width: 560px;
+    margin-inline: auto;
+}
+
+#accountGuestPanel.account-auth-panel #authPasswordGroup {
+    width: 100%;
+    max-width: 420px;
+    margin-inline: auto;
+}
+
 #accountGuestPanel.account-auth-panel .form-group {
     margin-bottom: 0;
     display: grid;
@@ -1417,6 +1431,12 @@ select:focus, input:focus {
 #accountGuestPanel.account-auth-panel .auth-actions {
     width: min(100%, 560px);
     margin: 4px auto 0 auto;
+}
+
+#accountGuestPanel.account-auth-panel.is-login-mode .auth-actions,
+#accountGuestPanel.account-auth-panel.is-login-mode .auth-toggle-btn,
+#accountGuestPanel.account-auth-panel.is-login-mode #authStatus {
+    width: min(100%, 420px);
 }
 
 #accountGuestPanel.account-auth-panel .auth-actions .pill-btn {
@@ -2923,6 +2943,13 @@ footer p {
 
     #accountGuestPanel.account-auth-panel.is-register-mode #authPasswordGroup {
         grid-column: auto;
+    }
+
+    #accountGuestPanel.account-auth-panel #authPasswordGroup,
+    #accountGuestPanel.account-auth-panel #authIdentifierGroup,
+    #accountGuestPanel.account-auth-panel #authUsernameGroup,
+    #accountGuestPanel.account-auth-panel #authEmailGroup {
+        max-width: 100%;
     }
 
     .account-avatar {
