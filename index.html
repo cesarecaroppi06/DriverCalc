@@ -26,7 +26,7 @@
     <link rel="icon" type="image/png" href="logo.png?v=3">
     <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=25">
+    <link rel="stylesheet" href="style.css?v=31">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <script type="application/ld+json">
         {
@@ -75,6 +75,13 @@
 </head>
 <body>
     <div class="container">
+        <button id="desktopMenuToggle" class="desktop-menu-toggle" type="button" aria-expanded="false" aria-controls="settingsMenu" aria-label="Apri o chiudi menu">
+            <span class="hamburger-icon" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+            </span>
+        </button>
         <header>
             <img src="logo.png?v=3" alt="Logo DriveCalc" class="site-logo">
             <h1>DriveCalc</h1>
@@ -85,13 +92,23 @@
 
         <div class="layout-body">
             <div class="mobile-top-actions">
-                <button id="mobileMenuToggle" class="mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="settingsMenu">Menu</button>
+                <button id="mobileMenuToggle" class="mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="settingsMenu" aria-label="Apri o chiudi menu">
+                    <span class="hamburger-icon" aria-hidden="true">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </span>
+                    <span class="hamburger-label">Menu</span>
+                </button>
                 <button id="installAppQuickBtn" class="install-app-btn mobile-install-btn" type="button">Installa App</button>
             </div>
             <div id="mobileMenuBackdrop" class="mobile-menu-backdrop" style="display:none;"></div>
             <nav id="settingsMenu" class="settings-menu" aria-hidden="true">
                 <div class="settings-menu-header">
-                    <h3>Menu</h3>
+                    <div class="sidebar-brand" aria-label="DriveCalc">
+                        <img src="logo.png?v=3" alt="" aria-hidden="true">
+                        <span>DRIVECALC</span>
+                    </div>
                     <button id="installAppBtn" class="install-app-btn settings-install-btn" type="button">Installa App</button>
                     <button id="closeSettingsMenu" class="close-btn settings-menu-close" type="button" aria-label="Chiudi menu">X</button>
                 </div>
@@ -103,9 +120,19 @@
                     <li><button id="fuelFinderBtn">Ricerca benzinaio smart</button></li>
                     <li><button id="aiChatBtn">Chat AI</button></li>
                     <li><button id="favoritesBtn">Preferiti</button></li>
-                    <li><button id="accountBtn">Il mio account</button></li>
                     <li><button id="securityBtn">Sicurezza</button></li>
                     <li><button id="infoBtn">Info</button></li>
+                    <li class="settings-account-item">
+                        <button id="accountBtn" class="settings-account-btn" type="button">
+                            <span class="settings-account-avatar-wrap">
+                                <img id="sidebarAccountAvatar" class="settings-account-avatar" alt="Profilo account">
+                            </span>
+                            <span class="settings-account-copy">
+                                <strong id="sidebarAccountName">Il mio account</strong>
+                                <span id="sidebarAccountMeta">Accedi o registrati</span>
+                            </span>
+                        </button>
+                    </li>
                 </ul>
             </nav>
 
@@ -865,10 +892,16 @@
                     </div>
 
                     <div id="fuelFinderStatus" class="helper-text">Mappa pronta. Premi "Usa la mia posizione" per iniziare.</div>
-                    <div id="fuelFinderMapMount" class="fuel-finder-map-mount"></div>
-                    <div id="fuelFinderSummary" class="fuel-finder-summary" style="display:none;"></div>
-                    <div id="fuelStationsEmpty" class="empty-state">Nessun risultato ancora disponibile.</div>
-                    <ul id="fuelStationsList" class="favorites-list fuel-stations-list"></ul>
+                    <div class="fuel-finder-content">
+                        <div class="fuel-finder-map-column">
+                            <div id="fuelFinderMapMount" class="fuel-finder-map-mount"></div>
+                        </div>
+                        <div class="fuel-finder-list-column">
+                            <div id="fuelFinderSummary" class="fuel-finder-summary" style="display:none;"></div>
+                            <div id="fuelStationsEmpty" class="empty-state">Nessun risultato ancora disponibile.</div>
+                            <ul id="fuelStationsList" class="favorites-list fuel-stations-list"></ul>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -911,13 +944,21 @@
                         <h3>Bilancio</h3>
                         <button id="closeBudget" class="close-btn">X</button>
                     </div>
-                    <p class="modal-subtitle">Statistiche delle tratte completate in questo mese.</p>
+                    <p class="modal-subtitle">Analisi spese tratte completate con trend mensile professionale.</p>
 
-                    <div class="budget-meta">Periodo: <strong id="budgetMonthLabel">-</strong></div>
+                    <div class="budget-header-row">
+                        <div class="budget-meta">Periodo: <strong id="budgetMonthLabel">-</strong></div>
+                        <div id="budgetRangeSwitcher" class="budget-range-switcher" role="group" aria-label="Filtro periodo bilancio">
+                            <button type="button" class="budget-range-btn is-active" data-budget-range="1m">1M</button>
+                            <button type="button" class="budget-range-btn" data-budget-range="3m">3M</button>
+                            <button type="button" class="budget-range-btn" data-budget-range="6m">6M</button>
+                            <button type="button" class="budget-range-btn" data-budget-range="1y">1A</button>
+                        </div>
+                    </div>
 
                     <div class="budget-grid">
                         <div class="budget-card-item">
-                            <span class="label">Tratte del mese</span>
+                            <span class="label">Tratte periodo</span>
                             <strong id="budgetTotalTrips">0</strong>
                         </div>
                         <div class="budget-card-item">
@@ -936,11 +977,34 @@
                             <span class="label">Pedaggi totali</span>
                             <strong id="budgetTollCost">€0.00</strong>
                         </div>
+                        <div class="budget-card-item">
+                            <span class="label">Km complessivi</span>
+                            <strong id="budgetTotalKm">0 km</strong>
+                        </div>
                     </div>
 
-                    <h4 class="section-title">Tratte del mese</h4>
-                    <div id="budgetEmpty" class="empty-state">Nessuna tratta completata questo mese.</div>
-                    <ul id="budgetTripsList" class="favorites-list companions-list"></ul>
+                    <div class="budget-analysis-grid">
+                        <div class="budget-analysis-item">
+                            <span class="label">Spesa media mensile</span>
+                            <strong id="budgetMonthlyAvg">€0.00</strong>
+                        </div>
+                        <div class="budget-analysis-item">
+                            <span class="label">Mese piu costoso</span>
+                            <strong id="budgetPeakMonth">-</strong>
+                        </div>
+                    </div>
+
+                    <section class="budget-chart-card" aria-labelledby="budgetChartTitle">
+                        <div class="budget-chart-header">
+                            <h4 id="budgetChartTitle" class="section-title">Trend mensile</h4>
+                            <span id="budgetChartHint" class="helper-text"></span>
+                        </div>
+                        <div id="budgetTrendBars" class="budget-trend-bars"></div>
+                    </section>
+
+                    <h4 class="section-title">Tratte nel periodo</h4>
+                    <div id="budgetEmpty" class="empty-state">Nessuna tratta completata nel periodo selezionato.</div>
+                    <ul id="budgetTripsList" class="favorites-list companions-list budget-trips-list"></ul>
                 </div>
             </div>
 
@@ -1025,6 +1089,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="config.public.js?v=3"></script>
-    <script src="script.js?v=49"></script>
+    <script src="script.js?v=54"></script>
 </body>
 </html>

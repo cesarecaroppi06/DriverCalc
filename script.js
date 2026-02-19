@@ -780,23 +780,34 @@ function shouldShowFuelMarkerPriceLabels(mapZoom, markerCount = 0) {
     return zoom >= FUEL_MARKER_DETAIL_ZOOM && Number(markerCount) <= FUEL_MARKER_LABEL_LIMIT;
 }
 
-function buildGoogleFuelMarkerIcon({ highlighted = false, detailed = false } = {}) {
-    const baseScale = detailed ? 7.2 : 5.4;
+function getFuelMarkerZoomFactor(mapZoom) {
+    const zoom = Number(mapZoom);
+    if (!Number.isFinite(zoom)) return 1;
+    if (zoom >= 15) return 1.32;
+    if (zoom >= 14) return 1.2;
+    if (zoom >= 13) return 1.08;
+    if (zoom <= 10) return 0.92;
+    return 1;
+}
+
+function buildGoogleFuelMarkerIcon({ highlighted = false, detailed = false, mapZoom = null } = {}) {
+    const baseScale = detailed ? 8.2 : 6.2;
+    const zoomFactor = getFuelMarkerZoomFactor(mapZoom);
     return {
         path: google.maps.SymbolPath.CIRCLE,
-        scale: highlighted ? baseScale + 1.1 : baseScale,
+        scale: (highlighted ? baseScale + 1.4 : baseScale) * zoomFactor,
         fillColor: highlighted ? '#f97316' : '#dc2626',
         fillOpacity: detailed ? 0.95 : 0.88,
         strokeColor: '#ffffff',
-        strokeWeight: detailed ? 1.9 : 1.4
+        strokeWeight: detailed ? 2 : 1.6
     };
 }
 
-function applyGoogleFuelMarkerAppearance(marker, { showLabel = false, highlighted = false } = {}) {
+function applyGoogleFuelMarkerAppearance(marker, { showLabel = false, highlighted = false, mapZoom = null } = {}) {
     if (!marker || !window.google || !google.maps) return;
     const labelText = String(marker.__fuelPriceLabel || '').trim();
     const detailed = !!showLabel || !!highlighted;
-    marker.setIcon(buildGoogleFuelMarkerIcon({ highlighted, detailed }));
+    marker.setIcon(buildGoogleFuelMarkerIcon({ highlighted, detailed, mapZoom }));
     if (detailed && labelText) {
         marker.setLabel({
             text: labelText,
@@ -813,21 +824,25 @@ function applyGoogleFuelMarkerAppearance(marker, { showLabel = false, highlighte
 
 function refreshGoogleFuelMarkerDetails() {
     if (!googleMapInstance || !googleFuelMarkers.length) return;
-    const showLabels = shouldShowFuelMarkerPriceLabels(googleMapInstance.getZoom(), googleFuelMarkers.length);
+    const mapZoom = googleMapInstance.getZoom();
+    const showLabels = shouldShowFuelMarkerPriceLabels(mapZoom, googleFuelMarkers.length);
     googleFuelMarkers.forEach((marker) => {
         const hovered = marker.__fuelHovered === true;
         applyGoogleFuelMarkerAppearance(marker, {
             showLabel: showLabels,
-            highlighted: hovered
+            highlighted: hovered,
+            mapZoom
         });
     });
 }
 
-function buildLeafletFuelMarkerStyle({ highlighted = false, detailed = false } = {}) {
+function buildLeafletFuelMarkerStyle({ highlighted = false, detailed = false, mapZoom = null } = {}) {
+    const zoomFactor = getFuelMarkerZoomFactor(mapZoom);
+    const baseRadius = highlighted ? 8.6 : (detailed ? 6.4 : 5.2);
     return {
-        radius: highlighted ? 7.4 : (detailed ? 5.6 : 4.3),
+        radius: baseRadius * zoomFactor,
         color: '#ffffff',
-        weight: highlighted ? 2 : 1.4,
+        weight: highlighted ? 2.1 : 1.6,
         fillColor: highlighted ? '#f97316' : '#ef4444',
         fillOpacity: highlighted ? 0.97 : (detailed ? 0.91 : 0.84)
     };
@@ -850,10 +865,10 @@ function setLeafletFuelMarkerTooltipPermanent(marker, permanent) {
     if (forcePermanent) marker.openTooltip();
 }
 
-function applyLeafletFuelMarkerAppearance(marker, { showLabel = false, highlighted = false } = {}) {
+function applyLeafletFuelMarkerAppearance(marker, { showLabel = false, highlighted = false, mapZoom = null } = {}) {
     if (!marker || typeof marker.setStyle !== 'function') return;
     const detailed = !!showLabel || !!highlighted;
-    marker.setStyle(buildLeafletFuelMarkerStyle({ highlighted, detailed }));
+    marker.setStyle(buildLeafletFuelMarkerStyle({ highlighted, detailed, mapZoom }));
     setLeafletFuelMarkerTooltipPermanent(marker, !!showLabel);
     if (highlighted || showLabel) {
         marker.openTooltip();
@@ -864,12 +879,14 @@ function applyLeafletFuelMarkerAppearance(marker, { showLabel = false, highlight
 
 function refreshLeafletFuelMarkerDetails() {
     if (!leafletMapInstance || !leafletFuelMarkers.length) return;
-    const showLabels = shouldShowFuelMarkerPriceLabels(leafletMapInstance.getZoom(), leafletFuelMarkers.length);
+    const mapZoom = leafletMapInstance.getZoom();
+    const showLabels = shouldShowFuelMarkerPriceLabels(mapZoom, leafletFuelMarkers.length);
     leafletFuelMarkers.forEach((marker) => {
         const hovered = marker.__fuelHovered === true;
         applyLeafletFuelMarkerAppearance(marker, {
             showLabel: showLabels,
-            highlighted: hovered
+            highlighted: hovered,
+            mapZoom
         });
     });
 }
@@ -892,10 +909,10 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
     const radiusKm = getFuelFinderRadiusKm(
         options.radiusKm || fuelFinderRadius?.value || fuelFinderLastMeta?.radiusKm || FUEL_FINDER_DEFAULT_RADIUS_KM
     );
-    const stationsWithCoords = Array.isArray(stations)
-        ? stations.filter((station) => Number.isFinite(Number(station.lat)) && Number.isFinite(Number(station.lng)))
-        : [];
-    const validStations = filterFuelStationsByRadius(stationsWithCoords, radiusKm);
+    const displayStations = getFuelFinderDisplayStations(stations, radiusKm);
+    const validStations = displayStations.filter(
+        (station) => Number.isFinite(Number(station.lat)) && Number.isFinite(Number(station.lng))
+    );
     const targetCenter = center && Number.isFinite(Number(center.lat)) && Number.isFinite(Number(center.lng))
         ? { lat: Number(center.lat), lng: Number(center.lng) }
         : (lastUserLocation ? { lat: Number(lastUserLocation.lat), lng: Number(lastUserLocation.lng) } : null);
@@ -960,6 +977,7 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
 
         validStations.forEach((station) => {
             const position = { lat: Number(station.lat), lng: Number(station.lng) };
+            const stationKey = getFuelFinderStationSelectionKey(station);
             const marker = new google.maps.Marker({
                 position,
                 map: googleMapInstance,
@@ -967,13 +985,15 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
                 optimized: true,
                 icon: buildGoogleFuelMarkerIcon()
             });
+            marker.__fuelStationKey = stationKey;
             marker.__fuelPriceLabel = buildFuelMarkerPriceLabel(station, fuelType);
             marker.__fuelHovered = false;
             marker.addListener('mouseover', () => {
                 marker.__fuelHovered = true;
                 applyGoogleFuelMarkerAppearance(marker, {
                     showLabel: true,
-                    highlighted: true
+                    highlighted: true,
+                    mapZoom: googleMapInstance?.getZoom?.()
                 });
             });
             marker.addListener('mouseout', () => {
@@ -1038,10 +1058,12 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
         validStations.forEach((station) => {
             const lat = Number(station.lat);
             const lng = Number(station.lng);
+            const stationKey = getFuelFinderStationSelectionKey(station);
             const marker = L.circleMarker([lat, lng], {
                 ...buildLeafletFuelMarkerStyle(),
                 renderer: leafletFuelCanvasRenderer || undefined
             }).addTo(leafletMapInstance);
+            marker.__fuelStationKey = stationKey;
             marker.__fuelPriceLabel = buildFuelMarkerPriceLabel(station, fuelType);
             marker.__fuelHovered = false;
             marker.__fuelTooltipPermanent = false;
@@ -1055,7 +1077,8 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
                 marker.__fuelHovered = true;
                 applyLeafletFuelMarkerAppearance(marker, {
                     showLabel: true,
-                    highlighted: true
+                    highlighted: true,
+                    mapZoom: leafletMapInstance?.getZoom?.()
                 });
             });
             marker.on('mouseout', () => {
@@ -3834,6 +3857,7 @@ const closeInfoViewBtn = document.getElementById('closeInfoView');
 const backToCalculatorBtn = document.getElementById('backToCalculator');
 const mainPanel = document.querySelector('main');
 const settingsMenu = document.getElementById('settingsMenu');
+const desktopMenuToggle = document.getElementById('desktopMenuToggle');
 const mobileMenuToggle = document.getElementById('mobileMenuToggle');
 const mobileMenuBackdrop = document.getElementById('mobileMenuBackdrop');
 const closeSettingsMenuBtn = document.getElementById('closeSettingsMenu');
@@ -3927,6 +3951,9 @@ const accountStatFavorites = document.getElementById('accountStatFavorites');
 const accountStatCompleted = document.getElementById('accountStatCompleted');
 const accountStatFriends = document.getElementById('accountStatFriends');
 const accountStatKm = document.getElementById('accountStatKm');
+const sidebarAccountAvatar = document.getElementById('sidebarAccountAvatar');
+const sidebarAccountName = document.getElementById('sidebarAccountName');
+const sidebarAccountMeta = document.getElementById('sidebarAccountMeta');
 const friendSearchInput = document.getElementById('friendSearchInput');
 const friendSearchResults = document.getElementById('friendSearchResults');
 const sendFriendRequestBtn = document.getElementById('sendFriendRequestBtn');
@@ -3963,11 +3990,17 @@ const closeBudgetBtn = document.getElementById('closeBudget');
 const budgetTripsList = document.getElementById('budgetTripsList');
 const budgetEmpty = document.getElementById('budgetEmpty');
 const budgetMonthLabel = document.getElementById('budgetMonthLabel');
+const budgetRangeSwitcher = document.getElementById('budgetRangeSwitcher');
 const budgetTotalTrips = document.getElementById('budgetTotalTrips');
 const budgetTotalCost = document.getElementById('budgetTotalCost');
 const budgetAvgCost = document.getElementById('budgetAvgCost');
 const budgetFuelCost = document.getElementById('budgetFuelCost');
 const budgetTollCost = document.getElementById('budgetTollCost');
+const budgetTotalKm = document.getElementById('budgetTotalKm');
+const budgetMonthlyAvg = document.getElementById('budgetMonthlyAvg');
+const budgetPeakMonth = document.getElementById('budgetPeakMonth');
+const budgetTrendBars = document.getElementById('budgetTrendBars');
+const budgetChartHint = document.getElementById('budgetChartHint');
 const myCarImage = document.getElementById('myCarImage');
 const myCarTitle = document.getElementById('myCarTitle');
 const myCarMeta = document.getElementById('myCarMeta');
@@ -5835,6 +5868,7 @@ let fuelFinderLastResults = [];
 let mapSectionVisibleBeforeFuelFinder = false;
 let fuelFinderRequestId = 0;
 let selectedFuelFinderStationKey = '';
+let selectedBudgetRange = '1m';
 let fuelFinderLastMeta = {
     fuelType: 'benzina',
     radiusKm: FUEL_FINDER_DEFAULT_RADIUS_KM,
@@ -6007,6 +6041,18 @@ function getFallbackAccountStats() {
     };
 }
 
+function renderSidebarAccountSummary({ name = 'Il mio account', meta = 'Accedi o registrati', avatarSrc = '' } = {}) {
+    if (sidebarAccountAvatar) {
+        sidebarAccountAvatar.src = avatarSrc || buildDefaultAccountAvatar(name || 'DC');
+    }
+    if (sidebarAccountName) {
+        sidebarAccountName.textContent = name || 'Il mio account';
+    }
+    if (sidebarAccountMeta) {
+        sidebarAccountMeta.textContent = meta || '';
+    }
+}
+
 function renderAccountProfile() {
     const profile = accountProfile || currentUser || {};
     const username = (profile.username || profile.email || 'Utente').trim();
@@ -6029,6 +6075,11 @@ function renderAccountProfile() {
     if (accountStatCompleted) accountStatCompleted.textContent = String(stats.completedTripsCount || 0);
     if (accountStatFriends) accountStatFriends.textContent = String(stats.friendsCount || 0);
     if (accountStatKm) accountStatKm.textContent = Number(stats.totalCompletedKm || 0).toFixed(0);
+    renderSidebarAccountSummary({
+        name: username || 'Il mio account',
+        meta: email || 'Profilo connesso',
+        avatarSrc
+    });
 }
 
 function setAuthPasswordVisibility(visible = false) {
@@ -6093,6 +6144,11 @@ function updateAuthUI(message = '') {
         renderAccountProfile();
         setGuestAuthMode('login');
     } else {
+        renderSidebarAccountSummary({
+            name: 'Il mio account',
+            meta: 'Accedi o registrati',
+            avatarSrc: buildDefaultAccountAvatar('DriveCalc')
+        });
         setGuestAuthMode(authGuestMode);
     }
 }
@@ -6920,6 +6976,9 @@ function syncCompletedFlag() {
     } else {
         removeCompletedTrip(lastCalculatedTrip.tripId);
     }
+    if (isOverlayOpen(budgetOverlay)) {
+        renderBudget();
+    }
 }
 
 async function loadFavorites() {
@@ -7688,6 +7747,30 @@ function filterFuelStationsByRadius(items = [], radiusKm = FUEL_FINDER_DEFAULT_R
     });
 }
 
+function compareFuelFinderStationsForDisplay(a = {}, b = {}) {
+    const priceA = Number(a?.price);
+    const priceB = Number(b?.price);
+    if (priceA !== priceB) return priceA - priceB;
+    const ageA = Number.isFinite(Number(a?.ageMinutes)) ? Number(a.ageMinutes) : Number.MAX_SAFE_INTEGER;
+    const ageB = Number.isFinite(Number(b?.ageMinutes)) ? Number(b.ageMinutes) : Number.MAX_SAFE_INTEGER;
+    if (ageA !== ageB) return ageA - ageB;
+    const distanceA = Number.isFinite(Number(a?.distanceKm)) ? Number(a.distanceKm) : Number.MAX_SAFE_INTEGER;
+    const distanceB = Number.isFinite(Number(b?.distanceKm)) ? Number(b.distanceKm) : Number.MAX_SAFE_INTEGER;
+    return distanceA - distanceB;
+}
+
+function getFuelFinderDisplayStations(items = [], radiusKm = FUEL_FINDER_DEFAULT_RADIUS_KM) {
+    const filteredByRadius = filterFuelStationsByRadius(items, radiusKm);
+    if (!Array.isArray(filteredByRadius)) return [];
+    return filteredByRadius
+        .map((item) => ({
+            ...item,
+            price: Number(item?.price)
+        }))
+        .filter((item) => Number.isFinite(item.price) && item.price > 0 && item.isReliable !== false)
+        .sort(compareFuelFinderStationsForDisplay);
+}
+
 function buildFuelFinderRequestPayload(position) {
     const radiusKm = getFuelFinderRadiusKm(fuelFinderRadius?.value || FUEL_FINDER_DEFAULT_RADIUS_KM);
     const fuelType = normalizeFuelFinderType(fuelFinderFuelType?.value || fuelTypeSelect?.value || 'benzina');
@@ -7828,6 +7911,66 @@ function selectFuelFinderStationFromMap(station = null) {
     if (fuelStationsList) fuelStationsList.scrollTop = 0;
 }
 
+function focusFuelFinderStationOnMap(station = null) {
+    const stationKey = getFuelFinderStationSelectionKey(station);
+    if (!stationKey) return false;
+    const fuelType = normalizeFuelFinderType(fuelFinderLastMeta?.fuelType || fuelFinderFuelType?.value || 'benzina');
+
+    if (googleMapInstance && window.google && google.maps && googleFuelMarkers.length) {
+        const marker = googleFuelMarkers.find((item) => item?.__fuelStationKey === stationKey);
+        if (marker) {
+            const markerPosition = marker.getPosition?.();
+            if (markerPosition) {
+                const targetPosition = {
+                    lat: typeof markerPosition.lat === 'function' ? markerPosition.lat() : Number(markerPosition.lat),
+                    lng: typeof markerPosition.lng === 'function' ? markerPosition.lng() : Number(markerPosition.lng)
+                };
+                if (Number.isFinite(targetPosition.lat) && Number.isFinite(targetPosition.lng)) {
+                    googleMapInstance.panTo(targetPosition);
+                    if (Number(googleMapInstance.getZoom?.() || 0) < FUEL_MARKER_DETAIL_ZOOM) {
+                        googleMapInstance.setZoom(FUEL_MARKER_DETAIL_ZOOM);
+                    }
+                }
+            }
+            if (!googleFuelInfoWindow) {
+                googleFuelInfoWindow = new google.maps.InfoWindow();
+            }
+            googleFuelInfoWindow.setContent(buildFuelStationPopupHtml(station, fuelType));
+            googleFuelInfoWindow.open({
+                map: googleMapInstance,
+                anchor: marker
+            });
+            return true;
+        }
+    }
+
+    if (leafletMapInstance && leafletFuelMarkers.length) {
+        const marker = leafletFuelMarkers.find((item) => item?.__fuelStationKey === stationKey);
+        if (marker) {
+            const markerLatLng = marker.getLatLng?.();
+            if (markerLatLng) {
+                const targetZoom = Math.max(Number(leafletMapInstance.getZoom?.() || 0), FUEL_MARKER_DETAIL_ZOOM);
+                leafletMapInstance.flyTo(markerLatLng, targetZoom, { duration: 0.35 });
+            }
+            marker.openPopup();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function selectFuelFinderStationFromList(station = null) {
+    const key = getFuelFinderStationSelectionKey(station);
+    if (!key) return;
+    selectedFuelFinderStationKey = key;
+    if (isOverlayOpen(fuelFinderOverlay)) {
+        renderFuelFinderResults(fuelFinderLastResults, getFuelFinderViewMeta());
+        if (fuelStationsList) fuelStationsList.scrollTop = 0;
+    }
+    focusFuelFinderStationOnMap(station);
+}
+
 function getFuelFinderMapCenterFromState(items = []) {
     if (fuelFinderLastPosition?.lat && fuelFinderLastPosition?.lng) {
         return {
@@ -7851,22 +7994,9 @@ function renderFuelFinderResults(items = [], meta = {}) {
     const radiusKm = getFuelFinderRadiusKm(meta.radiusKm || fuelFinderRadius?.value || fuelFinderLastMeta?.radiusKm || FUEL_FINDER_DEFAULT_RADIUS_KM);
     const freshnessMaxHours = Math.max(1, Number(meta.freshnessMaxHours || fuelFinderLastMeta?.freshnessMaxHours || 72));
     const emptyStateText = String(meta.emptyStateText || '').trim();
-    const filteredByRadius = filterFuelStationsByRadius(items, radiusKm);
-    let sorted = Array.isArray(filteredByRadius)
-        ? filteredByRadius
-            .map((item) => ({
-                ...item,
-                price: Number(item.price)
-            }))
-            .filter((item) => Number.isFinite(item.price) && item.price > 0 && item.isReliable !== false)
-            .sort((a, b) => {
-                if (a.price !== b.price) return a.price - b.price;
-                const ageA = Number.isFinite(Number(a.ageMinutes)) ? Number(a.ageMinutes) : Number.MAX_SAFE_INTEGER;
-                const ageB = Number.isFinite(Number(b.ageMinutes)) ? Number(b.ageMinutes) : Number.MAX_SAFE_INTEGER;
-                if (ageA !== ageB) return ageA - ageB;
-                return Number(a.distanceKm || 0) - Number(b.distanceKm || 0);
-            })
-        : [];
+    const sortedByPrice = getFuelFinderDisplayStations(items, radiusKm);
+    const cheapest = sortedByPrice[0] || null;
+    let sorted = [...sortedByPrice];
 
     const activeSelectedKey = String(selectedFuelFinderStationKey || '').trim();
     if (activeSelectedKey && sorted.length) {
@@ -7889,7 +8019,6 @@ function renderFuelFinderResults(items = [], meta = {}) {
     }
 
     fuelStationsEmpty.style.display = 'none';
-    const cheapest = sorted[0];
     const totalCount = sorted.length;
     const radiusLabel = `${radiusKm} km`;
     fuelFinderSummary.style.display = 'block';
@@ -7902,6 +8031,24 @@ function renderFuelFinderResults(items = [], meta = {}) {
         li.className = 'favorite-item fuel-station-item';
         if (stationKey) li.dataset.stationKey = stationKey;
         if (isSelected) li.classList.add('is-selected');
+        const selectStation = () => {
+            if (!stationKey) return;
+            selectFuelFinderStationFromList(station);
+        };
+        if (stationKey) {
+            li.tabIndex = 0;
+            li.setAttribute('role', 'button');
+            li.setAttribute('aria-label', `Evidenzia ${station.brand || station.name || 'benzinaio'} su mappa`);
+            li.addEventListener('click', (event) => {
+                if (event.target.closest('button')) return;
+                selectStation();
+            });
+            li.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                selectStation();
+            });
+        }
 
         const metaWrap = document.createElement('div');
         metaWrap.className = 'favorite-meta';
@@ -7970,7 +8117,9 @@ function renderFuelFinderResults(items = [], meta = {}) {
         mapBtn.className = 'pill-btn';
         mapBtn.type = 'button';
         mapBtn.textContent = 'Apri mappa';
-        mapBtn.addEventListener('click', () => {
+        mapBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            selectStation();
             if (!Number.isFinite(Number(station.lat)) || !Number.isFinite(Number(station.lng))) return;
             const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${station.lat},${station.lng}`)}`;
             window.open(url, '_blank', 'noopener');
@@ -8462,73 +8611,434 @@ async function loadCompanionTrip(trip) {
     showCalculatorView();
 }
 
-// Bilancio mensile
-function getCurrentMonthLabel(dateObj) {
-    const formatter = new Intl.DateTimeFormat('it-IT', { month: 'long', year: 'numeric' });
-    return formatter.format(dateObj);
+// Bilancio avanzato
+const BUDGET_RANGE_MONTHS = {
+    '1m': 1,
+    '3m': 3,
+    '6m': 6,
+    '1y': 12
+};
+
+function normalizeBudgetRange(value = '1m') {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (BUDGET_RANGE_MONTHS[normalized]) return normalized;
+    return '1m';
 }
 
-function filterTripsCurrentMonth() {
-    const now = new Date();
-    const month = now.getMonth();
-    const year = now.getFullYear();
+function getBudgetRangeMonths(range = '1m') {
+    const key = normalizeBudgetRange(range);
+    return BUDGET_RANGE_MONTHS[key] || 1;
+}
 
-    const trips = completedTrips.filter(trip => {
-        const d = trip.timestamp ? new Date(trip.timestamp) : null;
-        return trip.completed && d && d.getMonth() === month && d.getFullYear() === year;
+function parseBudgetAmount(value) {
+    const amount = Number.parseFloat(value);
+    return Number.isFinite(amount) ? amount : 0;
+}
+
+function formatBudgetCurrency(value) {
+    return `€${parseBudgetAmount(value).toFixed(2)}`;
+}
+
+function getBudgetMonthStart(dateObj = new Date()) {
+    return new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
+}
+
+function addBudgetMonths(dateObj, delta = 0) {
+    return new Date(dateObj.getFullYear(), dateObj.getMonth() + delta, 1);
+}
+
+function getBudgetMonthKey(dateObj) {
+    return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatBudgetMonthLabel(dateObj, { short = false } = {}) {
+    const opts = short
+        ? { month: 'short' }
+        : { month: 'long', year: 'numeric' };
+    return new Intl.DateTimeFormat('it-IT', opts).format(dateObj);
+}
+
+function parseBudgetDateLike(rawValue) {
+    if (rawValue === undefined || rawValue === null || rawValue === '') return null;
+
+    if (rawValue instanceof Date) {
+        return Number.isNaN(rawValue.getTime()) ? null : rawValue;
+    }
+
+    const parseNumeric = (numericValue) => {
+        if (!Number.isFinite(numericValue)) return null;
+        const ms = Math.abs(numericValue) < 1e11 ? numericValue * 1000 : numericValue;
+        const date = new Date(ms);
+        return Number.isNaN(date.getTime()) ? null : date;
+    };
+
+    if (typeof rawValue === 'number') {
+        return parseNumeric(rawValue);
+    }
+
+    if (typeof rawValue === 'string') {
+        const text = rawValue.trim();
+        if (!text) return null;
+        const asNumber = Number(text);
+        if (Number.isFinite(asNumber)) {
+            const dateFromNumber = parseNumeric(asNumber);
+            if (dateFromNumber) return dateFromNumber;
+        }
+        const date = new Date(text);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    return null;
+}
+
+function getBudgetTripDate(trip = {}) {
+    if (!trip) return null;
+    const candidates = [
+        trip.timestamp,
+        trip.completedAt,
+        trip.createdAt,
+        trip.date,
+        trip.tripDate,
+        trip.tripId
+    ];
+
+    for (const candidate of candidates) {
+        const parsed = parseBudgetDateLike(candidate);
+        if (parsed) return parsed;
+    }
+    return null;
+}
+
+function getBudgetRangeWindow(range = '1m', referenceDate = new Date()) {
+    const months = getBudgetRangeMonths(range);
+    const currentMonthStart = getBudgetMonthStart(referenceDate);
+    const start = addBudgetMonths(currentMonthStart, -(months - 1));
+    const endExclusive = addBudgetMonths(currentMonthStart, 1);
+    const label = months === 1
+        ? formatBudgetMonthLabel(currentMonthStart)
+        : `${formatBudgetMonthLabel(start, { short: false })} - ${formatBudgetMonthLabel(currentMonthStart, { short: false })}`;
+    return { months, start, endExclusive, label };
+}
+
+function getBudgetTripsForRange(range = '1m', referenceDate = new Date()) {
+    const window = getBudgetRangeWindow(range, referenceDate);
+    return completedTrips
+        .filter((trip) => {
+            if (trip?.completed === false) return false;
+            const date = getBudgetTripDate(trip);
+            if (!date) return false;
+            return date >= window.start && date < window.endExclusive;
+        })
+        .sort((a, b) => {
+            const da = getBudgetTripDate(a)?.getTime() || 0;
+            const db = getBudgetTripDate(b)?.getTime() || 0;
+            return db - da;
+        });
+}
+
+function buildBudgetMonthlySeries(trips = [], range = '1m', referenceDate = new Date()) {
+    const window = getBudgetRangeWindow(range, referenceDate);
+    const grouped = new Map();
+
+    trips.forEach((trip) => {
+        const date = getBudgetTripDate(trip);
+        if (!date) return;
+        const monthStart = getBudgetMonthStart(date);
+        const key = getBudgetMonthKey(monthStart);
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                key,
+                monthStart,
+                monthLabel: formatBudgetMonthLabel(monthStart, { short: true }),
+                monthFullLabel: formatBudgetMonthLabel(monthStart, { short: false }),
+                trips: 0,
+                totalCost: 0,
+                totalFuel: 0,
+                totalToll: 0,
+                totalKm: 0
+            });
+        }
+        const bucket = grouped.get(key);
+        bucket.trips += 1;
+        bucket.totalCost += parseBudgetAmount(trip.totalCost);
+        bucket.totalFuel += parseBudgetAmount(trip.fuelCost);
+        bucket.totalToll += parseBudgetAmount(trip.tollCost);
+        bucket.totalKm += parseBudgetAmount(trip.distance);
     });
 
-    return trips;
+    const series = [];
+    for (let i = 0; i < window.months; i += 1) {
+        const monthStart = addBudgetMonths(window.start, i);
+        const key = getBudgetMonthKey(monthStart);
+        series.push(grouped.get(key) || {
+            key,
+            monthStart,
+            monthLabel: formatBudgetMonthLabel(monthStart, { short: true }),
+            monthFullLabel: formatBudgetMonthLabel(monthStart, { short: false }),
+            trips: 0,
+            totalCost: 0,
+            totalFuel: 0,
+            totalToll: 0,
+            totalKm: 0
+        });
+    }
+    return series;
 }
 
-function renderBudget() {
-    if (!budgetTripsList || !budgetEmpty) return;
-    const now = new Date();
-    if (budgetMonthLabel) budgetMonthLabel.textContent = getCurrentMonthLabel(now);
+function buildBudgetWeeklySeriesForCurrentMonth(trips = [], referenceDate = new Date()) {
+    const monthStart = getBudgetMonthStart(referenceDate);
+    const nextMonthStart = addBudgetMonths(monthStart, 1);
+    const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+    const rawBuckets = [
+        [1, 7],
+        [8, 14],
+        [15, 21],
+        [22, 28],
+        [29, daysInMonth]
+    ].filter(([startDay]) => startDay <= daysInMonth);
 
-    const trips = filterTripsCurrentMonth();
-    budgetTripsList.innerHTML = '';
-    if (!trips.length) {
-        budgetEmpty.style.display = 'block';
-        if (budgetTotalTrips) budgetTotalTrips.textContent = '0';
-        if (budgetTotalCost) budgetTotalCost.textContent = '€0.00';
-        if (budgetAvgCost) budgetAvgCost.textContent = '€0.00';
-        if (budgetFuelCost) budgetFuelCost.textContent = '€0.00';
-        if (budgetTollCost) budgetTollCost.textContent = '€0.00';
+    const monthLabel = formatBudgetMonthLabel(monthStart, { short: false });
+    const series = rawBuckets.map(([startDay, endDay], index) => ({
+        key: `w${index + 1}-${getBudgetMonthKey(monthStart)}`,
+        monthLabel: `${startDay}-${endDay}`,
+        monthFullLabel: `${startDay}-${endDay} ${monthLabel}`,
+        trips: 0,
+        totalCost: 0,
+        totalFuel: 0,
+        totalToll: 0,
+        totalKm: 0,
+        startDay,
+        endDay
+    }));
+
+    trips.forEach((trip) => {
+        const date = getBudgetTripDate(trip);
+        if (!date || date < monthStart || date >= nextMonthStart) return;
+        const day = date.getDate();
+        const bucket = series.find((item) => day >= item.startDay && day <= item.endDay);
+        if (!bucket) return;
+        bucket.trips += 1;
+        bucket.totalCost += parseBudgetAmount(trip.totalCost);
+        bucket.totalFuel += parseBudgetAmount(trip.fuelCost);
+        bucket.totalToll += parseBudgetAmount(trip.tollCost);
+        bucket.totalKm += parseBudgetAmount(trip.distance);
+    });
+
+    return series;
+}
+
+function buildBudgetTrendSeries(trips = [], range = '1m', referenceDate = new Date()) {
+    const safeRange = normalizeBudgetRange(range);
+    if (safeRange === '1m') {
+        return buildBudgetWeeklySeriesForCurrentMonth(trips, referenceDate);
+    }
+    return buildBudgetMonthlySeries(trips, safeRange, referenceDate);
+}
+
+function formatBudgetCompactCurrency(value) {
+    const amount = parseBudgetAmount(value);
+    if (amount >= 10000) return `€${(amount / 1000).toFixed(0)}k`;
+    if (amount >= 1000) return `€${(amount / 1000).toFixed(1)}k`;
+    return `€${amount.toFixed(0)}`;
+}
+
+function buildBudgetLinePath(points = []) {
+    if (!Array.isArray(points) || points.length < 2) return '';
+    return points.reduce((path, point, index) => (
+        `${path}${index === 0 ? 'M' : ' L'} ${point.x} ${point.y}`
+    ), '');
+}
+
+function buildBudgetAreaPath(points = [], baselineY = 0) {
+    if (!Array.isArray(points) || points.length < 2) return '';
+    const line = buildBudgetLinePath(points);
+    const last = points[points.length - 1];
+    const first = points[0];
+    return `${line} L ${last.x} ${baselineY} L ${first.x} ${baselineY} Z`;
+}
+
+function updateBudgetRangeButtons() {
+    if (!budgetRangeSwitcher) return;
+    const active = normalizeBudgetRange(selectedBudgetRange);
+    const buttons = budgetRangeSwitcher.querySelectorAll('button[data-budget-range]');
+    buttons.forEach((btn) => {
+        const isActive = normalizeBudgetRange(btn.dataset.budgetRange || '') === active;
+        btn.classList.toggle('is-active', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+}
+
+function renderBudgetTrendBars(series = []) {
+    if (!budgetTrendBars) return;
+    budgetTrendBars.innerHTML = '';
+
+    if (!Array.isArray(series) || !series.length) {
+        const empty = document.createElement('div');
+        empty.className = 'budget-trend-empty';
+        empty.textContent = 'Nessun dato disponibile.';
+        budgetTrendBars.appendChild(empty);
         return;
     }
-    budgetEmpty.style.display = 'none';
 
-    let totalTrips = trips.length;
-    let totalCost = 0;
-    let totalFuel = 0;
-    let totalToll = 0;
+    const maxCost = series.reduce((max, item) => Math.max(max, parseBudgetAmount(item.totalCost)), 0);
+    const safeMaxCost = Math.max(maxCost, 1);
+    const peakPoint = series.reduce((best, item) => {
+        if (!best) return item;
+        return parseBudgetAmount(item.totalCost) > parseBudgetAmount(best.totalCost) ? item : best;
+    }, null);
+    const peakKey = peakPoint?.key || '';
 
-    trips.forEach(trip => {
-        totalCost += parseFloat(trip.totalCost || 0);
-        totalFuel += parseFloat(trip.fuelCost || 0);
-        totalToll += parseFloat(trip.tollCost || 0);
+    const svgWidth = Math.max(460, series.length * 96);
+    const svgHeight = 222;
+    const chartPadding = {
+        top: 16,
+        right: 18,
+        bottom: 34,
+        left: 44
+    };
+    const plotWidth = svgWidth - chartPadding.left - chartPadding.right;
+    const plotHeight = svgHeight - chartPadding.top - chartPadding.bottom;
+    const baselineY = chartPadding.top + plotHeight;
 
+    const points = series.map((item, index) => {
+        const amount = parseBudgetAmount(item.totalCost);
+        const ratio = safeMaxCost > 0 ? (amount / safeMaxCost) : 0;
+        const x = series.length === 1
+            ? chartPadding.left + (plotWidth / 2)
+            : chartPadding.left + (plotWidth * index) / (series.length - 1);
+        const y = chartPadding.top + (plotHeight * (1 - ratio));
+        return { x, y, amount, item };
+    });
+
+    const NS = 'http://www.w3.org/2000/svg';
+    const wrap = document.createElement('div');
+    wrap.className = 'budget-trend-svg-wrap';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.classList.add('budget-trend-svg');
+    svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('aria-label', 'Andamento costi bilancio');
+
+    const gridSteps = 4;
+    for (let step = 0; step <= gridSteps; step += 1) {
+        const ratio = step / gridSteps;
+        const y = chartPadding.top + (plotHeight * ratio);
+        const value = safeMaxCost * (1 - ratio);
+
+        const gridLine = document.createElementNS(NS, 'line');
+        gridLine.classList.add('budget-trend-grid-line');
+        gridLine.setAttribute('x1', String(chartPadding.left));
+        gridLine.setAttribute('x2', String(svgWidth - chartPadding.right));
+        gridLine.setAttribute('y1', String(y));
+        gridLine.setAttribute('y2', String(y));
+        svg.appendChild(gridLine);
+
+        const axisText = document.createElementNS(NS, 'text');
+        axisText.classList.add('budget-trend-axis-text');
+        axisText.setAttribute('x', String(chartPadding.left - 8));
+        axisText.setAttribute('y', String(y + 4));
+        axisText.setAttribute('text-anchor', 'end');
+        axisText.textContent = formatBudgetCompactCurrency(value);
+        svg.appendChild(axisText);
+    }
+
+    const areaPath = buildBudgetAreaPath(points, baselineY);
+    if (areaPath) {
+        const area = document.createElementNS(NS, 'path');
+        area.classList.add('budget-trend-area');
+        area.setAttribute('d', areaPath);
+        svg.appendChild(area);
+    }
+
+    const linePath = buildBudgetLinePath(points);
+    if (linePath) {
+        const line = document.createElementNS(NS, 'path');
+        line.classList.add('budget-trend-line');
+        line.setAttribute('d', linePath);
+        svg.appendChild(line);
+    }
+
+    points.forEach((point) => {
+        const dot = document.createElementNS(NS, 'circle');
+        dot.classList.add('budget-trend-dot');
+        if (peakKey && point.item.key === peakKey && point.amount > 0) {
+            dot.classList.add('is-peak');
+        }
+        dot.setAttribute('cx', String(point.x));
+        dot.setAttribute('cy', String(point.y));
+        dot.setAttribute('r', '4');
+        const tooltip = document.createElementNS(NS, 'title');
+        tooltip.textContent = `${point.item.monthFullLabel}: ${formatBudgetCurrency(point.amount)} • ${point.item.trips} tratte`;
+        dot.appendChild(tooltip);
+        svg.appendChild(dot);
+    });
+
+    wrap.appendChild(svg);
+    budgetTrendBars.appendChild(wrap);
+
+    const labelRow = document.createElement('div');
+    labelRow.className = 'budget-trend-label-row';
+    labelRow.style.gridTemplateColumns = `repeat(${series.length}, minmax(0, 1fr))`;
+
+    series.forEach((item) => {
+        const chip = document.createElement('div');
+        chip.className = 'budget-trend-chip';
+        if (peakKey && item.key === peakKey && parseBudgetAmount(item.totalCost) > 0) {
+            chip.classList.add('is-peak');
+        }
+
+        const label = document.createElement('span');
+        label.className = 'budget-trend-chip-label';
+        label.textContent = item.monthLabel;
+
+        const meta = document.createElement('span');
+        meta.className = 'budget-trend-chip-meta';
+        meta.textContent = `${formatBudgetCompactCurrency(item.totalCost)} • ${item.trips} tratte`;
+
+        chip.append(label, meta);
+        labelRow.appendChild(chip);
+    });
+
+    budgetTrendBars.appendChild(labelRow);
+}
+
+function formatBudgetTripDateTime(trip = {}) {
+    const date = getBudgetTripDate(trip);
+    if (!date) return '-';
+    return date.toLocaleString('it-IT', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function renderBudgetTripsList(trips = []) {
+    if (!budgetTripsList) return;
+    budgetTripsList.innerHTML = '';
+
+    trips.forEach((trip) => {
         const li = document.createElement('li');
         li.className = 'favorite-item';
 
         const meta = document.createElement('div');
         meta.className = 'favorite-meta';
         const title = document.createElement('strong');
-        title.textContent = `${trip.departure} → ${trip.arrival}`;
+        title.textContent = `${trip.departure || '-'} → ${trip.arrival || '-'}`;
         const subtitle = document.createElement('span');
-        const dateStr = trip.timestamp ? new Date(trip.timestamp).toLocaleDateString('it-IT') : '-';
         const who = trip.type === 'shared' ? `${trip.participants?.length || 0} persone` : 'Solo';
-        subtitle.textContent = `${trip.carLabel} • ${trip.fuelLabel} • ${who} • ${dateStr}`;
+        subtitle.textContent = `${trip.carLabel || '-'} • ${trip.fuelLabel || '-'} • ${who} • ${formatBudgetTripDateTime(trip)}`;
         const cost = document.createElement('span');
-        cost.textContent = `Totale: €${parseFloat(trip.totalCost || 0).toFixed(2)} • Carburante €${parseFloat(trip.fuelCost || 0).toFixed(2)} • Pedaggi €${parseFloat(trip.tollCost || 0).toFixed(2)}`;
+        cost.textContent = `Totale ${formatBudgetCurrency(trip.totalCost)} • Carburante ${formatBudgetCurrency(trip.fuelCost)} • Pedaggi ${formatBudgetCurrency(trip.tollCost)} • ${parseBudgetAmount(trip.distance).toFixed(0)} km`;
         meta.append(title, subtitle, cost);
 
         const actions = document.createElement('div');
         actions.className = 'favorite-actions';
         const removeBtn = document.createElement('button');
         removeBtn.className = 'pill-btn danger';
-        removeBtn.textContent = 'Rimuovi dal bilancio';
+        removeBtn.type = 'button';
+        removeBtn.textContent = 'Rimuovi';
         removeBtn.addEventListener('click', () => {
             removeCompletedTrip(trip.tripId);
             renderBudget();
@@ -8538,12 +9048,73 @@ function renderBudget() {
         li.append(meta, actions);
         budgetTripsList.appendChild(li);
     });
+}
 
-    if (budgetTotalTrips) budgetTotalTrips.textContent = totalTrips.toString();
-    if (budgetTotalCost) budgetTotalCost.textContent = `€${totalCost.toFixed(2)}`;
-    if (budgetAvgCost) budgetAvgCost.textContent = `€${(totalCost / totalTrips).toFixed(2)}`;
-    if (budgetFuelCost) budgetFuelCost.textContent = `€${totalFuel.toFixed(2)}`;
-    if (budgetTollCost) budgetTollCost.textContent = `€${totalToll.toFixed(2)}`;
+function renderBudget() {
+    if (!budgetTripsList || !budgetEmpty) return;
+    const now = new Date();
+    const range = normalizeBudgetRange(selectedBudgetRange);
+    const rangeWindow = getBudgetRangeWindow(range, now);
+    const trips = getBudgetTripsForRange(range, now);
+    const monthlySeries = buildBudgetMonthlySeries(trips, range, now);
+    const trendSeries = buildBudgetTrendSeries(trips, range, now);
+
+    if (budgetMonthLabel) budgetMonthLabel.textContent = rangeWindow.label;
+    if (budgetChartHint) {
+        budgetChartHint.textContent = range === '1m'
+            ? 'Andamento costo settimanale del mese corrente.'
+            : `Andamento costo mensile su ${rangeWindow.months} ${rangeWindow.months === 1 ? 'mese' : 'mesi'}.`;
+    }
+    updateBudgetRangeButtons();
+    renderBudgetTrendBars(trendSeries);
+    renderBudgetTripsList(trips);
+
+    if (!trips.length) {
+        budgetEmpty.style.display = 'block';
+        if (budgetTotalTrips) budgetTotalTrips.textContent = '0';
+        if (budgetTotalCost) budgetTotalCost.textContent = '€0.00';
+        if (budgetAvgCost) budgetAvgCost.textContent = '€0.00';
+        if (budgetFuelCost) budgetFuelCost.textContent = '€0.00';
+        if (budgetTollCost) budgetTollCost.textContent = '€0.00';
+        if (budgetTotalKm) budgetTotalKm.textContent = '0 km';
+        if (budgetMonthlyAvg) budgetMonthlyAvg.textContent = '€0.00';
+        if (budgetPeakMonth) budgetPeakMonth.textContent = '-';
+        return;
+    }
+    budgetEmpty.style.display = 'none';
+
+    const totals = trips.reduce((acc, trip) => {
+        acc.totalCost += parseBudgetAmount(trip.totalCost);
+        acc.totalFuel += parseBudgetAmount(trip.fuelCost);
+        acc.totalToll += parseBudgetAmount(trip.tollCost);
+        acc.totalKm += parseBudgetAmount(trip.distance);
+        return acc;
+    }, {
+        totalCost: 0,
+        totalFuel: 0,
+        totalToll: 0,
+        totalKm: 0
+    });
+
+    const monthlyAvgCost = rangeWindow.months > 0 ? (totals.totalCost / rangeWindow.months) : totals.totalCost;
+    const peakMonth = monthlySeries.reduce((best, month) => {
+        if (!best) return month;
+        return parseBudgetAmount(month.totalCost) > parseBudgetAmount(best.totalCost) ? month : best;
+    }, null);
+
+    if (budgetTotalTrips) budgetTotalTrips.textContent = trips.length.toString();
+    if (budgetTotalCost) budgetTotalCost.textContent = formatBudgetCurrency(totals.totalCost);
+    if (budgetAvgCost) budgetAvgCost.textContent = formatBudgetCurrency(totals.totalCost / trips.length);
+    if (budgetFuelCost) budgetFuelCost.textContent = formatBudgetCurrency(totals.totalFuel);
+    if (budgetTollCost) budgetTollCost.textContent = formatBudgetCurrency(totals.totalToll);
+    if (budgetTotalKm) budgetTotalKm.textContent = `${totals.totalKm.toFixed(0)} km`;
+    if (budgetMonthlyAvg) budgetMonthlyAvg.textContent = formatBudgetCurrency(monthlyAvgCost);
+    if (budgetPeakMonth) {
+        const peakCost = parseBudgetAmount(peakMonth?.totalCost);
+        budgetPeakMonth.textContent = peakCost > 0
+            ? `${peakMonth.monthFullLabel} (${formatBudgetCurrency(peakCost)})`
+            : '-';
+    }
 }
 
 async function openBudget() {
@@ -8600,6 +9171,12 @@ function isMobileViewport() {
     return window.matchMedia('(max-width: 768px)').matches;
 }
 
+function setSettingsMenuToggleExpanded(isExpanded) {
+    const value = isExpanded ? 'true' : 'false';
+    if (mobileMenuToggle) mobileMenuToggle.setAttribute('aria-expanded', value);
+    if (desktopMenuToggle) desktopMenuToggle.setAttribute('aria-expanded', value);
+}
+
 function setActiveMenu(button) {
     settingsMenuButtons.forEach(btn => btn.classList.remove('active'));
     if (button) {
@@ -8611,12 +9188,12 @@ function setActiveMenu(button) {
 }
 
 function openSettingsMenu() {
-    if (!settingsMenu || !isMobileViewport()) return;
+    if (!settingsMenu) return;
     document.body.classList.add('mobile-menu-open');
     document.body.style.overflow = 'hidden';
     settingsMenu.setAttribute('aria-hidden', 'false');
     if (mobileMenuBackdrop) mobileMenuBackdrop.style.display = 'block';
-    if (mobileMenuToggle) mobileMenuToggle.setAttribute('aria-expanded', 'true');
+    setSettingsMenuToggleExpanded(true);
     syncMobileUiState();
 }
 
@@ -8625,7 +9202,7 @@ function closeSettingsMenu() {
     document.body.style.overflow = '';
     settingsMenu?.setAttribute('aria-hidden', 'true');
     if (mobileMenuBackdrop) mobileMenuBackdrop.style.display = 'none';
-    if (mobileMenuToggle) mobileMenuToggle.setAttribute('aria-expanded', 'false');
+    setSettingsMenuToggleExpanded(false);
     syncMobileUiState();
 }
 
@@ -8765,6 +9342,7 @@ homeBtn?.addEventListener('click', showCalculatorView);
 backToCalculatorBtn?.addEventListener('click', showCalculatorView);
 closeInfoViewBtn?.addEventListener('click', showCalculatorView);
 mobileMenuToggle?.addEventListener('click', toggleSettingsMenu);
+desktopMenuToggle?.addEventListener('click', toggleSettingsMenu);
 closeSettingsMenuBtn?.addEventListener('click', closeSettingsMenu);
 mobileMenuBackdrop?.addEventListener('click', closeSettingsMenu);
 settingsMenuButtons.forEach((btn) => {
@@ -8796,6 +9374,14 @@ companionNameInput?.addEventListener('keydown', (e) => {
 });
 budgetBtn?.addEventListener('click', openBudget);
 closeBudgetBtn?.addEventListener('click', closeBudget);
+budgetRangeSwitcher?.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-budget-range]');
+    if (!button) return;
+    const nextRange = normalizeBudgetRange(button.dataset.budgetRange || '');
+    if (nextRange === selectedBudgetRange) return;
+    selectedBudgetRange = nextRange;
+    renderBudget();
+});
 securityBtn?.addEventListener('click', openSecurity);
 closeSecurityBtn?.addEventListener('click', closeSecurity);
 closeFriendRequestsBtn?.addEventListener('click', closeFriendRequestsView);
