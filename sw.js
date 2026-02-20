@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'drivecalc-cache-v37';
+const CACHE_VERSION = 'drivecalc-cache-v39';
 const APP_SHELL = [
   './',
   'index.html',
@@ -11,11 +11,12 @@ const APP_SHELL = [
   'security.html',
   'account.html',
   'info.html',
-  'style.css?v=35',
-  'script.js?v=58',
+  'style.css?v=37',
+  'script.js?v=60',
   'car_models.json',
   'background-travel.jpg',
   'header-hero.jpg',
+  'header-hero-mobile.jpg',
   'logo.png?v=3',
   'assets/icons/icon-192.png',
   'assets/icons/icon-512.png',
@@ -67,16 +68,25 @@ self.addEventListener('fetch', (event) => {
 
   if (isNavigationRequest || isIndexRequest) {
     event.respondWith(
-      fetch(request, { cache: 'no-store' })
-        .then((networkResponse) => {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_VERSION).then((cache) => {
-            const cacheTarget = isIndexRequest ? 'index.html' : request;
-            cache.put(cacheTarget, responseClone).catch(() => {});
-          });
-          return networkResponse;
-        })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match('index.html')))
+      caches.match(isIndexRequest ? 'index.html' : request).then((cached) => {
+        const networkFetch = fetch(request, { cache: 'no-store' })
+          .then((networkResponse) => {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_VERSION).then((cache) => {
+              const cacheTarget = isIndexRequest ? 'index.html' : request;
+              cache.put(cacheTarget, responseClone).catch(() => {});
+            });
+            return networkResponse;
+          })
+          .catch(() => null);
+
+        if (cached) {
+          event.waitUntil(networkFetch.then(() => {}));
+          return cached;
+        }
+
+        return networkFetch.then((networkResponse) => networkResponse || caches.match('index.html'));
+      })
     );
     return;
   }
@@ -90,15 +100,24 @@ self.addEventListener('fetch', (event) => {
   const isStaticCodeAsset = /\.(css|js)$/i.test(url.pathname);
   if (isStaticCodeAsset) {
     event.respondWith(
-      fetch(request, { cache: 'no-store' })
-        .then((networkResponse) => {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_VERSION).then((cache) => {
-            cache.put(request, responseClone).catch(() => {});
-          });
-          return networkResponse;
-        })
-        .catch(() => caches.match(request))
+      caches.match(request).then((cached) => {
+        const networkFetch = fetch(request, { cache: 'no-store' })
+          .then((networkResponse) => {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_VERSION).then((cache) => {
+              cache.put(request, responseClone).catch(() => {});
+            });
+            return networkResponse;
+          })
+          .catch(() => null);
+
+        if (cached) {
+          event.waitUntil(networkFetch.then(() => {}));
+          return cached;
+        }
+
+        return networkFetch.then((networkResponse) => networkResponse || caches.match(request));
+      })
     );
     return;
   }

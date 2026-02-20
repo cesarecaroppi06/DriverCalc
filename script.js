@@ -417,6 +417,7 @@ let googleMapsErrorCheckTimer = null;
 let leafletMapInstance = null;
 let leafletRouteLayer = null;
 let leafletRouteMarkers = [];
+let leafletScriptLoadPromise = null;
 let googleFuelMarkers = [];
 let googleFuelInfoWindow = null;
 let googleFuelRadiusCircle = null;
@@ -433,9 +434,25 @@ const FUEL_MARKER_HIGHLIGHT_Z_INDEX = 3200;
 let googleFuelZoomListener = null;
 let leafletFuelZoomListener = null;
 let leafletFuelCanvasRenderer = null;
+const LEAFLET_JS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+const LEAFLET_CSS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 
 function hasLeaflet() {
     return typeof window !== 'undefined' && typeof window.L !== 'undefined';
+}
+
+function ensureLeafletCssLoaded() {
+    if (typeof document === 'undefined') return;
+    const alreadyLoaded = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).some((node) => {
+        const href = String(node.getAttribute('href') || '');
+        return href.includes('leaflet@1.9.4/dist/leaflet.css') || node.dataset.leafletCss === '1';
+    });
+    if (alreadyLoaded) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = LEAFLET_CSS_URL;
+    link.dataset.leafletCss = '1';
+    document.head.appendChild(link);
 }
 
 function registerGoogleAuthFailureHandler() {
@@ -523,6 +540,38 @@ function loadGoogleMapsScript() {
     });
 }
 
+function loadLeafletScript() {
+    if (hasLeaflet()) return Promise.resolve();
+    if (leafletScriptLoadPromise) return leafletScriptLoadPromise;
+
+    ensureLeafletCssLoaded();
+    leafletScriptLoadPromise = new Promise((resolve, reject) => {
+        const existingScript = Array.from(document.querySelectorAll('script')).find((node) => {
+            const src = String(node.getAttribute('src') || '');
+            return src.includes('leaflet@1.9.4/dist/leaflet.js');
+        });
+
+        if (existingScript) {
+            if (hasLeaflet()) {
+                resolve();
+                return;
+            }
+            existingScript.addEventListener('load', () => resolve(), { once: true });
+            existingScript.addEventListener('error', () => reject(new Error('Leaflet JS non disponibile')), { once: true });
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = LEAFLET_JS_URL;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Leaflet JS non disponibile'));
+        document.head.appendChild(script);
+    });
+    return leafletScriptLoadPromise;
+}
+
 async function ensureMapReady(preferredProvider) {
     const mapEl = document.getElementById('map');
     if (!mapEl) return null;
@@ -564,6 +613,13 @@ async function ensureMapReady(preferredProvider) {
     };
 
     const tryLeaflet = async () => {
+        if (!hasLeaflet()) {
+            try {
+                await loadLeafletScript();
+            } catch (e) {
+                return false;
+            }
+        }
         if (!hasLeaflet()) return false;
         if (!leafletMapInstance) {
             if (googleMapInstance) {
@@ -3247,7 +3303,7 @@ async function loadCarModelsFromJson() {
     if (!carTypeSelect) return;
     if (carTypeSelect.dataset.dynamicLoaded === 'yes') return;
     try {
-        const res = await fetch(`car_models.json?v=${BRAND_DATA_VERSION}`, { cache: 'no-store' });
+        const res = await fetch(`car_models.json?v=${BRAND_DATA_VERSION}`, { cache: 'force-cache' });
         if (!res.ok) throw new Error('Impossibile caricare car_models.json');
         const models = await res.json();
         appendModelsToSelect(models, { replaceGroup: true });
@@ -4689,7 +4745,7 @@ async function ensureBrandModelsLoaded(brandKey) {
     const file = brandDataFiles[brandKey];
     if (!file || loadedBrandData.has(brandKey)) return;
     try {
-        const res = await fetch(`${file}?v=${BRAND_DATA_VERSION}`, { cache: 'no-store' });
+        const res = await fetch(`${file}?v=${BRAND_DATA_VERSION}`, { cache: 'force-cache' });
         if (!res.ok) throw new Error(`Impossibile caricare ${file}`);
         const models = await res.json();
         appendModelsToSelect(models);
@@ -7666,7 +7722,14 @@ function openAuth() {
 function openSecurity() {
     if (maybeNavigateToRoute('security')) return;
     if (!authToken) {
-        setPendingRouteNotice('Accedi per gestire la sicurezza account');
+        const notice = 'Accedi per gestire la sicurezza account';
+        if (isCurrentRoute('security')) {
+            openAuth();
+            updateAuthUI(notice);
+            setAuthFeedback(notice, 'info');
+            return;
+        }
+        setPendingRouteNotice(notice);
         if (navigateToRoute('account')) return;
         openAuth();
         return;
@@ -7712,7 +7775,14 @@ async function openFriendRequestsView() {
 async function openFriendsView() {
     if (maybeNavigateToRoute('friends')) return;
     if (!authToken) {
-        setPendingRouteNotice('Accedi per visualizzare I miei amici');
+        const notice = 'Accedi per visualizzare I miei amici';
+        if (isCurrentRoute('friends')) {
+            openAuth();
+            updateAuthUI(notice);
+            setAuthFeedback(notice, 'info');
+            return;
+        }
+        setPendingRouteNotice(notice);
         if (navigateToRoute('account')) return;
         openAuth();
         return;
@@ -10440,7 +10510,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-const SW_BUILD_VERSION = '2026-02-20-04';
+const SW_BUILD_VERSION = '2026-02-20-06';
 let hasReloadedForServiceWorker = false;
 
 function forceActivateWaitingWorker(registration) {
@@ -10575,10 +10645,95 @@ async function handleInstallAppClick() {
     );
 }
 
+function markAppReady() {
+    requestAnimationFrame(() => {
+        if (!document.body) return;
+        document.body.classList.remove('app-booting');
+        document.body.classList.add('app-ready');
+    });
+}
+
+function scheduleDeferredTask(task, timeout = 900) {
+    if (typeof window === 'undefined') {
+        Promise.resolve().then(task).catch(() => {});
+        return;
+    }
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(() => {
+            Promise.resolve().then(task).catch(() => {});
+        }, { timeout });
+        return;
+    }
+    window.setTimeout(() => {
+        Promise.resolve().then(task).catch(() => {});
+    }, 0);
+}
+
+async function bootstrapDeferredData() {
+    const routeKey = getCurrentRouteKey();
+    const needsHeavyCalculatorBootstrap = routeKey === 'home';
+
+    if (needsHeavyCalculatorBootstrap) {
+        try {
+            await loadCarModelsFromJson();
+        } catch (e) {
+            // Keep app usable even if extended catalog is not available.
+        }
+        tagModelOptionsByBrand();
+        snapshotCarOptionsStructure();
+        snapshotBrandOptions();
+        await filterModelsByBrand().catch(() => {});
+        updateMyCarPreview();
+    }
+
+    updateAuthUI();
+    closeAccountSubPanels({ clearSearch: false });
+    updateFriendRequestsBadge();
+    setSecurityStatus('');
+
+    await handleAuthActionFromUrl();
+    const hasSession = await restoreAuthSession();
+
+    if (hasSession || isAuthenticated()) {
+        try {
+            await loadAllRemoteData();
+        } catch (e) {
+            updateAuthUI('Token non valido, rifai login');
+            await clearAuth({ remote: false });
+            await Promise.all([
+                loadFavorites(),
+                loadCompanionTrips(),
+                loadCompletedTrips()
+            ]);
+        }
+    } else {
+        await Promise.all([
+            loadFavorites(),
+            loadCompanionTrips(),
+            loadCompletedTrips()
+        ]);
+    }
+
+    if (isOverlayOpen(favoritesOverlay)) renderFavorites();
+    if (isOverlayOpen(companionsOverlay)) {
+        renderCompanionHistory();
+        renderCompanionFriendsPicker();
+    }
+    if (isOverlayOpen(budgetOverlay)) renderBudget();
+    if (isOverlayOpen(authOverlay)) {
+        prepareMyCarPanel().catch(() => {});
+    }
+    if ((routeKey === 'friends' || routeKey === 'security') && isAuthenticated()) {
+        await openInitialRouteView();
+    }
+}
+
 // Inizializza al caricamento
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        registerServiceWorker().catch(() => {});
+        const routeKey = getCurrentRouteKey();
+        const isHomeRoute = routeKey === 'home';
+
         wireModalBackdropCloseHandlers();
         window.addEventListener('beforeinstallprompt', (event) => {
             event.preventDefault();
@@ -10610,45 +10765,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 120);
         window.addEventListener('resize', handleViewportResize);
 
-        initializeCities();
-        const mapSection = document.getElementById('mapSection');
-        if (mapSection) mapSection.style.display = 'none';
-        setupAddressAutocomplete(departureAddressInput, departureAddressResults, departureSelect);
-        setupAddressAutocomplete(arrivalAddressInput, arrivalAddressResults, arrivalSelect);
-        await loadCarModelsFromJson();
-        tagModelOptionsByBrand();
-        snapshotCarOptionsStructure();
-        snapshotBrandOptions();
-        await filterModelsByBrand();
-        updateMyCarPreview();
-        updateAuthUI();
-        closeAccountSubPanels({ clearSearch: false });
-        updateFriendRequestsBadge();
-        setSecurityStatus('');
-        await handleAuthActionFromUrl();
-        const hasSession = await restoreAuthSession();
-        if (hasSession || isAuthenticated()) {
-            try {
-                await loadAllRemoteData();
-            } catch (e) {
-                updateAuthUI('Token non valido, rifai login');
-                await clearAuth({ remote: false });
-                await loadFavorites();
-                await loadCompanionTrips();
-                await loadCompletedTrips();
-            }
-        } else {
-            await loadFavorites();
-            await loadCompanionTrips();
-            await loadCompletedTrips();
+        if (isHomeRoute) {
+            initializeCities();
+            const mapSection = document.getElementById('mapSection');
+            if (mapSection) mapSection.style.display = 'none';
+            setupAddressAutocomplete(departureAddressInput, departureAddressResults, departureSelect);
+            setupAddressAutocomplete(arrivalAddressInput, arrivalAddressResults, arrivalSelect);
+            restoreLastCalculatedTripState();
         }
-        restoreLastCalculatedTripState();
+
         await openInitialRouteView();
     } finally {
-        requestAnimationFrame(() => {
-            if (!document.body) return;
-            document.body.classList.remove('app-booting');
-            document.body.classList.add('app-ready');
-        });
+        markAppReady();
+        scheduleDeferredTask(() => bootstrapDeferredData(), 900);
+        scheduleDeferredTask(() => registerServiceWorker().catch(() => {}), 1800);
     }
 });

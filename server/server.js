@@ -592,6 +592,15 @@ function registerWebClientRoutes() {
 
     const staticFiles = [
         'index.html',
+        'budget.html',
+        'companions.html',
+        'friends.html',
+        'fuel-finder.html',
+        'ai-chat.html',
+        'favorites.html',
+        'security.html',
+        'account.html',
+        'info.html',
         'guida-costo-viaggio-auto.html',
         'guida-pedaggi-autostrada-italia.html',
         'guida-risparmio-carburante-viaggio.html',
@@ -603,7 +612,8 @@ function registerWebClientRoutes() {
         'car_models.json',
         'logo.png',
         'background-travel.jpg',
-        'header-hero.jpg'
+        'header-hero.jpg',
+        'header-hero-mobile.jpg'
     ];
 
     app.get('/robots.txt', (req, res) => {
