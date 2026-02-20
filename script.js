@@ -3974,7 +3974,9 @@ const friendSharedEmpty = document.getElementById('friendSharedEmpty');
 const completedTripCheckbox = document.getElementById('completedTrip');
 const companionsBtn = document.getElementById('companionsBtn');
 const companionsOverlay = document.getElementById('companionsOverlay');
+const companionsModalCard = companionsOverlay?.querySelector('.modal-card') || null;
 const closeCompanionsBtn = document.getElementById('closeCompanions');
+const closeCompanionsSecondaryBtn = document.getElementById('closeCompanionsSecondary');
 const openCompanionFriendsBtn = document.getElementById('openCompanionFriendsBtn');
 const toggleManualCompanionBtn = document.getElementById('toggleManualCompanionBtn');
 const companionFriendsPanel = document.getElementById('companionFriendsPanel');
@@ -8919,6 +8921,8 @@ async function openCompanions({ friendsOpen = false, manualOpen = false } = {}) 
     closePrimaryModalOverlays(companionsOverlay);
     setActiveMenu(companionsBtn);
     showModalOverlay(companionsOverlay);
+    if (companionsOverlay) companionsOverlay.scrollTop = 0;
+    if (companionsModalCard) companionsModalCard.scrollTop = 0;
     currentCompanions = [];
     if (companionsTripInfo) {
         companionsTripInfo.textContent = lastCalculatedTrip
@@ -9784,6 +9788,7 @@ closeFriendsBtn?.addEventListener('click', closeFriendsView);
 closeFuelFinderBtn?.addEventListener('click', closeFuelFinder);
 closeAiChatBtn?.addEventListener('click', closeAiChat);
 closeCompanionsBtn?.addEventListener('click', closeCompanions);
+closeCompanionsSecondaryBtn?.addEventListener('click', closeCompanions);
 openCompanionFriendsBtn?.addEventListener('click', () => {
     const nextOpen = !companionFriendsPanelOpen;
     setCompanionPickerPanelsState({
@@ -10084,7 +10089,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-const SW_BUILD_VERSION = '2026-02-20-02';
+const SW_BUILD_VERSION = '2026-02-20-03';
 let hasReloadedForServiceWorker = false;
 
 function forceActivateWaitingWorker(registration) {
