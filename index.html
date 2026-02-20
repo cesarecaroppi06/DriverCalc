@@ -915,9 +915,19 @@
 
                     <div id="companionsTripInfo" class="info-inline">Nessuna tratta calcolata.</div>
 
-                    <div class="participants-input">
-                        <input id="companionName" type="text" placeholder="Nome partecipante">
-                        <button id="addCompanionBtn" class="pill-btn primary">Aggiungi</button>
+                    <div class="companion-picker-actions">
+                        <button id="openCompanionFriendsBtn" class="pill-btn primary" type="button">Aggiungi amico</button>
+                        <button id="toggleManualCompanionBtn" class="pill-btn" type="button">Aggiungi non iscritto</button>
+                    </div>
+
+                    <div id="companionFriendsPanel" class="companion-friends-panel" style="display:none;">
+                        <div id="companionFriendsEmpty" class="empty-state">Nessun amico disponibile. Aggiungi amici per selezionarli qui.</div>
+                        <ul id="companionFriendsList" class="favorites-list companion-friends-list"></ul>
+                    </div>
+
+                    <div id="companionManualPanel" class="participants-input" style="display:none;">
+                        <input id="companionName" type="text" placeholder="Nome amico non iscritto">
+                        <button id="addCompanionBtn" class="pill-btn primary" type="button">Aggiungi nome</button>
                     </div>
 
                     <div id="companionsEmpty" class="empty-state">Aggiungi almeno una persona per calcolare la quota.</div>

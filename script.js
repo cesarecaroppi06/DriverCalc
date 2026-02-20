@@ -3974,6 +3974,12 @@ const completedTripCheckbox = document.getElementById('completedTrip');
 const companionsBtn = document.getElementById('companionsBtn');
 const companionsOverlay = document.getElementById('companionsOverlay');
 const closeCompanionsBtn = document.getElementById('closeCompanions');
+const openCompanionFriendsBtn = document.getElementById('openCompanionFriendsBtn');
+const toggleManualCompanionBtn = document.getElementById('toggleManualCompanionBtn');
+const companionFriendsPanel = document.getElementById('companionFriendsPanel');
+const companionFriendsList = document.getElementById('companionFriendsList');
+const companionFriendsEmpty = document.getElementById('companionFriendsEmpty');
+const companionManualPanel = document.getElementById('companionManualPanel');
 const companionNameInput = document.getElementById('companionName');
 const addCompanionBtn = document.getElementById('addCompanionBtn');
 const companionsList = document.getElementById('companionsList');
@@ -5836,6 +5842,8 @@ let favorites = [];
 let lastCalculatedTrip = null;
 let companionTrips = [];
 let currentCompanions = [];
+let companionFriendsPanelOpen = false;
+let companionManualPanelOpen = false;
 let completedTrips = [];
 let myCarPhotos = {};
 let authToken = null;
@@ -6331,15 +6339,24 @@ function closeImagePreview() {
     document.body.classList.remove('no-scroll');
 }
 
-function appendFriendSharedItem(title, subtitle = '', meta = '', imageSrc = '') {
+function appendFriendSharedItem(title, subtitle = '', meta = '', imageSrc = '', badgeLabel = '') {
     if (!friendSharedList) return;
     const li = document.createElement('li');
     li.className = 'favorite-item';
     const metaWrap = document.createElement('div');
     metaWrap.className = 'favorite-meta';
+    const headingRow = document.createElement('div');
+    headingRow.className = 'friend-shared-heading-row';
     const heading = document.createElement('strong');
     heading.textContent = title;
-    metaWrap.append(heading);
+    headingRow.append(heading);
+    if (badgeLabel) {
+        const badge = document.createElement('span');
+        badge.className = 'friend-shared-badge';
+        badge.textContent = badgeLabel;
+        headingRow.append(badge);
+    }
+    metaWrap.append(headingRow);
 
     if (subtitle) {
         const sub = document.createElement('span');
@@ -6479,7 +6496,11 @@ function renderFriendSharedData(shared) {
                 : 'Partecipanti non indicati';
             const subtitle = `Partecipanti: ${people}`;
             const meta = `Totale: ${formatFriendCurrency(trip.totalCost)} • Quota: ${formatFriendCurrency(trip.perPerson)} • Data: ${formatFriendTripDate(trip.timestamp)}`;
-            appendFriendSharedItem(`Tratta in compagnia: ${route}`, subtitle, meta);
+            const sharedBy = String(trip.sharedByUsername || trip.sharedByEmail || '').trim();
+            const badgeLabel = trip.isIncomingShare && sharedBy
+                ? `Condivisa da ${sharedBy}`
+                : '';
+            appendFriendSharedItem(`Tratta in compagnia: ${route}`, subtitle, meta, '', badgeLabel);
         });
     }
 }
@@ -6788,6 +6809,110 @@ async function restoreAuthSession() {
     }
 }
 
+async function requestPasswordResetByEmail() {
+    const suggestedIdentifier = (
+        authIdentifierInput?.value
+        || authEmailInput?.value
+        || currentUser?.email
+        || ''
+    ).trim();
+    const rawIdentifier = window.prompt(
+        'Inserisci email o username del tuo account. Ti invieremo un link per reimpostare la password.',
+        suggestedIdentifier
+    );
+    if (rawIdentifier === null) return;
+
+    const identifier = String(rawIdentifier || '').trim();
+    if (!identifier) {
+        updateAuthUI('Inserisci email o username');
+        setAuthFeedback('Inserisci email o username', 'error');
+        return;
+    }
+
+    try {
+        const payload = await apiRequest('/auth/forgot-password', 'POST', {
+            identifier,
+            email: identifier
+        });
+        updateAuthUI('Controlla la tua email per completare il recupero password');
+        setAuthFeedback(
+            payload?.message || 'Se l’account esiste, riceverai una email con il link di recupero password.',
+            'success'
+        );
+    } catch (err) {
+        updateAuthUI(err.message || 'Errore recupero password');
+        setAuthFeedback(err.message || 'Errore recupero password', 'error');
+    }
+}
+
+function consumeAuthActionFromUrl() {
+    if (typeof window === 'undefined') return { action: '', token: '' };
+    const url = new URL(window.location.href);
+    const action = String(url.searchParams.get('authAction') || '').trim().toLowerCase();
+    const token = String(url.searchParams.get('token') || '').trim();
+    if (!action || !token) return { action: '', token: '' };
+
+    url.searchParams.delete('authAction');
+    url.searchParams.delete('token');
+    const cleanUrl = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState({}, document.title, cleanUrl || '/');
+    return { action, token };
+}
+
+async function handleAuthActionFromUrl() {
+    const { action, token } = consumeAuthActionFromUrl();
+    if (!action || !token) return false;
+
+    if (action === 'verify-email') {
+        openAuth();
+        setGuestAuthMode('login');
+        try {
+            const payload = await apiRequest('/auth/verify-email', 'POST', { token });
+            updateAuthUI('Email verificata. Ora puoi accedere.');
+            setAuthFeedback(payload?.message || 'Email verificata con successo. Ora puoi accedere.', 'success');
+            authIdentifierInput?.focus();
+        } catch (err) {
+            updateAuthUI(err.message || 'Link di verifica non valido o scaduto');
+            setAuthFeedback(err.message || 'Link di verifica non valido o scaduto', 'error');
+        }
+        return true;
+    }
+
+    if (action === 'reset-password') {
+        openAuth();
+        setGuestAuthMode('login');
+        const password = window.prompt('Inserisci la nuova password (minimo 6 caratteri):', '');
+        if (password === null) {
+            setAuthFeedback('Reset annullato. Puoi riaprire il link ricevuto via email.', 'info');
+            return true;
+        }
+
+        const newPassword = String(password || '');
+        if (newPassword.length < 6) {
+            updateAuthUI('La nuova password deve avere almeno 6 caratteri');
+            setAuthFeedback('La nuova password deve avere almeno 6 caratteri', 'error');
+            return true;
+        }
+
+        try {
+            const payload = await apiRequest('/auth/reset-password', 'POST', { token, newPassword });
+            updateAuthUI(payload?.message || 'Password aggiornata. Ora puoi accedere.');
+            setAuthFeedback(payload?.message || 'Password aggiornata. Ora puoi accedere.', 'success');
+            if (authPasswordInput) authPasswordInput.value = '';
+            authIdentifierInput?.focus();
+        } catch (err) {
+            updateAuthUI(err.message || 'Token reset non valido o scaduto');
+            setAuthFeedback(err.message || 'Token reset non valido o scaduto', 'error');
+        }
+        return true;
+    }
+
+    openAuth();
+    updateAuthUI('Link autenticazione non riconosciuto');
+    setAuthFeedback('Link autenticazione non riconosciuto', 'error');
+    return true;
+}
+
 async function handleAuth(isRegister) {
     const password = authPasswordInput?.value || '';
     const username = (authUsernameInput?.value || '').trim();
@@ -6816,24 +6941,69 @@ async function handleAuth(isRegister) {
                 ? { email, password, username }
                 : { identifier, email: identifier, password }
         );
+        if (registerMode) {
+            if (!json?.requiresEmailVerification && json?.token && json?.user) {
+                setAuth(json.token || 'cookie-session', json.user);
+                accountProfile = json.user || accountProfile;
+                accountStats = json.stats || accountStats;
+                authGuestMode = 'login';
+                updateAuthUI('Registrazione completata');
+                renderAccountProfile();
+                setAuthFeedback(
+                    `Benvenuto ${accountProfile?.username || accountProfile?.email || ''}! Account creato con successo.`,
+                    'success'
+                );
+                if (authPasswordInput) authPasswordInput.value = '';
+                if (authUsernameInput) authUsernameInput.value = '';
+                if (authEmailInput) authEmailInput.value = '';
+                if (accountCurrentPassword) accountCurrentPassword.value = '';
+                if (accountNewPassword) accountNewPassword.value = '';
+                return;
+            }
+
+            authGuestMode = 'login';
+            setGuestAuthMode('login');
+            if (authPasswordInput) authPasswordInput.value = '';
+            if (authUsernameInput) authUsernameInput.value = '';
+            if (authEmailInput) authEmailInput.value = '';
+            if (authIdentifierInput) authIdentifierInput.value = email;
+            updateAuthUI('Registrazione completata: verifica email richiesta');
+            setAuthFeedback(
+                json?.message || 'Registrazione completata. Controlla la tua email per verificare l’account.',
+                'success'
+            );
+            authIdentifierInput?.focus();
+            return;
+        }
+
         setAuth(json.token || 'cookie-session', json.user);
         accountProfile = json.user || accountProfile;
         accountStats = json.stats || accountStats;
         authGuestMode = 'login';
-        updateAuthUI(registerMode ? 'Registrazione completata' : 'Accesso riuscito');
+        updateAuthUI('Accesso riuscito');
         renderAccountProfile();
-        setAuthFeedback(
-            registerMode
-                ? `Benvenuto ${accountProfile?.username || ''}! Account creato con successo.`
-                : `Accesso eseguito: bentornato ${accountProfile?.username || accountProfile?.email || ''}.`,
-            'success'
-        );
+        setAuthFeedback(`Accesso eseguito: bentornato ${accountProfile?.username || accountProfile?.email || ''}.`, 'success');
         if (authPasswordInput) authPasswordInput.value = '';
         if (accountCurrentPassword) accountCurrentPassword.value = '';
         if (accountNewPassword) accountNewPassword.value = '';
     } catch (err) {
-        updateAuthUI(err.message);
-        setAuthFeedback(err.message, 'error');
+        const errorMessage = err.message || 'Errore autenticazione';
+        updateAuthUI(errorMessage);
+        setAuthFeedback(errorMessage, 'error');
+
+        if (!registerMode && /email non verificata/i.test(errorMessage)) {
+            const shouldResend = window.confirm('Email non verificata. Vuoi ricevere un nuovo link di verifica?');
+            if (!shouldResend) return;
+            try {
+                const payload = await apiRequest('/auth/resend-verification', 'POST', {
+                    identifier,
+                    email: identifier
+                });
+                setAuthFeedback(payload?.message || 'Nuovo link di verifica inviato', 'info');
+            } catch (resendErr) {
+                setAuthFeedback(resendErr.message || 'Errore invio nuova email di verifica', 'error');
+            }
+        }
     }
 }
 
@@ -8422,6 +8592,168 @@ async function loadFavorite(fav) {
 }
 
 // Gestione tratte in compagnia (storage locale + split costi)
+function sanitizeCompanionParticipantName(value = '') {
+    return String(value || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .slice(0, 80);
+}
+
+function getCompanionParticipantId(participant = {}) {
+    const isRegistered = participant && participant.type === 'registered' && participant.friendId;
+    if (isRegistered) return `registered:${String(participant.friendId).trim()}`;
+    return `guest:${sanitizeCompanionParticipantName(participant?.name || '').toLowerCase()}`;
+}
+
+function normalizeCompanionParticipant(participant = null) {
+    if (typeof participant === 'string') {
+        const name = sanitizeCompanionParticipantName(participant);
+        if (!name) return null;
+        return {
+            type: 'guest',
+            friendId: '',
+            name,
+            email: '',
+            avatarUrl: ''
+        };
+    }
+
+    if (!participant || typeof participant !== 'object') return null;
+    const friendId = String(participant.friendId || participant.id || '').trim();
+    const isRegistered = (String(participant.type || '').toLowerCase() === 'registered' || !!friendId) && !!friendId;
+
+    if (isRegistered) {
+        const friend = friends.find((item) => String(item.id || '') === friendId) || null;
+        const name = sanitizeCompanionParticipantName(
+            participant.name
+            || participant.username
+            || getFriendDisplayName(friend || {})
+            || participant.email
+            || 'Amico registrato'
+        );
+        return {
+            type: 'registered',
+            friendId,
+            name,
+            email: String(participant.email || friend?.email || '').trim(),
+            avatarUrl: String(participant.avatarUrl || friend?.avatarUrl || '')
+        };
+    }
+
+    const name = sanitizeCompanionParticipantName(participant.name || participant.username || participant.email || '');
+    if (!name) return null;
+    return {
+        type: 'guest',
+        friendId: '',
+        name,
+        email: '',
+        avatarUrl: ''
+    };
+}
+
+function addCompanionParticipant(participant = null) {
+    const normalized = normalizeCompanionParticipant(participant);
+    if (!normalized) return false;
+    const participantId = getCompanionParticipantId(normalized);
+    const alreadySelected = currentCompanions.some((item) => getCompanionParticipantId(item) === participantId);
+    if (alreadySelected) return false;
+    currentCompanions.push(normalized);
+    return true;
+}
+
+function setCompanionPickerPanelsState({ friendsOpen = false, manualOpen = false } = {}) {
+    companionFriendsPanelOpen = !!friendsOpen;
+    companionManualPanelOpen = !!manualOpen;
+
+    if (companionFriendsPanel) {
+        companionFriendsPanel.style.display = companionFriendsPanelOpen ? 'block' : 'none';
+    }
+    if (companionManualPanel) {
+        companionManualPanel.style.display = companionManualPanelOpen ? 'flex' : 'none';
+    }
+    if (openCompanionFriendsBtn) {
+        openCompanionFriendsBtn.textContent = companionFriendsPanelOpen ? 'Nascondi amici' : 'Aggiungi amico';
+    }
+    if (toggleManualCompanionBtn) {
+        toggleManualCompanionBtn.textContent = companionManualPanelOpen ? 'Nascondi campo nome' : 'Aggiungi non iscritto';
+    }
+}
+
+function renderCompanionFriendsPicker() {
+    if (!companionFriendsList || !companionFriendsEmpty) return;
+    companionFriendsList.innerHTML = '';
+
+    if (!authToken) {
+        companionFriendsEmpty.style.display = 'block';
+        companionFriendsEmpty.textContent = 'Accedi al tuo account per selezionare amici registrati.';
+        return;
+    }
+
+    if (!friends.length) {
+        companionFriendsEmpty.style.display = 'block';
+        companionFriendsEmpty.textContent = 'Nessun amico disponibile. Aggiungi amici per selezionarli qui.';
+        return;
+    }
+
+    companionFriendsEmpty.style.display = 'none';
+    friends.forEach((friend) => {
+        const friendId = String(friend.id || '').trim();
+        if (!friendId) return;
+
+        const li = document.createElement('li');
+        li.className = 'favorite-item companion-friend-item';
+
+        const meta = document.createElement('div');
+        meta.className = 'favorite-meta companion-friend-meta';
+        const top = document.createElement('div');
+        top.className = 'companion-friend-top';
+
+        const avatar = document.createElement('img');
+        avatar.className = 'companion-friend-avatar';
+        avatar.src = friend.avatarUrl || buildDefaultAccountAvatar(getFriendDisplayName(friend));
+        avatar.alt = `Avatar ${getFriendDisplayName(friend)}`;
+
+        const identity = document.createElement('div');
+        identity.className = 'companion-friend-identity';
+        const title = document.createElement('strong');
+        title.textContent = getFriendDisplayName(friend);
+        const subtitle = document.createElement('span');
+        subtitle.textContent = friend.email || 'Account registrato';
+        identity.append(title, subtitle);
+        top.append(avatar, identity);
+        meta.append(top);
+
+        const actions = document.createElement('div');
+        actions.className = 'favorite-actions';
+        const addBtn = document.createElement('button');
+        const previewParticipant = {
+            type: 'registered',
+            friendId,
+            name: getFriendDisplayName(friend),
+            email: friend.email || '',
+            avatarUrl: friend.avatarUrl || ''
+        };
+        const alreadySelected = currentCompanions.some((item) => (
+            getCompanionParticipantId(item) === getCompanionParticipantId(previewParticipant)
+        ));
+        addBtn.className = `pill-btn ${alreadySelected ? '' : 'primary'}`.trim();
+        addBtn.type = 'button';
+        addBtn.textContent = alreadySelected ? 'Aggiunto' : 'Aggiungi';
+        addBtn.disabled = alreadySelected;
+        addBtn.addEventListener('click', () => {
+            const added = addCompanionParticipant(previewParticipant);
+            if (!added) return;
+            renderCompanionsList();
+            renderCompanionFriendsPicker();
+            updateSplitSummary();
+        });
+        actions.append(addBtn);
+
+        li.append(meta, actions);
+        companionFriendsList.appendChild(li);
+    });
+}
+
 async function loadCompanionTrips() {
     try {
         if (authToken) {
@@ -8437,13 +8769,8 @@ async function loadCompanionTrips() {
 }
 
 async function persistCompanionTrips() {
-    if (authToken) {
-        companionTrips.forEach(t => {
-            apiRequest('/companions', 'POST', t).catch(() => {});
-        });
-    } else {
-        localStorage.setItem(COMPANIONS_KEY, JSON.stringify(companionTrips));
-    }
+    if (authToken) return;
+    localStorage.setItem(COMPANIONS_KEY, JSON.stringify(companionTrips));
 }
 
 function renderCompanionsList() {
@@ -8452,24 +8779,44 @@ function renderCompanionsList() {
     const hasPeople = currentCompanions.length > 0;
     companionsEmpty.style.display = hasPeople ? 'none' : 'block';
 
-    currentCompanions.forEach((name, index) => {
+    currentCompanions.forEach((participant, index) => {
+        const normalized = normalizeCompanionParticipant(participant);
+        if (!normalized) return;
         const li = document.createElement('li');
-        li.className = 'favorite-item';
+        li.className = 'favorite-item companion-participant-item';
 
         const meta = document.createElement('div');
-        meta.className = 'favorite-meta';
+        meta.className = 'favorite-meta companion-participant-meta';
+        const top = document.createElement('div');
+        top.className = 'companion-participant-top';
+
+        const avatar = document.createElement('img');
+        avatar.className = 'companion-participant-avatar';
+        avatar.src = normalized.avatarUrl || buildDefaultAccountAvatar(normalized.name || 'Amico');
+        avatar.alt = `Avatar ${normalized.name || 'partecipante'}`;
+
+        const identity = document.createElement('div');
+        identity.className = 'companion-participant-identity';
         const title = document.createElement('strong');
-        title.textContent = name;
-        meta.append(title);
+        title.textContent = normalized.name || 'Partecipante';
+        const subtitle = document.createElement('span');
+        subtitle.textContent = normalized.type === 'registered'
+            ? (normalized.email || 'Amico registrato')
+            : 'Amico non iscritto';
+        identity.append(title, subtitle);
+        top.append(avatar, identity);
+        meta.append(top);
 
         const actions = document.createElement('div');
         actions.className = 'favorite-actions';
         const removeBtn = document.createElement('button');
         removeBtn.className = 'pill-btn danger';
+        removeBtn.type = 'button';
         removeBtn.textContent = 'Rimuovi';
         removeBtn.addEventListener('click', () => {
             currentCompanions.splice(index, 1);
             renderCompanionsList();
+            renderCompanionFriendsPicker();
             updateSplitSummary();
         });
         actions.append(removeBtn);
@@ -8488,6 +8835,17 @@ function updateSplitSummary() {
     splitValue.textContent = `€${perPerson.toFixed(2)}`;
 }
 
+function upsertCompanionTripInMemory(entry = {}) {
+    const tripId = String(entry.tripId || '');
+    if (!tripId) {
+        companionTrips.unshift(entry);
+        return;
+    }
+    const idx = companionTrips.findIndex((trip) => String(trip.tripId || '') === tripId);
+    if (idx >= 0) companionTrips[idx] = entry;
+    else companionTrips.unshift(entry);
+}
+
 function renderCompanionHistory() {
     if (!companionsHistoryList || !companionsHistoryEmpty) return;
     companionsHistoryList.innerHTML = '';
@@ -8498,6 +8856,8 @@ function renderCompanionHistory() {
     companionsHistoryEmpty.style.display = 'none';
 
     companionTrips.forEach((trip, index) => {
+        const participantNames = Array.isArray(trip.participants) ? trip.participants : [];
+        const participantTotal = Number(trip.participantsCount || participantNames.length || 0);
         const li = document.createElement('li');
         li.className = 'favorite-item';
 
@@ -8506,10 +8866,19 @@ function renderCompanionHistory() {
         const title = document.createElement('strong');
         title.textContent = `${trip.departure} → ${trip.arrival}`;
         const subtitle = document.createElement('span');
-        subtitle.textContent = `${trip.carLabel} • ${trip.fuelLabel} • ${trip.participants.length} persone`;
+        subtitle.textContent = `${trip.carLabel} • ${trip.fuelLabel} • ${participantTotal} persone`;
         const cost = document.createElement('span');
         cost.textContent = `Totale: €${trip.totalCost} • Quota: €${trip.perPerson}`;
         meta.append(title, subtitle, cost);
+
+        if (trip.isIncomingShare) {
+            const sharedBy = String(trip.sharedByUsername || trip.sharedByEmail || '').trim();
+            if (sharedBy) {
+                const sharedLine = document.createElement('span');
+                sharedLine.textContent = `Condivisa da: ${sharedBy}`;
+                meta.append(sharedLine);
+            }
+        }
 
         const actions = document.createElement('div');
         actions.className = 'favorite-actions';
@@ -8522,10 +8891,15 @@ function renderCompanionHistory() {
         deleteBtn.textContent = 'Rimuovi';
         deleteBtn.addEventListener('click', async () => {
             if (authToken) {
-                apiRequest(`/companions/${trip.tripId}`, 'DELETE').catch(() => {});
+                try {
+                    await apiRequest(`/companions/${trip.tripId}`, 'DELETE');
+                } catch (e) {
+                    alert(e.message || 'Errore rimozione tratta condivisa');
+                    return;
+                }
             }
             companionTrips.splice(index, 1);
-            persistCompanionTrips();
+            await persistCompanionTrips();
             renderCompanionHistory();
         });
         actions.append(loadBtn, deleteBtn);
@@ -8536,7 +8910,10 @@ function renderCompanionHistory() {
 }
 
 async function openCompanions() {
-    if (authToken) await loadCompanionTrips();
+    await loadCompanionTrips();
+    if (authToken) {
+        await loadFriendsData().catch(() => {});
+    }
     closeAccountSubPanels({ clearSearch: false });
     closePrimaryModalOverlays(companionsOverlay);
     setActiveMenu(companionsBtn);
@@ -8548,6 +8925,8 @@ async function openCompanions() {
             : 'Calcola una tratta per attivare la divisione dei costi.';
     }
     if (companionNameInput) companionNameInput.value = '';
+    setCompanionPickerPanelsState({ friendsOpen: false, manualOpen: false });
+    renderCompanionFriendsPicker();
     renderCompanionsList();
     updateSplitSummary();
     renderCompanionHistory();
@@ -8559,15 +8938,23 @@ function closeCompanions() {
 }
 
 function addCompanion() {
-    const name = (companionNameInput?.value || '').trim();
+    const name = sanitizeCompanionParticipantName(companionNameInput?.value || '');
     if (!name) return;
-    currentCompanions.push(name);
-    companionNameInput.value = '';
+    const added = addCompanionParticipant({
+        type: 'guest',
+        friendId: '',
+        name,
+        email: '',
+        avatarUrl: ''
+    });
+    if (!added) return;
+    if (companionNameInput) companionNameInput.value = '';
     renderCompanionsList();
+    renderCompanionFriendsPicker();
     updateSplitSummary();
 }
 
-function saveCompanionTrip() {
+async function saveCompanionTrip() {
     if (!lastCalculatedTrip) {
         alert('Calcola prima una tratta da salvare.');
         return;
@@ -8576,26 +8963,52 @@ function saveCompanionTrip() {
         alert('Aggiungi almeno una persona.');
         return;
     }
+
     syncCompletedFlag();
+    const participants = currentCompanions.map((participant) => participant.name).filter(Boolean);
+    const participantDetails = currentCompanions
+        .map((participant) => normalizeCompanionParticipant(participant))
+        .filter(Boolean);
+    const sharedFriendIds = participantDetails
+        .filter((participant) => participant.type === 'registered' && participant.friendId)
+        .map((participant) => participant.friendId);
     const perPerson = currentCompanions.length > 0
         ? (parseFloat(lastCalculatedTrip.totalCost) / currentCompanions.length).toFixed(2)
         : '0.00';
     const entry = {
         ...lastCalculatedTrip,
-        participants: [...currentCompanions],
+        participants,
+        participantDetails,
+        participantsCount: participantDetails.length,
+        sharedFriendIds,
         perPerson,
         type: 'shared'
     };
-    companionTrips.unshift(entry);
+
+    let savedEntry = entry;
     if (authToken) {
-        apiRequest('/companions', 'POST', entry).catch(() => {});
+        try {
+            const res = await apiRequest('/companions', 'POST', entry);
+            savedEntry = res.item || entry;
+        } catch (e) {
+            alert(e.message || 'Errore nel salvataggio della tratta condivisa');
+            return;
+        }
     }
-    persistCompanionTrips();
-    if (entry.completed) {
-        upsertCompletedTrip(entry);
+
+    upsertCompanionTripInMemory(savedEntry);
+    await persistCompanionTrips();
+    if (savedEntry.completed) {
+        upsertCompletedTrip(savedEntry);
     }
     renderCompanionHistory();
-    alert('Tratta salvata in compagnia.');
+
+    const sharedCount = Array.isArray(savedEntry.sharedFriendIds) ? savedEntry.sharedFriendIds.length : 0;
+    if (sharedCount > 0) {
+        alert(`Tratta salvata e condivisa con ${sharedCount} amic${sharedCount === 1 ? 'o' : 'i'}.`);
+    } else {
+        alert('Tratta salvata in compagnia.');
+    }
 }
 
 async function loadCompanionTrip(trip) {
@@ -9363,6 +9776,22 @@ closeFriendsBtn?.addEventListener('click', closeFriendsView);
 closeFuelFinderBtn?.addEventListener('click', closeFuelFinder);
 closeAiChatBtn?.addEventListener('click', closeAiChat);
 closeCompanionsBtn?.addEventListener('click', closeCompanions);
+openCompanionFriendsBtn?.addEventListener('click', () => {
+    const nextOpen = !companionFriendsPanelOpen;
+    setCompanionPickerPanelsState({
+        friendsOpen: nextOpen,
+        manualOpen: companionManualPanelOpen
+    });
+    renderCompanionFriendsPicker();
+});
+toggleManualCompanionBtn?.addEventListener('click', () => {
+    const nextOpen = !companionManualPanelOpen;
+    setCompanionPickerPanelsState({
+        friendsOpen: companionFriendsPanelOpen,
+        manualOpen: nextOpen
+    });
+    if (nextOpen) companionNameInput?.focus();
+});
 addCompanionBtn?.addEventListener('click', addCompanion);
 saveCompanionTripBtn?.addEventListener('click', saveCompanionTrip);
 completedTripCheckbox?.addEventListener('change', syncCompletedFlag);
@@ -9472,8 +9901,10 @@ authPasswordToggleBtn?.addEventListener('click', () => {
     authPasswordInput?.focus();
 });
 authForgotPasswordBtn?.addEventListener('click', () => {
-    setAuthFeedback('Recupero password non ancora disponibile. Usa email/username corretti o registrati.', 'info');
-    updateAuthUI('Per ora il recupero password non è attivo.');
+    requestPasswordResetByEmail().catch(() => {
+        updateAuthUI('Errore recupero password');
+        setAuthFeedback('Errore recupero password', 'error');
+    });
 });
 authToggleBtn?.addEventListener('click', () => {
     if (authToken) return;
@@ -9794,6 +10225,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         closeAccountSubPanels({ clearSearch: false });
         updateFriendRequestsBadge();
         setSecurityStatus('');
+        await handleAuthActionFromUrl();
         const hasSession = await restoreAuthSession();
         if (hasSession || isAuthenticated()) {
             try {

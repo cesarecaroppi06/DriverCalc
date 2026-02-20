@@ -3,6 +3,7 @@ const cors = require('cors');
 const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
@@ -54,6 +55,22 @@ const FUEL_PRICE_MAX_AGE_HOURS = Number.isFinite(FUEL_PRICE_MAX_AGE_HOURS_RAW) &
     ? clampNumber(Math.round(FUEL_PRICE_MAX_AGE_HOURS_RAW), 6, 168)
     : 72;
 const FUEL_PRICE_HIGH_CONFIDENCE_HOURS = Math.min(24, FUEL_PRICE_MAX_AGE_HOURS);
+const AUTH_VERIFY_EMAIL_TTL_MINUTES_RAW = Number(process.env.AUTH_VERIFY_EMAIL_TTL_MINUTES);
+const AUTH_VERIFY_EMAIL_TTL_MINUTES = Number.isFinite(AUTH_VERIFY_EMAIL_TTL_MINUTES_RAW) && AUTH_VERIFY_EMAIL_TTL_MINUTES_RAW > 0
+    ? clampNumber(Math.round(AUTH_VERIFY_EMAIL_TTL_MINUTES_RAW), 10, 60 * 24 * 14)
+    : 60 * 24;
+const AUTH_RESET_PASSWORD_TTL_MINUTES_RAW = Number(process.env.AUTH_RESET_PASSWORD_TTL_MINUTES);
+const AUTH_RESET_PASSWORD_TTL_MINUTES = Number.isFinite(AUTH_RESET_PASSWORD_TTL_MINUTES_RAW) && AUTH_RESET_PASSWORD_TTL_MINUTES_RAW > 0
+    ? clampNumber(Math.round(AUTH_RESET_PASSWORD_TTL_MINUTES_RAW), 5, 180)
+    : 30;
+const PUBLIC_APP_BASE_URL = String(process.env.PUBLIC_APP_BASE_URL || process.env.APP_BASE_URL || '').trim();
+const EMAIL_FROM = String(process.env.EMAIL_FROM || '').trim();
+const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
+const AUTH_EMAIL_DELIVERY_CONFIGURED = Boolean(RESEND_API_KEY && EMAIL_FROM);
+const AUTH_REQUIRE_EMAIL_VERIFICATION_RAW = String(
+    process.env.AUTH_REQUIRE_EMAIL_VERIFICATION || (AUTH_EMAIL_DELIVERY_CONFIGURED ? 'true' : 'false')
+).trim().toLowerCase();
+const AUTH_REQUIRE_EMAIL_VERIFICATION = ['1', 'true', 'yes', 'on'].includes(AUTH_REQUIRE_EMAIL_VERIFICATION_RAW);
 
 function normalizeEmail(value = '') {
     return String(value || '').trim().toLowerCase();
@@ -86,6 +103,36 @@ function isValidDataImageUrl(value = '') {
     return Buffer.byteLength(value, 'utf8') <= ACCOUNT_AVATAR_MAX_BYTES;
 }
 
+function sanitizeAuthTokenEntry(entry = {}) {
+    const userId = String(entry.userId || '').trim();
+    const tokenHash = String(entry.tokenHash || '').trim().toLowerCase();
+    const createdAt = Number(entry.createdAt) || Date.now();
+    const expiresAt = Number(entry.expiresAt);
+    const usedAtRaw = Number(entry.usedAt);
+    const usedAt = Number.isFinite(usedAtRaw) && usedAtRaw > 0 ? usedAtRaw : 0;
+    const fallbackId = `${userId}:${tokenHash.slice(0, 16)}`;
+    const id = String(entry.id || fallbackId).trim();
+    if (!userId) return null;
+    if (!/^[a-f0-9]{64}$/.test(tokenHash)) return null;
+    if (!Number.isFinite(expiresAt) || expiresAt <= 0) return null;
+
+    return {
+        id,
+        userId,
+        tokenHash,
+        createdAt,
+        expiresAt,
+        usedAt
+    };
+}
+
+function pruneAuthTokenEntries(entries = [], now = Date.now()) {
+    if (!Array.isArray(entries)) return [];
+    return entries
+        .map(sanitizeAuthTokenEntry)
+        .filter((entry) => entry && !entry.usedAt && Number(entry.expiresAt) > now);
+}
+
 function ensureUserShape(user = {}) {
     const email = normalizeEmail(user.email);
     const createdAt = Number(user.createdAt) || Date.now();
@@ -98,6 +145,8 @@ function ensureUserShape(user = {}) {
     const tokenVersion = Number.isInteger(Number(user.tokenVersion)) && Number(user.tokenVersion) > 0
         ? Number(user.tokenVersion)
         : 1;
+    const emailVerified = typeof user.emailVerified === 'boolean' ? user.emailVerified : true;
+    const emailVerifiedAt = emailVerified ? (Number(user.emailVerifiedAt) || createdAt) : 0;
 
     return {
         ...user,
@@ -109,6 +158,8 @@ function ensureUserShape(user = {}) {
         location: sanitizeProfileText(user.location || '', 80),
         avatarUrl,
         tokenVersion,
+        emailVerified,
+        emailVerifiedAt,
         createdAt,
         lastLoginAt,
         updatedAt
@@ -124,6 +175,8 @@ function buildPublicUser(user = {}) {
         bio: shaped.bio,
         location: shaped.location,
         avatarUrl: shaped.avatarUrl,
+        emailVerified: !!shaped.emailVerified,
+        emailVerifiedAt: Number(shaped.emailVerifiedAt) || 0,
         createdAt: shaped.createdAt,
         lastLoginAt: shaped.lastLoginAt,
         updatedAt: shaped.updatedAt
@@ -134,6 +187,7 @@ function ensureDbShape(db) {
     if (!db || typeof db !== 'object') db = {};
     if (!Array.isArray(db.users)) db.users = [];
     db.users = db.users.map(ensureUserShape).filter((user) => user.id && user.email && user.passwordHash);
+    const now = Date.now();
     if (!db.favorites || typeof db.favorites !== 'object') db.favorites = {};
     if (!db.companions || typeof db.companions !== 'object') db.companions = {};
     if (!db.completed || typeof db.completed !== 'object') db.completed = {};
@@ -141,6 +195,8 @@ function ensureDbShape(db) {
     if (!Array.isArray(db.friendRequests)) db.friendRequests = [];
     if (!db.friendships || typeof db.friendships !== 'object') db.friendships = {};
     if (!db.shareSettings || typeof db.shareSettings !== 'object') db.shareSettings = {};
+    db.emailVerificationTokens = pruneAuthTokenEntries(db.emailVerificationTokens, now);
+    db.passwordResetTokens = pruneAuthTokenEntries(db.passwordResetTokens, now);
     return db;
 }
 
@@ -217,6 +273,250 @@ function getRequestOrigin(req) {
     const protoCandidate = String(forwardedProto || req?.protocol || 'https').toLowerCase();
     const proto = protoCandidate === 'http' || protoCandidate === 'https' ? protoCandidate : 'https';
     return `${proto}://${host}`;
+}
+
+function escapeHtml(value = '') {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function resolvePublicAppBase(req) {
+    const configuredBase = String(PUBLIC_APP_BASE_URL || '').trim();
+    if (configuredBase && /^https?:\/\//i.test(configuredBase)) {
+        return configuredBase.replace(/\/+$/, '');
+    }
+
+    const reqOrigin = getRequestOrigin(req);
+    if (reqOrigin) return reqOrigin.replace(/\/+$/, '');
+
+    const corsBase = String(CORS_ORIGIN || '').split(',')[0].trim();
+    if (corsBase && /^https?:\/\//i.test(corsBase)) {
+        return corsBase.replace(/\/+$/, '');
+    }
+
+    return '';
+}
+
+function buildAuthActionLink(req, action = '', token = '') {
+    const safeAction = String(action || '').trim();
+    const safeToken = String(token || '').trim();
+    const base = resolvePublicAppBase(req);
+    if (!base || !safeAction || !safeToken) return '';
+    const url = new URL(`${base}/`);
+    url.searchParams.set('authAction', safeAction);
+    url.searchParams.set('token', safeToken);
+    return url.toString();
+}
+
+function hashAuthToken(value = '') {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+function createRawAuthToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+function createOneTimeAuthToken(db, {
+    collectionKey = 'emailVerificationTokens',
+    userId = '',
+    ttlMinutes = 30,
+    revokeExisting = false
+} = {}) {
+    if (!db || typeof db !== 'object') return null;
+    const safeCollection = collectionKey === 'passwordResetTokens' ? 'passwordResetTokens' : 'emailVerificationTokens';
+    const safeUserId = String(userId || '').trim();
+    if (!safeUserId) return null;
+
+    const now = Date.now();
+    db[safeCollection] = pruneAuthTokenEntries(db[safeCollection], now);
+
+    if (revokeExisting) {
+        db[safeCollection] = db[safeCollection].filter((entry) => entry.userId !== safeUserId);
+    }
+
+    const ttlValue = Number(ttlMinutes);
+    const ttlMs = (Number.isFinite(ttlValue) && ttlValue > 0 ? ttlValue : 30) * 60 * 1000;
+    const rawToken = createRawAuthToken();
+    const tokenHash = hashAuthToken(rawToken);
+    const expiresAt = now + ttlMs;
+
+    db[safeCollection].push({
+        id: uuidv4(),
+        userId: safeUserId,
+        tokenHash,
+        createdAt: now,
+        expiresAt,
+        usedAt: 0
+    });
+
+    return { rawToken, expiresAt };
+}
+
+function consumeOneTimeAuthToken(db, {
+    collectionKey = 'emailVerificationTokens',
+    rawToken = ''
+} = {}) {
+    if (!db || typeof db !== 'object') return null;
+    const safeCollection = collectionKey === 'passwordResetTokens' ? 'passwordResetTokens' : 'emailVerificationTokens';
+    const tokenHash = hashAuthToken(rawToken);
+    if (!tokenHash) return null;
+
+    const now = Date.now();
+    db[safeCollection] = pruneAuthTokenEntries(db[safeCollection], now);
+    const tokenEntry = db[safeCollection].find((entry) => entry.tokenHash === tokenHash);
+    if (!tokenEntry) return null;
+
+    tokenEntry.usedAt = now;
+    return tokenEntry;
+}
+
+async function sendTransactionalEmail({
+    to = '',
+    subject = '',
+    text = '',
+    html = ''
+} = {}) {
+    const recipient = normalizeEmail(to);
+    const safeSubject = String(subject || '').trim();
+    if (!recipient || !safeSubject) {
+        return { ok: false, error: 'Destinatario o soggetto mancanti' };
+    }
+
+    if (RESEND_API_KEY && EMAIL_FROM) {
+        try {
+            const response = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${RESEND_API_KEY}`
+                },
+                body: JSON.stringify({
+                    from: EMAIL_FROM,
+                    to: [recipient],
+                    subject: safeSubject,
+                    text: String(text || ''),
+                    html: String(html || '')
+                })
+            });
+
+            if (!response.ok) {
+                const detail = await response.text().catch(() => '');
+                throw new Error(detail || `Resend HTTP ${response.status}`);
+            }
+
+            return { ok: true, provider: 'resend' };
+        } catch (err) {
+            console.error('[DriveCalc API] Errore invio email:', err.message);
+            return { ok: false, error: err.message };
+        }
+    }
+
+    console.log(`[DriveCalc API] Email simulata (configura RESEND_API_KEY + EMAIL_FROM): to=${recipient} subject="${safeSubject}"`);
+    if (text) {
+        console.log(text);
+    }
+    return { ok: true, simulated: true };
+}
+
+function buildVerificationEmailContent(user = {}, actionUrl = '') {
+    const username = String(user.username || '').trim() || 'utente';
+    const expiresHours = Math.max(1, Math.round(AUTH_VERIFY_EMAIL_TTL_MINUTES / 60));
+    const safeLink = String(actionUrl || '').trim();
+    const subject = 'Conferma la tua email DriveCalc';
+    const fallback = 'Se non riesci a cliccare il link, copialo e aprilo nel browser.';
+    const text = [
+        `Ciao ${username},`,
+        '',
+        'Grazie per esserti registrato su DriveCalc.',
+        safeLink ? `Conferma la tua email qui: ${safeLink}` : 'Link verifica non disponibile. Richiedi un nuovo link dal login.',
+        '',
+        `Il link scade tra ${expiresHours} ore.`,
+        fallback,
+        '',
+        'Se non hai richiesto tu la registrazione, ignora questa email.'
+    ].join('\n');
+
+    const html = `
+<div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a;">
+  <h2 style="margin:0 0 12px;">Conferma il tuo account DriveCalc</h2>
+  <p>Ciao <strong>${escapeHtml(username)}</strong>, grazie per esserti registrato.</p>
+  <p>Per attivare l'account conferma la tua email:</p>
+  <p>
+    ${safeLink
+        ? `<a href="${escapeHtml(safeLink)}" style="display:inline-block;padding:10px 16px;background:#0b5fff;color:#ffffff;text-decoration:none;border-radius:8px;">Conferma email</a>`
+        : '<strong>Link verifica non disponibile. Richiedi un nuovo link dal login.</strong>'}
+  </p>
+  <p>Il link scade tra ${escapeHtml(String(expiresHours))} ore.</p>
+  <p style="color:#475569;">Se non hai richiesto tu la registrazione, ignora questa email.</p>
+</div>
+`.trim();
+
+    return { subject, text, html };
+}
+
+function buildPasswordResetEmailContent(user = {}, actionUrl = '') {
+    const username = String(user.username || '').trim() || 'utente';
+    const safeLink = String(actionUrl || '').trim();
+    const subject = 'Reset password DriveCalc';
+    const text = [
+        `Ciao ${username},`,
+        '',
+        'Abbiamo ricevuto una richiesta di reset della password.',
+        safeLink ? `Imposta una nuova password qui: ${safeLink}` : 'Link reset non disponibile. Richiedi un nuovo reset password.',
+        '',
+        `Il link scade tra ${AUTH_RESET_PASSWORD_TTL_MINUTES} minuti.`,
+        '',
+        'Se non sei stato tu, ignora questa email.'
+    ].join('\n');
+
+    const html = `
+<div style="font-family:Arial,sans-serif;line-height:1.5;color:#0f172a;">
+  <h2 style="margin:0 0 12px;">Recupero password DriveCalc</h2>
+  <p>Ciao <strong>${escapeHtml(username)}</strong>,</p>
+  <p>abbiamo ricevuto una richiesta di reset password.</p>
+  <p>
+    ${safeLink
+        ? `<a href="${escapeHtml(safeLink)}" style="display:inline-block;padding:10px 16px;background:#0b5fff;color:#ffffff;text-decoration:none;border-radius:8px;">Imposta nuova password</a>`
+        : '<strong>Link reset non disponibile. Richiedi un nuovo reset password.</strong>'}
+  </p>
+  <p>Il link scade tra ${escapeHtml(String(AUTH_RESET_PASSWORD_TTL_MINUTES))} minuti.</p>
+  <p style="color:#475569;">Se non sei stato tu, ignora questa email.</p>
+</div>
+`.trim();
+
+    return { subject, text, html };
+}
+
+async function dispatchVerificationEmail(req, user = {}, rawToken = '') {
+    const safeToken = String(rawToken || '').trim();
+    if (!safeToken || !user?.email) return { ok: false, error: 'Token verifica non valido' };
+    const actionUrl = buildAuthActionLink(req, 'verify-email', safeToken);
+    const content = buildVerificationEmailContent(user, actionUrl);
+    return sendTransactionalEmail({
+        to: user.email,
+        subject: content.subject,
+        text: content.text,
+        html: content.html
+    });
+}
+
+async function dispatchPasswordResetEmail(req, user = {}, rawToken = '') {
+    const safeToken = String(rawToken || '').trim();
+    if (!safeToken || !user?.email) return { ok: false, error: 'Token reset non valido' };
+    const actionUrl = buildAuthActionLink(req, 'reset-password', safeToken);
+    const content = buildPasswordResetEmailContent(user, actionUrl);
+    return sendTransactionalEmail({
+        to: user.email,
+        subject: content.subject,
+        text: content.text,
+        html: content.html
+    });
 }
 
 function escapeXml(value = '') {
@@ -1061,6 +1361,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const passwordHash = await bcrypt.hash(rawPassword, 10);
     const now = Date.now();
+    const shouldRequireEmailVerification = AUTH_REQUIRE_EMAIL_VERIFICATION;
     const safeUsername = sanitizeUsername(rawUsername, { fallback: deriveUsernameFromEmail(normalizedEmail) });
     const user = ensureUserShape({
         id: uuidv4(),
@@ -1070,18 +1371,52 @@ app.post('/api/auth/register', async (req, res) => {
         bio: '',
         location: '',
         avatarUrl: '',
+        emailVerified: !shouldRequireEmailVerification,
+        emailVerifiedAt: shouldRequireEmailVerification ? 0 : now,
         createdAt: now,
         lastLoginAt: now,
         updatedAt: now
     });
     db.users.push(user);
     getShareSettings(db, user.id);
+
+    if (!shouldRequireEmailVerification) {
+        writeDb(db);
+        const token = issueToken(user);
+        const stats = computeUserStats(db, user.id);
+        setAuthCookie(res, token);
+        return res.status(201).json({
+            ok: true,
+            token,
+            user: buildPublicUser(user),
+            stats,
+            requiresEmailVerification: false,
+            message: 'Registrazione completata. Accesso eseguito.'
+        });
+    }
+
+    const verificationToken = createOneTimeAuthToken(db, {
+        collectionKey: 'emailVerificationTokens',
+        userId: user.id,
+        ttlMinutes: AUTH_VERIFY_EMAIL_TTL_MINUTES,
+        revokeExisting: true
+    });
     writeDb(db);
 
-    const token = issueToken(user);
-    const stats = computeUserStats(db, user.id);
-    setAuthCookie(res, token);
-    return res.json({ token, user: buildPublicUser(user), stats });
+    const emailResult = await dispatchVerificationEmail(req, user, verificationToken?.rawToken || '');
+    if (!emailResult.ok) {
+        console.error(`[DriveCalc API] Invio email verifica fallito per ${user.email}: ${emailResult.error || 'errore sconosciuto'}`);
+    }
+
+    return res.status(201).json({
+        ok: true,
+        email: user.email,
+        requiresEmailVerification: true,
+        verificationEmailSent: !!emailResult.ok,
+        message: emailResult.ok
+            ? 'Registrazione completata. Controlla la tua email per verificare l’account.'
+            : 'Registrazione completata. Invio email temporaneamente non disponibile: usa "Password dimenticata?" o richiedi un nuovo link.'
+    });
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -1099,6 +1434,12 @@ app.post('/api/auth/login', async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Credenziali non valide' });
     const ok = await bcrypt.compare(rawPassword, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'Credenziali non valide' });
+    if (AUTH_REQUIRE_EMAIL_VERIFICATION && !user.emailVerified) {
+        return res.status(403).json({
+            error: 'Email non verificata. Controlla la tua casella o richiedi un nuovo link di verifica.',
+            code: 'EMAIL_NOT_VERIFIED'
+        });
+    }
     user.lastLoginAt = Date.now();
     user.updatedAt = Date.now();
     writeDb(db);
@@ -1106,6 +1447,174 @@ app.post('/api/auth/login', async (req, res) => {
     const stats = computeUserStats(db, user.id);
     setAuthCookie(res, token);
     return res.json({ token, user: buildPublicUser(user), stats });
+});
+
+app.post('/api/auth/verify-email', async (req, res) => {
+    const rawToken = String((req.body || {}).token || '').trim();
+    if (!rawToken) return res.status(400).json({ error: 'Token di verifica mancante' });
+
+    const db = readDb();
+    const tokenEntry = consumeOneTimeAuthToken(db, {
+        collectionKey: 'emailVerificationTokens',
+        rawToken
+    });
+    if (!tokenEntry) return res.status(400).json({ error: 'Token non valido o scaduto' });
+
+    const user = db.users.find((u) => u.id === tokenEntry.userId);
+    if (!user) {
+        writeDb(db);
+        return res.status(400).json({ error: 'Token non valido o scaduto' });
+    }
+
+    user.emailVerified = true;
+    user.emailVerifiedAt = Date.now();
+    user.updatedAt = Date.now();
+    db.emailVerificationTokens = db.emailVerificationTokens.filter((entry) => entry.userId !== user.id);
+    writeDb(db);
+
+    return res.json({
+        ok: true,
+        message: 'Email verificata con successo. Ora puoi accedere.',
+        user: buildPublicUser(user)
+    });
+});
+
+app.post('/api/auth/resend-verification', async (req, res) => {
+    if (!AUTH_REQUIRE_EMAIL_VERIFICATION) {
+        return res.json({ ok: true, message: 'Verifica email non richiesta in questo ambiente.' });
+    }
+
+    const { email, identifier } = req.body || {};
+    const rawIdentifier = String(identifier || email || '').trim();
+    if (!rawIdentifier) {
+        return res.status(400).json({ error: 'Inserisci email o username' });
+    }
+
+    const normalizedEmail = normalizeEmail(rawIdentifier);
+    const normalizedIdentifier = rawIdentifier.toLowerCase();
+    const db = readDb();
+    const user = db.users.find((u) => (
+        u.email === normalizedEmail
+        || String(u.username || '').trim().toLowerCase() === normalizedIdentifier
+    ));
+
+    if (!user) {
+        return res.json({
+            ok: true,
+            message: 'Se l’account esiste, abbiamo inviato una nuova email di verifica.'
+        });
+    }
+
+    if (user.emailVerified) {
+        return res.json({
+            ok: true,
+            alreadyVerified: true,
+            message: 'Email già verificata. Puoi accedere.'
+        });
+    }
+
+    const verificationToken = createOneTimeAuthToken(db, {
+        collectionKey: 'emailVerificationTokens',
+        userId: user.id,
+        ttlMinutes: AUTH_VERIFY_EMAIL_TTL_MINUTES,
+        revokeExisting: true
+    });
+    writeDb(db);
+
+    const emailResult = await dispatchVerificationEmail(req, user, verificationToken?.rawToken || '');
+    if (!emailResult.ok) {
+        return res.status(500).json({ error: 'Impossibile inviare la email di verifica al momento' });
+    }
+
+    return res.json({ ok: true, message: 'Nuova email di verifica inviata' });
+});
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+    const { email, identifier } = req.body || {};
+    const rawIdentifier = String(identifier || email || '').trim();
+    if (!rawIdentifier) {
+        return res.status(400).json({ error: 'Inserisci email o username' });
+    }
+
+    const normalizedEmail = normalizeEmail(rawIdentifier);
+    const normalizedIdentifier = rawIdentifier.toLowerCase();
+    const db = readDb();
+    const user = db.users.find((u) => (
+        u.email === normalizedEmail
+        || String(u.username || '').trim().toLowerCase() === normalizedIdentifier
+    ));
+
+    const genericMessage = 'Se l’account esiste, riceverai una email con le istruzioni per il reset password.';
+    if (!user) {
+        return res.json({ ok: true, message: genericMessage });
+    }
+
+    if (AUTH_REQUIRE_EMAIL_VERIFICATION && !user.emailVerified) {
+        const verifyToken = createOneTimeAuthToken(db, {
+            collectionKey: 'emailVerificationTokens',
+            userId: user.id,
+            ttlMinutes: AUTH_VERIFY_EMAIL_TTL_MINUTES,
+            revokeExisting: true
+        });
+        writeDb(db);
+        const verifyEmailResult = await dispatchVerificationEmail(req, user, verifyToken?.rawToken || '');
+        if (!verifyEmailResult.ok) {
+            return res.status(500).json({ error: 'Impossibile inviare la email di verifica al momento' });
+        }
+        return res.json({ ok: true, message: genericMessage });
+    }
+
+    const resetToken = createOneTimeAuthToken(db, {
+        collectionKey: 'passwordResetTokens',
+        userId: user.id,
+        ttlMinutes: AUTH_RESET_PASSWORD_TTL_MINUTES,
+        revokeExisting: true
+    });
+    writeDb(db);
+
+    const resetEmailResult = await dispatchPasswordResetEmail(req, user, resetToken?.rawToken || '');
+    if (!resetEmailResult.ok) {
+        return res.status(500).json({ error: 'Impossibile inviare la email di reset password al momento' });
+    }
+
+    return res.json({ ok: true, message: genericMessage });
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+    const rawToken = String((req.body || {}).token || '').trim();
+    const newPassword = String((req.body || {}).newPassword || '');
+
+    if (!rawToken || !newPassword) {
+        return res.status(400).json({ error: 'Token e nuova password sono obbligatori' });
+    }
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: 'La nuova password deve avere almeno 6 caratteri' });
+    }
+
+    const db = readDb();
+    const tokenEntry = consumeOneTimeAuthToken(db, {
+        collectionKey: 'passwordResetTokens',
+        rawToken
+    });
+    if (!tokenEntry) return res.status(400).json({ error: 'Token reset non valido o scaduto' });
+
+    const user = db.users.find((u) => u.id === tokenEntry.userId);
+    if (!user) {
+        writeDb(db);
+        return res.status(400).json({ error: 'Token reset non valido o scaduto' });
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.tokenVersion = Number(user.tokenVersion || 1) + 1;
+    user.updatedAt = Date.now();
+    db.passwordResetTokens = db.passwordResetTokens.filter((entry) => entry.userId !== user.id);
+    writeDb(db);
+    clearAuthCookie(res);
+
+    return res.json({
+        ok: true,
+        message: 'Password aggiornata. Ora puoi accedere con la nuova password.'
+    });
 });
 
 app.get('/api/auth/me', authMiddleware, (req, res) => {
@@ -1327,6 +1836,256 @@ function isFriends(db, a, b) {
     return list.includes(b);
 }
 
+function sanitizeCompanionName(value = '') {
+    return String(value || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .slice(0, 80);
+}
+
+function normalizeCompanionParticipants(incoming = {}, db = {}, ownerUserId = '') {
+    const sourceDetails = Array.isArray(incoming.participantDetails) && incoming.participantDetails.length
+        ? incoming.participantDetails
+        : Array.isArray(incoming.participants)
+            ? incoming.participants.map((name) => ({ name }))
+            : [];
+    const ownerFriendIds = new Set(getFriendList(db, ownerUserId).map((id) => String(id)));
+    const participants = [];
+    const seenRegistered = new Set();
+    const seenGuests = new Set();
+
+    const pushGuest = (rawName) => {
+        const name = sanitizeCompanionName(rawName);
+        if (!name) return;
+        const guestKey = name.toLowerCase();
+        if (seenGuests.has(guestKey)) return;
+        seenGuests.add(guestKey);
+        participants.push({
+            type: 'guest',
+            friendId: '',
+            name,
+            email: '',
+            avatarUrl: ''
+        });
+    };
+
+    const pushRegistered = (rawFriendId) => {
+        const friendId = String(rawFriendId || '').trim();
+        if (!friendId) return;
+        if (!ownerFriendIds.has(friendId)) return;
+        if (seenRegistered.has(friendId)) return;
+        const friendUser = db.users.find((u) => u.id === friendId);
+        if (!friendUser) return;
+        seenRegistered.add(friendId);
+        participants.push({
+            type: 'registered',
+            friendId: friendUser.id,
+            name: sanitizeCompanionName(friendUser.username || friendUser.email || 'Amico'),
+            email: String(friendUser.email || '').trim(),
+            avatarUrl: String(friendUser.avatarUrl || '')
+        });
+    };
+
+    sourceDetails.forEach((item) => {
+        if (typeof item === 'string') {
+            pushGuest(item);
+            return;
+        }
+
+        if (!item || typeof item !== 'object') return;
+        const friendIdCandidate = String(item.friendId || item.id || '').trim();
+        const rawType = String(item.type || '').trim().toLowerCase();
+        if (friendIdCandidate && (rawType === 'registered' || ownerFriendIds.has(friendIdCandidate))) {
+            pushRegistered(friendIdCandidate);
+            return;
+        }
+
+        const guestName = item.name || item.username || item.email || '';
+        pushGuest(guestName);
+    });
+
+    const explicitSharedFriendIds = Array.isArray(incoming.sharedFriendIds) ? incoming.sharedFriendIds : [];
+    explicitSharedFriendIds.forEach((friendId) => pushRegistered(friendId));
+
+    return participants;
+}
+
+function computeCompanionShareValue(totalCost, participantsCount, fallbackValue = '0.00') {
+    const count = Math.max(0, Number(participantsCount) || 0);
+    const parsedTotal = Number.parseFloat(totalCost);
+    if (count > 0 && Number.isFinite(parsedTotal)) {
+        return (parsedTotal / count).toFixed(2);
+    }
+    const parsedFallback = Number.parseFloat(fallbackValue);
+    if (Number.isFinite(parsedFallback)) return parsedFallback.toFixed(2);
+    return '0.00';
+}
+
+function upsertIncomingCompanionShare(db, {
+    friendId = '',
+    sourceTrip = {},
+    ownerUser = {}
+} = {}) {
+    const safeFriendId = String(friendId || '').trim();
+    if (!safeFriendId) return;
+    const sourceTripId = String(sourceTrip.tripId || '').trim();
+    if (!sourceTripId) return;
+    const ownerUserId = String(ownerUser.id || '').trim();
+    if (!ownerUserId || safeFriendId === ownerUserId) return;
+
+    const mirrorTripId = `${sourceTripId}::shared-by::${ownerUserId}`;
+    const targetItems = getCollection(db, 'companions', safeFriendId);
+    const now = Date.now();
+    const existingIdx = targetItems.findIndex((item) => (
+        String(item.tripId || '') === mirrorTripId
+        || (
+            String(item.sourceTripId || '') === sourceTripId
+            && String(item.sharedByUserId || '') === ownerUserId
+        )
+    ));
+    const existing = existingIdx >= 0 ? targetItems[existingIdx] : null;
+
+    const mirrorEntry = {
+        ...sourceTrip,
+        tripId: mirrorTripId,
+        sourceTripId,
+        isIncomingShare: true,
+        sharedByUserId: ownerUserId,
+        sharedByUsername: String(ownerUser.username || ''),
+        sharedByEmail: String(ownerUser.email || ''),
+        sharedAt: now,
+        createdAt: Number(existing?.createdAt) || now,
+        updatedAt: now
+    };
+
+    if (existingIdx >= 0) targetItems[existingIdx] = mirrorEntry;
+    else targetItems.unshift(mirrorEntry);
+}
+
+function removeIncomingCompanionShare(db, {
+    friendId = '',
+    ownerUserId = '',
+    sourceTripId = ''
+} = {}) {
+    const safeFriendId = String(friendId || '').trim();
+    const safeOwnerUserId = String(ownerUserId || '').trim();
+    const safeSourceTripId = String(sourceTripId || '').trim();
+    if (!safeFriendId || !safeOwnerUserId || !safeSourceTripId) return;
+
+    const items = getCollection(db, 'companions', safeFriendId);
+    db.companions[safeFriendId] = items.filter((item) => !(
+        String(item.sharedByUserId || '') === safeOwnerUserId
+        && String(item.sourceTripId || '') === safeSourceTripId
+    ));
+}
+
+app.get('/api/companions', authMiddleware, (req, res) => {
+    const db = readDb();
+    const items = getCollection(db, 'companions', req.user.userId);
+    return res.json({ items });
+});
+
+app.post('/api/companions', authMiddleware, (req, res) => {
+    const db = readDb();
+    const ownerUser = db.users.find((u) => u.id === req.user.userId);
+    if (!ownerUser) return res.status(404).json({ error: 'Utente non trovato' });
+
+    const ownerItems = getCollection(db, 'companions', req.user.userId);
+    const incoming = req.body || {};
+    const tripId = String(incoming.tripId || Date.now());
+    const existingIdx = ownerItems.findIndex((item) => String(item.tripId || '') === tripId);
+    const previousOwnerEntry = existingIdx >= 0 ? ownerItems[existingIdx] : null;
+    const participants = normalizeCompanionParticipants(incoming, db, req.user.userId);
+    if (!participants.length) {
+        return res.status(400).json({ error: 'Aggiungi almeno un partecipante' });
+    }
+
+    const sharedFriendIds = participants
+        .filter((participant) => participant.type === 'registered' && participant.friendId)
+        .map((participant) => String(participant.friendId));
+    const participantsCount = participants.length;
+    const participantsNames = participants.map((participant) => participant.name);
+    const now = Date.now();
+    const normalizedOwnerEntry = {
+        ...incoming,
+        tripId,
+        type: 'shared',
+        participants: participantsNames,
+        participantDetails: participants,
+        participantsCount,
+        sharedFriendIds,
+        perPerson: computeCompanionShareValue(incoming.totalCost, participantsCount, incoming.perPerson),
+        ownerUserId: ownerUser.id,
+        ownerUsername: ownerUser.username,
+        ownerEmail: ownerUser.email,
+        sourceTripId: tripId,
+        isIncomingShare: false,
+        createdAt: Number(previousOwnerEntry?.createdAt) || Number(incoming.createdAt) || now,
+        updatedAt: now
+    };
+
+    if (existingIdx >= 0) ownerItems[existingIdx] = normalizedOwnerEntry;
+    else ownerItems.unshift(normalizedOwnerEntry);
+
+    const previousSharedFriendIds = Array.isArray(previousOwnerEntry?.sharedFriendIds)
+        ? previousOwnerEntry.sharedFriendIds.map((id) => String(id))
+        : [];
+    const nextSharedIdSet = new Set(sharedFriendIds);
+    previousSharedFriendIds
+        .filter((friendId) => !nextSharedIdSet.has(friendId))
+        .forEach((friendId) => {
+            removeIncomingCompanionShare(db, {
+                friendId,
+                ownerUserId: ownerUser.id,
+                sourceTripId: tripId
+            });
+        });
+
+    sharedFriendIds.forEach((friendId) => {
+        upsertIncomingCompanionShare(db, {
+            friendId,
+            sourceTrip: normalizedOwnerEntry,
+            ownerUser
+        });
+    });
+
+    writeDb(db);
+    return res.json({ item: normalizedOwnerEntry });
+});
+
+app.delete('/api/companions/:tripId', authMiddleware, (req, res) => {
+    const db = readDb();
+    const items = getCollection(db, 'companions', req.user.userId);
+    const tripId = String(req.params.tripId || '');
+    const idx = items.findIndex((item) => String(item.tripId || '') === tripId);
+    if (idx < 0) {
+        return res.status(404).json({ error: 'Elemento non trovato' });
+    }
+
+    const removedEntry = items[idx];
+    items.splice(idx, 1);
+
+    const isOwnerEntry = !removedEntry?.isIncomingShare
+        && String(removedEntry?.ownerUserId || req.user.userId) === String(req.user.userId);
+    if (isOwnerEntry) {
+        const explicitShared = Array.isArray(removedEntry.sharedFriendIds)
+            ? removedEntry.sharedFriendIds.map((id) => String(id))
+            : [];
+        const ownerFriendIds = getFriendList(db, req.user.userId).map((id) => String(id));
+        const targets = new Set([...explicitShared, ...ownerFriendIds]);
+        targets.forEach((friendId) => {
+            removeIncomingCompanionShare(db, {
+                friendId,
+                ownerUserId: req.user.userId,
+                sourceTripId: tripId
+            });
+        });
+    }
+
+    writeDb(db);
+    return res.json({ ok: true });
+});
+
 function addCrudRoutes(resourceKey) {
     app.get(`/api/${resourceKey}`, authMiddleware, (req, res) => {
         const db = readDb();
@@ -1360,7 +2119,7 @@ function addCrudRoutes(resourceKey) {
     });
 }
 
-['favorites', 'companions', 'completed'].forEach(addCrudRoutes);
+['favorites', 'completed'].forEach(addCrudRoutes);
 
 app.get('/api/mycar-photo', authMiddleware, (req, res) => {
     const db = readDb();

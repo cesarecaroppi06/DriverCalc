@@ -1365,6 +1365,72 @@ select:focus, input:focus {
     color: #f5f7ff;
 }
 
+.companion-picker-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.companion-picker-actions .pill-btn {
+    flex: 1 1 200px;
+}
+
+.companion-friends-panel {
+    margin-bottom: 12px;
+}
+
+.companion-friends-list {
+    margin-bottom: 0;
+}
+
+.companion-friend-item,
+.companion-participant-item {
+    align-items: center;
+}
+
+.companion-friend-meta,
+.companion-participant-meta {
+    width: 100%;
+}
+
+.companion-friend-top,
+.companion-participant-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.companion-friend-avatar,
+.companion-participant-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(15, 23, 42, 0.6);
+    flex: 0 0 42px;
+}
+
+.companion-friend-identity,
+.companion-participant-identity {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.companion-friend-identity strong,
+.companion-participant-identity strong {
+    color: #eef4ff;
+}
+
+.companion-friend-identity span,
+.companion-participant-identity span {
+    color: #c7d4f8;
+    font-size: 12px;
+    word-break: break-word;
+}
+
 .auth-actions {
     display: flex;
     gap: 10px;
@@ -2029,6 +2095,26 @@ select:focus, input:focus {
     font-size: 13px;
     color: #dbeafe;
     opacity: 0.95;
+}
+
+.friend-shared-heading-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.friend-shared-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(125, 211, 252, 0.45);
+    background: rgba(15, 118, 110, 0.24);
+    color: #cffafe;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
 }
 
 .friend-shared-photo {
@@ -3245,6 +3331,10 @@ footer p {
     }
 
     .participants-input {
+        flex-direction: column;
+    }
+
+    .companion-picker-actions {
         flex-direction: column;
     }
 }
@@ -4748,6 +4838,10 @@ body.app-ready .settings-menu {
     }
 
     .participants-input {
+        flex-direction: column;
+    }
+
+    .companion-picker-actions {
         flex-direction: column;
     }
 
