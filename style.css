@@ -5240,6 +5240,86 @@ body.mobile-menu-open #mobileMenuBackdrop {
     }
 }
 
+/* Dedicated route pages for menu sections */
+body.dedicated-page .calculator-section,
+body.dedicated-page #mapSectionHomeMount,
+body.dedicated-page #mapSection,
+body.dedicated-page #error {
+    display: none !important;
+}
+
+body.dedicated-page.route-info main {
+    display: none !important;
+}
+
+body.dedicated-page.route-info #infoPage {
+    display: block !important;
+}
+
+body.dedicated-page:not(.route-info) #infoPage {
+    display: none !important;
+}
+
+body.dedicated-page:not(.route-info) .modal-overlay {
+    position: static;
+    inset: auto;
+    background: transparent;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    padding: 0;
+    transition: none;
+}
+
+body.dedicated-page:not(.route-info) .modal-overlay:not(.is-open) {
+    display: none !important;
+}
+
+body.dedicated-page:not(.route-info) .modal-overlay.is-open {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+}
+
+body.dedicated-page:not(.route-info) .modal-card {
+    width: min(1080px, 100%);
+    max-height: none;
+    overflow: visible;
+    margin: 0 auto 20px;
+    transform: none !important;
+    opacity: 1 !important;
+}
+
+body.dedicated-page:not(.route-info) .modal-card .favorites-list,
+body.dedicated-page:not(.route-info) .modal-card .companions-list,
+body.dedicated-page:not(.route-info) .modal-card .fuel-stations-list {
+    max-height: min(50vh, 460px);
+}
+
+body.dedicated-page:not(.route-info) #fuelFinderOverlay.fuel-finder-overlay-full {
+    padding: 0;
+    align-items: stretch;
+    justify-content: center;
+}
+
+body.dedicated-page:not(.route-info) #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-card {
+    height: auto;
+    max-height: none;
+    border-radius: 18px;
+}
+
+@media (max-width: 768px) {
+    body.dedicated-page:not(.route-info) .modal-card {
+        width: 100%;
+    }
+
+    body.dedicated-page:not(.route-info) .modal-card .favorites-list,
+    body.dedicated-page:not(.route-info) .modal-card .companions-list,
+    body.dedicated-page:not(.route-info) .modal-card .fuel-stations-list {
+        max-height: none;
+    }
+}
+
 /* Companions modal reliability */
 #companionsOverlay.modal-overlay {
     align-items: flex-start;

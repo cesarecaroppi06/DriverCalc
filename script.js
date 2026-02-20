@@ -5649,6 +5649,7 @@ async function calculateTrip() {
             completed: completedTripCheckbox?.checked || false,
             type: 'solo'
         };
+        persistLastCalculatedTripState();
 
         // Aggiorna i risultati
         displayResults({
@@ -5799,6 +5800,64 @@ const AI_CHAT_REPLY_MAX_CHARS = 7000;
 const FUEL_FINDER_LAST_KEY = 'drivecalc_fuel_finder_last_v1';
 const LOCAL_API_BASE = 'http://localhost:3001/api';
 const CLOUD_API_BASES = ['https://drivercalc.onrender.com/api', 'https://drivecalc.onrender.com/api'];
+const LAST_TRIP_SESSION_KEY = 'drivecalc_last_trip_v1';
+const ROUTE_NOTICE_KEY = 'drivecalc_route_notice_v1';
+const COMPANIONS_ROUTE_UI_KEY = 'drivecalc_companions_route_ui_v1';
+const PENDING_TRIP_LOAD_KEY = 'drivecalc_pending_trip_load_v1';
+const MENU_ROUTE_FILES = Object.freeze({
+    home: 'index.html',
+    budget: 'budget.html',
+    companions: 'companions.html',
+    friends: 'friends.html',
+    fuelFinder: 'fuel-finder.html',
+    aiChat: 'ai-chat.html',
+    favorites: 'favorites.html',
+    security: 'security.html',
+    account: 'account.html',
+    info: 'info.html'
+});
+const MENU_ROUTE_META = Object.freeze({
+    home: {
+        title: 'DriveCalc | Calcolatore costo viaggio con pedaggi e carburante',
+        subtitle: 'Calcolatore costi di viaggio'
+    },
+    budget: {
+        title: 'Bilancio Viaggi | DriveCalc',
+        subtitle: 'Bilancio tratte e trend costi'
+    },
+    companions: {
+        title: 'Tratta in Compagnia | DriveCalc',
+        subtitle: 'Condivisione tratte e quota per persona'
+    },
+    friends: {
+        title: 'I Miei Amici | DriveCalc',
+        subtitle: 'Gestione amici e condivisioni'
+    },
+    fuelFinder: {
+        title: 'Ricerca Benzinaio Smart | DriveCalc',
+        subtitle: 'Trova benzinai e confronta prezzi'
+    },
+    aiChat: {
+        title: 'Chat AI Viaggio | DriveCalc',
+        subtitle: 'Assistente viaggio intelligente'
+    },
+    favorites: {
+        title: 'Preferiti | DriveCalc',
+        subtitle: 'Archivio tratte salvate'
+    },
+    security: {
+        title: 'Sicurezza Account | DriveCalc',
+        subtitle: 'Protezione e password account'
+    },
+    account: {
+        title: 'Account | DriveCalc',
+        subtitle: 'Profilo, autenticazione e dati personali'
+    },
+    info: {
+        title: 'Info e Guida | DriveCalc',
+        subtitle: 'Come funziona il calcolatore'
+    }
+});
 
 function normalizeApiBase(value = '') {
     return String(value || '').trim().replace(/\/+$/, '');
@@ -5836,6 +5895,261 @@ function buildApiBaseCandidates() {
 
     CLOUD_API_BASES.forEach(pushCandidate);
     return candidates.length ? candidates : [LOCAL_API_BASE];
+}
+
+function getCurrentPageFileName() {
+    if (typeof window === 'undefined') return MENU_ROUTE_FILES.home;
+    const pathParts = String(window.location.pathname || '/').split('/');
+    const rawFileName = String(pathParts[pathParts.length - 1] || '').trim().toLowerCase();
+    if (!rawFileName || rawFileName === '/') return MENU_ROUTE_FILES.home;
+    if (rawFileName.endsWith('.html')) return rawFileName;
+    return `${rawFileName}.html`;
+}
+
+function getCurrentRouteKey() {
+    const currentFile = getCurrentPageFileName();
+    const routeEntry = Object.entries(MENU_ROUTE_FILES).find(([, fileName]) => fileName === currentFile);
+    return routeEntry ? routeEntry[0] : 'home';
+}
+
+function isCurrentRoute(routeKey = 'home') {
+    return getCurrentRouteKey() === routeKey;
+}
+
+function isDedicatedRouteActive() {
+    return getCurrentRouteKey() !== 'home';
+}
+
+function getRouteFile(routeKey = 'home') {
+    return MENU_ROUTE_FILES[routeKey] || MENU_ROUTE_FILES.home;
+}
+
+function persistLastCalculatedTripState() {
+    if (typeof window === 'undefined' || !window.sessionStorage) return;
+    try {
+        if (lastCalculatedTrip && typeof lastCalculatedTrip === 'object') {
+            window.sessionStorage.setItem(LAST_TRIP_SESSION_KEY, JSON.stringify(lastCalculatedTrip));
+            return;
+        }
+        window.sessionStorage.removeItem(LAST_TRIP_SESSION_KEY);
+    } catch (e) {
+        // Ignore session storage errors.
+    }
+}
+
+function restoreLastCalculatedTripState() {
+    if (lastCalculatedTrip || typeof window === 'undefined' || !window.sessionStorage) return;
+    try {
+        const raw = window.sessionStorage.getItem(LAST_TRIP_SESSION_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return;
+        if (!parsed.departure || !parsed.arrival) return;
+        lastCalculatedTrip = parsed;
+    } catch (e) {
+        // Ignore invalid session payload.
+    }
+}
+
+function navigateToRoute(routeKey = 'home', { replace = false } = {}) {
+    if (typeof window === 'undefined') return false;
+    const targetFile = getRouteFile(routeKey);
+    if (!targetFile) return false;
+    if (getCurrentPageFileName() === targetFile) return false;
+    persistLastCalculatedTripState();
+    if (replace) {
+        window.location.replace(targetFile);
+    } else {
+        window.location.assign(targetFile);
+    }
+    return true;
+}
+
+function maybeNavigateToRoute(routeKey = 'home') {
+    return navigateToRoute(routeKey);
+}
+
+function setPendingRouteNotice(message = '') {
+    if (typeof window === 'undefined' || !window.sessionStorage) return;
+    const safeMessage = String(message || '').trim();
+    if (!safeMessage) return;
+    try {
+        window.sessionStorage.setItem(ROUTE_NOTICE_KEY, safeMessage);
+    } catch (e) {
+        // Ignore storage errors.
+    }
+}
+
+function consumePendingRouteNotice() {
+    if (typeof window === 'undefined' || !window.sessionStorage) return '';
+    try {
+        const value = String(window.sessionStorage.getItem(ROUTE_NOTICE_KEY) || '').trim();
+        window.sessionStorage.removeItem(ROUTE_NOTICE_KEY);
+        return value;
+    } catch (e) {
+        return '';
+    }
+}
+
+function setPendingCompanionsRouteUiState({ friendsOpen = false, manualOpen = false } = {}) {
+    if (typeof window === 'undefined' || !window.sessionStorage) return;
+    try {
+        window.sessionStorage.setItem(COMPANIONS_ROUTE_UI_KEY, JSON.stringify({
+            friendsOpen: !!friendsOpen,
+            manualOpen: !!manualOpen
+        }));
+    } catch (e) {
+        // Ignore storage errors.
+    }
+}
+
+function consumePendingCompanionsRouteUiState() {
+    if (typeof window === 'undefined' || !window.sessionStorage) {
+        return { friendsOpen: false, manualOpen: false };
+    }
+    try {
+        const raw = window.sessionStorage.getItem(COMPANIONS_ROUTE_UI_KEY);
+        window.sessionStorage.removeItem(COMPANIONS_ROUTE_UI_KEY);
+        if (!raw) return { friendsOpen: false, manualOpen: false };
+        const parsed = JSON.parse(raw);
+        return {
+            friendsOpen: !!parsed?.friendsOpen,
+            manualOpen: !!parsed?.manualOpen
+        };
+    } catch (e) {
+        return { friendsOpen: false, manualOpen: false };
+    }
+}
+
+function setPendingTripLoad(trip = null) {
+    if (typeof window === 'undefined' || !window.sessionStorage) return;
+    try {
+        if (trip && typeof trip === 'object') {
+            window.sessionStorage.setItem(PENDING_TRIP_LOAD_KEY, JSON.stringify(trip));
+            return;
+        }
+        window.sessionStorage.removeItem(PENDING_TRIP_LOAD_KEY);
+    } catch (e) {
+        // Ignore storage errors.
+    }
+}
+
+function consumePendingTripLoad() {
+    if (typeof window === 'undefined' || !window.sessionStorage) return null;
+    try {
+        const raw = window.sessionStorage.getItem(PENDING_TRIP_LOAD_KEY);
+        window.sessionStorage.removeItem(PENDING_TRIP_LOAD_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function applyRouteMetadata() {
+    if (typeof document === 'undefined') return;
+    const routeKey = getCurrentRouteKey();
+    const meta = MENU_ROUTE_META[routeKey] || MENU_ROUTE_META.home;
+    if (meta?.title) {
+        document.title = meta.title;
+    }
+    const subtitle = document.querySelector('.subtitle');
+    if (subtitle && meta?.subtitle) {
+        subtitle.textContent = meta.subtitle;
+    }
+    const canonicalNode = document.querySelector('link[rel="canonical"]');
+    if (canonicalNode && typeof window !== 'undefined') {
+        const routePath = routeKey === 'home' ? '' : getRouteFile(routeKey);
+        canonicalNode.href = routePath
+            ? `${window.location.origin}/${routePath}`
+            : `${window.location.origin}/`;
+    }
+}
+
+function applyDedicatedPageBodyState() {
+    if (!document.body) return;
+    const routeKey = getCurrentRouteKey();
+    document.body.classList.toggle('dedicated-page', routeKey !== 'home');
+    Object.keys(MENU_ROUTE_FILES).forEach((key) => {
+        document.body.classList.remove(`route-${key}`);
+    });
+    document.body.classList.add(`route-${routeKey}`);
+}
+
+function closeDedicatedRouteToHome(routeKey = '') {
+    if (!routeKey) return false;
+    if (!isCurrentRoute(routeKey)) return false;
+    return navigateToRoute('home');
+}
+
+async function openInitialRouteView() {
+    applyRouteMetadata();
+    applyDedicatedPageBodyState();
+    const routeKey = getCurrentRouteKey();
+
+    if (routeKey === 'home') {
+        const pendingTrip = consumePendingTripLoad();
+        if (pendingTrip) {
+            await loadTripIntoCalculatorForm(pendingTrip);
+            setTripActionFeedback('Tratta caricata. Premi "Calcola costo viaggio" per aggiornare i risultati.');
+        }
+        showCalculatorView();
+        return;
+    }
+
+    if (routeKey === 'info') {
+        showInfoView();
+        return;
+    }
+
+    if (routeKey === 'budget') {
+        await openBudget();
+        return;
+    }
+
+    if (routeKey === 'companions') {
+        const companionUiState = consumePendingCompanionsRouteUiState();
+        await openCompanions(companionUiState);
+        return;
+    }
+
+    if (routeKey === 'friends') {
+        await openFriendsView();
+        return;
+    }
+
+    if (routeKey === 'fuelFinder') {
+        openFuelFinder();
+        return;
+    }
+
+    if (routeKey === 'aiChat') {
+        openAiChat();
+        return;
+    }
+
+    if (routeKey === 'favorites') {
+        await openFavorites();
+        return;
+    }
+
+    if (routeKey === 'security') {
+        openSecurity();
+        return;
+    }
+
+    if (routeKey === 'account') {
+        const routeNotice = consumePendingRouteNotice();
+        openAuth();
+        if (routeNotice) {
+            updateAuthUI(routeNotice);
+            setAuthFeedback(routeNotice, 'info');
+        }
+        return;
+    }
+
+    showCalculatorView();
 }
 
 const API_BASES = buildApiBaseCandidates();
@@ -7149,6 +7463,7 @@ function syncCompletedFlag() {
     } else {
         removeCompletedTrip(lastCalculatedTrip.tripId);
     }
+    persistLastCalculatedTripState();
     if (isOverlayOpen(budgetOverlay)) {
         renderBudget();
     }
@@ -7272,6 +7587,7 @@ function renderFavorites() {
 }
 
 async function openFavorites() {
+    if (maybeNavigateToRoute('favorites')) return;
     if (favoritesOverlay) {
         closeAccountSubPanels({ clearSearch: false });
         if (authToken) await loadFavorites();
@@ -7283,6 +7599,7 @@ async function openFavorites() {
 }
 
 function closeFavorites() {
+    if (closeDedicatedRouteToHome('favorites')) return;
     hideModalOverlay(favoritesOverlay);
     setActiveMenu(homeBtn);
 }
@@ -7347,9 +7664,11 @@ function openAuth() {
 }
 
 function openSecurity() {
+    if (maybeNavigateToRoute('security')) return;
     if (!authToken) {
+        setPendingRouteNotice('Accedi per gestire la sicurezza account');
+        if (navigateToRoute('account')) return;
         openAuth();
-        updateAuthUI('Accedi per gestire la sicurezza account');
         return;
     }
     if (!securityOverlay) return;
@@ -7364,10 +7683,11 @@ function openSecurity() {
 }
 
 function closeSecurity() {
-    hideModalOverlay(securityOverlay);
     setSecurityStatus('');
     if (accountCurrentPassword) accountCurrentPassword.value = '';
     if (accountNewPassword) accountNewPassword.value = '';
+    if (closeDedicatedRouteToHome('security')) return;
+    hideModalOverlay(securityOverlay);
     setActiveMenu(homeBtn);
 }
 
@@ -7390,9 +7710,11 @@ async function openFriendRequestsView() {
 }
 
 async function openFriendsView() {
+    if (maybeNavigateToRoute('friends')) return;
     if (!authToken) {
+        setPendingRouteNotice('Accedi per visualizzare I miei amici');
+        if (navigateToRoute('account')) return;
         openAuth();
-        updateAuthUI('Accedi per visualizzare I miei amici');
         return;
     }
     if (!friendsOverlay) return;
@@ -7409,9 +7731,10 @@ async function openFriendsView() {
 }
 
 function closeAuth() {
-    hideModalOverlay(authOverlay);
     closeAccountSubPanels();
     setAuthFeedback('');
+    if (closeDedicatedRouteToHome('account')) return;
+    hideModalOverlay(authOverlay);
     setActiveMenu(homeBtn);
 }
 
@@ -7421,6 +7744,7 @@ function closeFriendRequestsView() {
 }
 
 function closeFriendsView() {
+    if (closeDedicatedRouteToHome('friends')) return;
     hideModalOverlay(friendsOverlay);
     setActiveMenu(homeBtn);
 }
@@ -7742,6 +8066,7 @@ async function sendAiChatMessage() {
 }
 
 function openAiChat() {
+    if (maybeNavigateToRoute('aiChat')) return;
     if (!aiChatOverlay) return;
     closeAccountSubPanels({ clearSearch: false });
     closePrimaryModalOverlays(aiChatOverlay);
@@ -7753,6 +8078,7 @@ function openAiChat() {
 }
 
 function closeAiChat() {
+    if (closeDedicatedRouteToHome('aiChat')) return;
     hideModalOverlay(aiChatOverlay);
     setAiChatStatus('');
     setActiveMenu(homeBtn);
@@ -8435,6 +8761,7 @@ async function centerFuelFinderOnUserPosition() {
 }
 
 function openFuelFinder() {
+    if (maybeNavigateToRoute('fuelFinder')) return;
     if (!fuelFinderOverlay) return;
     closeAccountSubPanels({ clearSearch: false });
     closePrimaryModalOverlays(fuelFinderOverlay);
@@ -8503,6 +8830,7 @@ function openFuelFinder() {
 function closeFuelFinder() {
     fuelFinderRequestId += 1;
     setFuelFinderBodyState(false);
+    if (closeDedicatedRouteToHome('fuelFinder')) return;
     hideModalOverlay(fuelFinderOverlay);
     setActiveMenu(homeBtn);
 }
@@ -8581,15 +8909,25 @@ async function saveCurrentToFavorites() {
     closeFavorites();
 }
 
-async function loadFavorite(fav) {
-    applyLocationToForm(fav);
-    carBrandSelect.value = fav.carBrand;
+async function loadTripIntoCalculatorForm(trip) {
+    if (!trip || typeof trip !== 'object') return;
+    applyLocationToForm(trip);
+    carBrandSelect.value = trip.carBrand || '';
     syncBrandInputFromSelect();
     await filterModelsByBrand();
-    carTypeSelect.value = fav.carType;
+    carTypeSelect.value = trip.carType || '';
     syncModelInputFromSelect();
-    fuelTypeSelect.value = fav.fuelType;
+    fuelTypeSelect.value = trip.fuelType || 'benzina';
     updateFuelPriceUI();
+}
+
+async function loadFavorite(fav) {
+    await loadTripIntoCalculatorForm(fav);
+    if (isDedicatedRouteActive()) {
+        setPendingTripLoad(fav);
+        navigateToRoute('home');
+        return;
+    }
     closeFavorites();
     showCalculatorView();
 }
@@ -8913,6 +9251,10 @@ function renderCompanionHistory() {
 }
 
 async function openCompanions({ friendsOpen = false, manualOpen = false } = {}) {
+    if (!isCurrentRoute('companions')) {
+        setPendingCompanionsRouteUiState({ friendsOpen, manualOpen });
+        if (navigateToRoute('companions')) return;
+    }
     await loadCompanionTrips();
     if (authToken) {
         await loadFriendsData().catch(() => {});
@@ -8938,6 +9280,7 @@ async function openCompanions({ friendsOpen = false, manualOpen = false } = {}) 
 }
 
 function closeCompanions() {
+    if (closeDedicatedRouteToHome('companions')) return;
     hideModalOverlay(companionsOverlay);
     setActiveMenu(homeBtn);
 }
@@ -9017,14 +9360,12 @@ async function saveCompanionTrip() {
 }
 
 async function loadCompanionTrip(trip) {
-    applyLocationToForm(trip);
-    carBrandSelect.value = trip.carBrand;
-    syncBrandInputFromSelect();
-    await filterModelsByBrand();
-    carTypeSelect.value = trip.carType;
-    syncModelInputFromSelect();
-    fuelTypeSelect.value = trip.fuelType;
-    updateFuelPriceUI();
+    await loadTripIntoCalculatorForm(trip);
+    if (isDedicatedRouteActive()) {
+        setPendingTripLoad(trip);
+        navigateToRoute('home');
+        return;
+    }
     closeCompanions();
     showCalculatorView();
 }
@@ -9536,6 +9877,7 @@ function renderBudget() {
 }
 
 async function openBudget() {
+    if (maybeNavigateToRoute('budget')) return;
     if (authToken) await loadCompletedTrips();
     closeAccountSubPanels({ clearSearch: false });
     closePrimaryModalOverlays(budgetOverlay);
@@ -9545,6 +9887,7 @@ async function openBudget() {
 }
 
 function closeBudget() {
+    if (closeDedicatedRouteToHome('budget')) return;
     hideModalOverlay(budgetOverlay);
     setActiveMenu(homeBtn);
 }
@@ -9645,6 +9988,10 @@ function closeSettingsMenuAfterAction() {
 }
 
 function showCalculatorView() {
+    if (isDedicatedRouteActive()) {
+        navigateToRoute('home');
+        return;
+    }
     if (mainPanel) mainPanel.style.display = 'block';
     if (infoPage) infoPage.style.display = 'none';
     syncMobileUiState();
@@ -9652,6 +9999,7 @@ function showCalculatorView() {
 }
 
 function showInfoView() {
+    if (maybeNavigateToRoute('info')) return;
     if (mainPanel) mainPanel.style.display = 'none';
     if (infoPage) infoPage.style.display = 'block';
     syncMobileUiState();
@@ -9905,7 +10253,10 @@ useLocationBtn?.addEventListener('click', async () => {
         useLocationBtn.textContent = 'Usa la mia posizione';
     }, { enableHighAccuracy: true, timeout: 10000 });
 });
-accountBtn?.addEventListener('click', openAuth);
+accountBtn?.addEventListener('click', () => {
+    if (maybeNavigateToRoute('account')) return;
+    openAuth();
+});
 closeAuthBtn?.addEventListener('click', closeAuth);
 loginBtn?.addEventListener('click', () => handleAuth(false));
 registerBtn?.addEventListener('click', () => handleAuth(true));
@@ -10089,7 +10440,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-const SW_BUILD_VERSION = '2026-02-20-03';
+const SW_BUILD_VERSION = '2026-02-20-04';
 let hasReloadedForServiceWorker = false;
 
 function forceActivateWaitingWorker(registration) {
@@ -10291,7 +10642,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             await loadCompanionTrips();
             await loadCompletedTrips();
         }
-        showCalculatorView();
+        restoreLastCalculatedTripState();
+        await openInitialRouteView();
     } finally {
         requestAnimationFrame(() => {
             if (!document.body) return;
