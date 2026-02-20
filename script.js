@@ -3868,6 +3868,7 @@ const favoritesList = document.getElementById('favoritesList');
 const favoritesEmpty = document.getElementById('favoritesEmpty');
 const closeFavoritesBtn = document.getElementById('closeFavorites');
 const saveFavoriteBtn = document.getElementById('saveFavoriteBtn');
+const openCompanionFromResultBtn = document.getElementById('openCompanionFromResultBtn');
 const copySummaryBtn = document.getElementById('copySummaryBtn');
 const showTripFuelOnMapBtn = document.getElementById('showTripFuelOnMapBtn');
 const installAppBtn = document.getElementById('installAppBtn');
@@ -8909,7 +8910,7 @@ function renderCompanionHistory() {
     });
 }
 
-async function openCompanions() {
+async function openCompanions({ friendsOpen = false, manualOpen = false } = {}) {
     await loadCompanionTrips();
     if (authToken) {
         await loadFriendsData().catch(() => {});
@@ -8925,7 +8926,7 @@ async function openCompanions() {
             : 'Calcola una tratta per attivare la divisione dei costi.';
     }
     if (companionNameInput) companionNameInput.value = '';
-    setCompanionPickerPanelsState({ friendsOpen: false, manualOpen: false });
+    setCompanionPickerPanelsState({ friendsOpen, manualOpen });
     renderCompanionFriendsPicker();
     renderCompanionsList();
     updateSplitSummary();
@@ -9764,6 +9765,13 @@ settingsMenuButtons.forEach((btn) => {
 favoritesBtn?.addEventListener('click', openFavorites);
 closeFavoritesBtn?.addEventListener('click', closeFavorites);
 saveFavoriteBtn?.addEventListener('click', saveCurrentToFavorites);
+openCompanionFromResultBtn?.addEventListener('click', () => {
+    if (!lastCalculatedTrip) {
+        alert('Calcola prima una tratta per aggiungere amici.');
+        return;
+    }
+    openCompanions({ friendsOpen: true, manualOpen: false }).catch(() => {});
+});
 copySummaryBtn?.addEventListener('click', copyTripSummary);
 showTripFuelOnMapBtn?.addEventListener('click', () => {
     showTripFuelStationsOnMap().catch(() => {});
@@ -10076,12 +10084,48 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+const SW_BUILD_VERSION = '2026-02-20-02';
+let hasReloadedForServiceWorker = false;
+
+function forceActivateWaitingWorker(registration) {
+    if (!registration || !registration.waiting) return;
+    try {
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    } catch (err) {
+        // Ignore postMessage errors.
+    }
+}
+
+function wireServiceWorkerUpdateFlow(registration) {
+    if (!registration) return;
+    registration.addEventListener('updatefound', () => {
+        const installingWorker = registration.installing;
+        if (!installingWorker) return;
+        installingWorker.addEventListener('statechange', () => {
+            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                forceActivateWaitingWorker(registration);
+            }
+        });
+    });
+}
+
 async function registerServiceWorker() {
     if (typeof window === 'undefined') return;
     if (!('serviceWorker' in navigator)) return;
     try {
-        const registration = await navigator.serviceWorker.register('./sw.js');
+        const swUrl = `./sw.js?v=${encodeURIComponent(SW_BUILD_VERSION)}`;
+        const registration = await navigator.serviceWorker.register(swUrl, { updateViaCache: 'none' });
+        wireServiceWorkerUpdateFlow(registration);
+        forceActivateWaitingWorker(registration);
         registration.update().catch(() => {});
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+            registrations.forEach((item) => item.update().catch(() => {}));
+        }).catch(() => {});
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (hasReloadedForServiceWorker) return;
+            hasReloadedForServiceWorker = true;
+            window.location.reload();
+        });
     } catch (err) {
         // Ignore: app works also without offline cache.
     }

@@ -1,9 +1,9 @@
-const CACHE_VERSION = 'drivecalc-cache-v34';
+const CACHE_VERSION = 'drivecalc-cache-v35';
 const APP_SHELL = [
   './',
   'index.html',
-  'style.css?v=32',
-  'script.js?v=55',
+  'style.css?v=33',
+  'script.js?v=56',
   'car_models.json',
   'background-travel.jpg',
   'header-hero.jpg',
@@ -26,6 +26,13 @@ self.addEventListener('activate', (event) => {
       return Promise.resolve();
     }))).then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (!event || !event.data) return;
+  if (event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
@@ -51,7 +58,7 @@ self.addEventListener('fetch', (event) => {
 
   if (isNavigationRequest || isIndexRequest) {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then((networkResponse) => {
           const responseClone = networkResponse.clone();
           caches.open(CACHE_VERSION).then((cache) => {
