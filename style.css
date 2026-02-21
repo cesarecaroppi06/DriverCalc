@@ -6161,3 +6161,240 @@ body.dedicated-page:not(.route-info) #fuelFinderOverlay.fuel-finder-overlay-full
         box-shadow: 0 8px 16px rgba(2, 8, 22, 0.24) !important;
     }
 }
+
+/* ===== Mobile polish round 2 ===== */
+@media (max-width: 768px) {
+    html {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+    }
+
+    body {
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    a,
+    button,
+    .pill-btn,
+    .favorite-btn,
+    .calculate-btn,
+    .reset-btn,
+    .mobile-bottom-nav-btn,
+    .settings-menu ul button {
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+
+    select,
+    input,
+    textarea {
+        min-height: 48px;
+        line-height: 1.35;
+    }
+
+    .pill-btn,
+    .favorite-btn,
+    .calculate-btn,
+    .reset-btn,
+    .mobile-bottom-nav-btn,
+    .settings-menu ul button,
+    .mobile-menu-toggle,
+    .mobile-install-btn {
+        min-height: 48px;
+    }
+
+    .pill-btn:active,
+    .favorite-btn:active,
+    .calculate-btn:active,
+    .reset-btn:active,
+    .mobile-bottom-nav-btn:active,
+    .settings-menu ul button:active,
+    .mobile-menu-toggle:active,
+    .mobile-install-btn:active {
+        transform: translateY(1px) scale(0.995);
+    }
+
+    .form-group label,
+    .helper-text,
+    .fuel-station-meta,
+    .ai-chat-bubble,
+    .budget-ai-messages {
+        line-height: 1.45;
+    }
+
+    body.mobile-scroll-hide-ui:not(.mobile-actions-hidden) .mobile-top-actions {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translateY(-8px);
+    }
+
+    body.mobile-scroll-hide-ui:not(.mobile-actions-hidden):not(.mobile-keyboard-open) {
+        padding-bottom: 14px !important;
+    }
+
+    body.mobile-scroll-hide-ui:not(.mobile-actions-hidden) .mobile-bottom-nav {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translateY(18px);
+    }
+}
+
+@media (max-width: 560px) {
+    header h1 {
+        font-size: clamp(38px, 12.5vw, 54px);
+        line-height: 0.95;
+    }
+
+    .subtitle {
+        font-size: 15px;
+        line-height: 1.45;
+    }
+
+    .mobile-bottom-nav-btn {
+        border-radius: 14px;
+        font-size: 11.5px;
+        letter-spacing: 0.1px;
+    }
+
+    .fuel-finder-list-toggle {
+        min-height: 46px;
+    }
+}
+
+/* ===== Mobile polish round 3 ===== */
+@media (max-width: 768px) {
+    .modal-card {
+        scroll-padding-top: calc(66px + env(safe-area-inset-top, 0px));
+    }
+
+    .form-group,
+    .participants-input,
+    .ai-chat-actions,
+    .budget-ai-actions {
+        scroll-margin-top: 68px;
+        scroll-margin-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .modal-overlay.is-open .modal-header {
+        position: relative;
+    }
+
+    .modal-overlay.is-open .modal-header::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: -6px;
+        width: 38px;
+        height: 4px;
+        border-radius: 999px;
+        transform: translateX(-50%);
+        background: rgba(191, 219, 254, 0.45);
+        box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.35);
+    }
+}
+
+@media (max-width: 900px) and (orientation: landscape) {
+    body {
+        padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    }
+
+    header {
+        padding: calc(18px + env(safe-area-inset-top, 0px)) 16px 16px;
+        margin-bottom: 12px;
+    }
+
+    .mobile-top-actions {
+        position: fixed;
+        top: max(6px, env(safe-area-inset-top, 0px));
+        left: 10px;
+        right: 10px;
+        margin-bottom: 0;
+    }
+
+    .mobile-bottom-nav {
+        padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .mobile-bottom-nav-btn {
+        min-height: 40px;
+        font-size: 11px;
+    }
+
+    main,
+    .info-page {
+        padding: 12px;
+    }
+
+    .map-canvas,
+    .fuel-finder-map-mount .map-canvas,
+    #fuelFinderOverlay.fuel-finder-overlay-full .fuel-finder-map-mount .map-canvas {
+        height: min(56vh, 320px);
+    }
+
+    #fuelFinderOverlay .fuel-finder-content {
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 10px;
+    }
+
+    #fuelFinderOverlay .fuel-finder-list-column {
+        max-height: min(58vh, 340px);
+        overflow-y: auto;
+    }
+
+    #fuelFinderOverlay.fuel-finder-list-collapsed .fuel-finder-map-mount .map-canvas {
+        height: min(62vh, 360px);
+    }
+}
+
+@media (max-width: 390px) {
+    body {
+        padding: 8px 8px calc(84px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .mobile-top-actions {
+        gap: 6px;
+        padding: 6px;
+    }
+
+    .mobile-menu-toggle,
+    .mobile-install-btn {
+        padding: 9px 8px;
+        font-size: 12px;
+    }
+
+    main,
+    .info-page {
+        padding: 12px;
+        border-radius: 14px;
+    }
+
+    .result-card h3 {
+        font-size: 14px;
+    }
+
+    .result-value {
+        font-size: 22px;
+    }
+
+    .favorite-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .budget-range-switcher {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .budget-range-btn {
+        min-height: 38px;
+        font-size: 11px;
+    }
+
+    .mobile-bottom-nav-btn {
+        min-height: 42px;
+        font-size: 11px;
+    }
+}

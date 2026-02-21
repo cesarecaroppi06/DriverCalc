@@ -3925,6 +3925,11 @@ let mobileBottomNav = null;
 let mobileBottomNavButtons = [];
 let mobileKeyboardOpen = false;
 let mobileLiteEffectsEnabled = false;
+let mobileScrollHideUi = false;
+let mobileLastScrollY = 0;
+let mobileScrollUiWired = false;
+let mobileModalSwipeCloseWired = false;
+let mobileInputFocusAssistWired = false;
 let fuelFinderListToggleBtn = null;
 let fuelFinderListCollapsed = false;
 const favoritesBtn = document.getElementById('favoritesBtn');
@@ -4200,6 +4205,7 @@ function syncMobileUiState() {
 
     document.body.classList.toggle('info-view-open', infoVisible);
     document.body.classList.toggle('mobile-actions-hidden', shouldHideTopActions);
+    syncMobileScrollUiState();
 }
 
 function getMapSectionNode() {
@@ -4248,7 +4254,7 @@ function handleOverlayPostHide(overlay) {
     }
 }
 
-function wireModalBackdropCloseHandlers() {
+function getOverlayCloseHandlerById(id = '') {
     const handlersById = {
         authOverlay: closeAuth,
         securityOverlay: closeSecurity,
@@ -4261,15 +4267,128 @@ function wireModalBackdropCloseHandlers() {
         budgetOverlay: closeBudget,
         myCarConsentOverlay: closeMyCarConsent
     };
+    return handlersById[String(id || '').trim()] || null;
+}
 
-    Object.entries(handlersById).forEach(([id, handler]) => {
+function wireModalBackdropCloseHandlers() {
+    const overlayIds = [
+        'authOverlay',
+        'securityOverlay',
+        'friendRequestsOverlay',
+        'friendsOverlay',
+        'favoritesOverlay',
+        'aiChatOverlay',
+        'fuelFinderOverlay',
+        'companionsOverlay',
+        'budgetOverlay',
+        'myCarConsentOverlay'
+    ];
+
+    overlayIds.forEach((id) => {
         const overlay = document.getElementById(id);
+        const handler = getOverlayCloseHandlerById(id);
         if (!overlay || overlay.dataset.backdropCloseBound === '1') return;
         overlay.dataset.backdropCloseBound = '1';
         overlay.addEventListener('click', (event) => {
             if (event.target !== overlay) return;
             if (typeof handler === 'function') handler();
         });
+    });
+}
+
+function wireMobileModalSwipeClose() {
+    if (mobileModalSwipeCloseWired || typeof document === 'undefined') return;
+    mobileModalSwipeCloseWired = true;
+
+    const overlayIds = [
+        'authOverlay',
+        'securityOverlay',
+        'friendRequestsOverlay',
+        'friendsOverlay',
+        'favoritesOverlay',
+        'aiChatOverlay',
+        'fuelFinderOverlay',
+        'companionsOverlay',
+        'budgetOverlay',
+        'myCarConsentOverlay'
+    ];
+
+    overlayIds.forEach((id) => {
+        const overlay = document.getElementById(id);
+        const card = overlay?.querySelector('.modal-card');
+        if (!overlay || !card || card.dataset.mobileSwipeCloseBound === '1') return;
+        card.dataset.mobileSwipeCloseBound = '1';
+
+        let startX = 0;
+        let startY = 0;
+        let startTime = 0;
+        let tracking = false;
+
+        card.addEventListener('touchstart', (event) => {
+            if (!isMobileViewport() || mobileKeyboardOpen || !isOverlayOpen(overlay)) return;
+            if (event.touches.length !== 1) return;
+            if ((card.scrollTop || 0) > 8) return;
+            const touch = event.touches[0];
+            startX = Number(touch.clientX || 0);
+            startY = Number(touch.clientY || 0);
+            startTime = Date.now();
+            tracking = true;
+        }, { passive: true });
+
+        card.addEventListener('touchmove', (event) => {
+            if (!tracking) return;
+            if (event.touches.length !== 1) {
+                tracking = false;
+                return;
+            }
+            const touch = event.touches[0];
+            const deltaY = Number(touch.clientY || 0) - startY;
+            const deltaX = Math.abs(Number(touch.clientX || 0) - startX);
+            if (deltaY < -12 || deltaX > 92) {
+                tracking = false;
+            }
+        }, { passive: true });
+
+        card.addEventListener('touchend', (event) => {
+            if (!tracking) {
+                tracking = false;
+                return;
+            }
+            tracking = false;
+            const touch = event.changedTouches && event.changedTouches[0];
+            if (!touch) return;
+            const deltaY = Number(touch.clientY || 0) - startY;
+            const deltaX = Math.abs(Number(touch.clientX || 0) - startX);
+            const elapsedMs = Math.max(Date.now() - startTime, 1);
+            const velocity = deltaY / elapsedMs;
+
+            if (deltaY < 96) return;
+            if (deltaX > 92) return;
+            if (velocity < 0.28 && deltaY < 150) return;
+
+            const handler = getOverlayCloseHandlerById(id);
+            if (typeof handler === 'function') {
+                handler();
+            }
+        }, { passive: true });
+    });
+}
+
+function wireMobileInputFocusAssist() {
+    if (mobileInputFocusAssistWired || typeof document === 'undefined') return;
+    mobileInputFocusAssistWired = true;
+
+    document.addEventListener('focusin', (event) => {
+        if (!isMobileViewport()) return;
+        if (!isTextEntryElement(event.target)) return;
+        const target = event.target;
+        window.setTimeout(() => {
+            if (!isTextEntryElement(document.activeElement)) return;
+            const anchor = target.closest('.form-group, .participants-input, .ai-chat-actions, .budget-ai-actions') || target;
+            if (anchor && typeof anchor.scrollIntoView === 'function') {
+                anchor.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            }
+        }, 140);
     });
 }
 
@@ -11057,6 +11176,78 @@ function syncMobilePerformanceMode() {
     }
 }
 
+function setMobileScrollHideUi(nextHidden = false) {
+    mobileScrollHideUi = !!nextHidden && isMobileViewport() && !mobileKeyboardOpen;
+    if (document.body) {
+        document.body.classList.toggle('mobile-scroll-hide-ui', mobileScrollHideUi);
+    }
+}
+
+function canUseMobileScrollHideUi() {
+    if (!document.body || !isMobileViewport()) return false;
+    if (mobileKeyboardOpen) return false;
+    if (document.body.classList.contains('mobile-menu-open')) return false;
+    if (isAnyBlockingOverlayOpen()) return false;
+    if (infoPage && infoPage.style.display === 'block') return false;
+    return true;
+}
+
+function syncMobileScrollUiState() {
+    const scrollY = Math.max(window.scrollY || window.pageYOffset || 0, 0);
+    if (!canUseMobileScrollHideUi()) {
+        setMobileScrollHideUi(false);
+        mobileLastScrollY = scrollY;
+        return;
+    }
+    if (scrollY < 36) {
+        setMobileScrollHideUi(false);
+    }
+    mobileLastScrollY = scrollY;
+}
+
+function wireMobileScrollUiBehavior() {
+    if (mobileScrollUiWired || typeof window === 'undefined') return;
+    mobileScrollUiWired = true;
+    mobileLastScrollY = Math.max(window.scrollY || window.pageYOffset || 0, 0);
+
+    let ticking = false;
+    const onScroll = () => {
+        if (ticking) return;
+        ticking = true;
+        window.requestAnimationFrame(() => {
+            ticking = false;
+            const scrollY = Math.max(window.scrollY || window.pageYOffset || 0, 0);
+            if (!canUseMobileScrollHideUi()) {
+                setMobileScrollHideUi(false);
+                mobileLastScrollY = scrollY;
+                return;
+            }
+
+            const delta = scrollY - mobileLastScrollY;
+            mobileLastScrollY = scrollY;
+
+            if (scrollY < 36 || delta < -8) {
+                setMobileScrollHideUi(false);
+                return;
+            }
+            if (delta > 14) {
+                setMobileScrollHideUi(true);
+            }
+        });
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+}
+
+function scrollCurrentViewToTop() {
+    const openModalCard = document.querySelector('.modal-overlay.is-open .modal-card');
+    if (openModalCard && typeof openModalCard.scrollTo === 'function') {
+        openModalCard.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function setMobileBottomNavActive(navKey = 'home') {
     if (!mobileBottomNavButtons.length) return;
     const safeKey = mobileBottomNavButtons.some((btn) => btn.dataset.navKey === navKey) ? navKey : 'home';
@@ -11111,10 +11302,15 @@ function ensureMobileBottomNav() {
         btn.dataset.wired = '1';
         btn.addEventListener('click', () => {
             const navKey = String(btn.dataset.navKey || 'home').trim() || 'home';
+            const wasActive = btn.classList.contains('is-active');
             if (document.body.classList.contains('mobile-menu-open')) {
                 closeSettingsMenu();
             }
             setMobileBottomNavActive(navKey);
+            setMobileScrollHideUi(false);
+            if (wasActive) {
+                scrollCurrentViewToTop();
+            }
             const action = navActions[navKey];
             if (typeof action === 'function') action();
         });
@@ -11859,6 +12055,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const isHomeRoute = routeKey === 'home';
 
         wireModalBackdropCloseHandlers();
+        wireMobileModalSwipeClose();
         window.addEventListener('beforeinstallprompt', (event) => {
             event.preventDefault();
             deferredInstallPrompt = event;
@@ -11877,10 +12074,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         closeSettingsMenu();
         syncSettingsMenuCloseVisibility();
         wireMobileKeyboardDetection();
+        wireMobileInputFocusAssist();
+        wireMobileScrollUiBehavior();
         syncMobilePerformanceMode();
         ensureMobileBottomNav();
         ensureFuelFinderListToggle();
         syncMobileKeyboardState();
+        syncMobileScrollUiState();
         syncMobileUiState();
         loadAiChatHistory(true);
         loadBudgetAiState(true);
@@ -11894,6 +12094,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             syncMobilePerformanceMode();
             ensureFuelFinderListToggle();
             syncMobileKeyboardState();
+            syncMobileScrollUiState();
             syncMobileUiState();
         }, 120);
         window.addEventListener('resize', handleViewportResize);
