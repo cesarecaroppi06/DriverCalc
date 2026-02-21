@@ -623,9 +623,13 @@ function registerWebClientRoutes() {
         'manifest.webmanifest',
         'sw.js',
         'car_models.json',
+        'logo-96.png',
+        'logo-160.png',
         'logo.png',
         'background-travel.jpg',
+        'header-hero-sm.jpg',
         'header-hero.jpg',
+        'header-hero-mobile-sm.jpg',
         'header-hero-mobile.jpg'
     ];
 

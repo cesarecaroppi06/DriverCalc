@@ -11830,7 +11830,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-const SW_BUILD_VERSION = '2026-02-20-06';
+const SW_BUILD_VERSION = '2026-02-21-01';
 let hasReloadedForServiceWorker = false;
 
 function forceActivateWaitingWorker(registration) {
