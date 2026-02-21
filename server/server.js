@@ -82,6 +82,54 @@ const AUTH_REQUIRE_EMAIL_VERIFICATION_RAW = String(
     process.env.AUTH_REQUIRE_EMAIL_VERIFICATION || (AUTH_EMAIL_DELIVERY_CONFIGURED ? 'true' : 'false')
 ).trim().toLowerCase();
 const AUTH_REQUIRE_EMAIL_VERIFICATION = ['1', 'true', 'yes', 'on'].includes(AUTH_REQUIRE_EMAIL_VERIFICATION_RAW);
+const DEFAULT_PUBLIC_ORIGINS = ['https://drivercalc.onrender.com', 'https://drivecalc.onrender.com'];
+const UI_TELEMETRY_MAX_EVENTS_PER_ACTOR = 500;
+const UI_TELEMETRY_MAX_BATCH_SIZE = 20;
+const UI_TELEMETRY_EVENT_NAME_MAX_CHARS = 80;
+const UI_TELEMETRY_PAYLOAD_TEXT_MAX_CHARS = 160;
+const UI_TELEMETRY_ROUTE_MAX_CHARS = 40;
+const UI_TELEMETRY_SESSION_ID_MAX_CHARS = 72;
+
+const HAS_WEAK_JWT_SECRET = !JWT_SECRET || JWT_SECRET === 'change-me-in-prod';
+if (IS_PRODUCTION && HAS_WEAK_JWT_SECRET) {
+    throw new Error('JWT_SECRET mancante o non sicuro in produzione.');
+}
+
+function normalizeOriginForCompare(value = '') {
+    return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function parseOriginsList(value = '') {
+    return String(value || '')
+        .split(',')
+        .map((entry) => normalizeOriginForCompare(entry))
+        .filter(Boolean);
+}
+
+function isLocalDevOrigin(origin = '') {
+    try {
+        const parsed = new URL(origin);
+        const host = String(parsed.hostname || '').toLowerCase();
+        if (!host) return false;
+        return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local');
+    } catch (err) {
+        return false;
+    }
+}
+
+const CORS_ALLOWED_ORIGINS = Array.from(new Set([
+    ...parseOriginsList(CORS_ORIGIN),
+    normalizeOriginForCompare(PUBLIC_APP_BASE_URL),
+    ...DEFAULT_PUBLIC_ORIGINS.map((entry) => normalizeOriginForCompare(entry))
+].filter(Boolean)));
+
+function isCorsOriginAllowed(origin = '') {
+    const normalized = normalizeOriginForCompare(origin);
+    if (!normalized) return true;
+    if (CORS_ALLOWED_ORIGINS.includes(normalized)) return true;
+    if (isLocalDevOrigin(normalized)) return true;
+    return false;
+}
 
 function normalizeEmail(value = '') {
     return String(value || '').trim().toLowerCase();
@@ -208,6 +256,7 @@ function ensureDbShape(db) {
     if (!Array.isArray(db.friendRequests)) db.friendRequests = [];
     if (!db.friendships || typeof db.friendships !== 'object') db.friendships = {};
     if (!db.shareSettings || typeof db.shareSettings !== 'object') db.shareSettings = {};
+    if (!db.uiEvents || typeof db.uiEvents !== 'object') db.uiEvents = {};
     db.emailVerificationTokens = pruneAuthTokenEntries(db.emailVerificationTokens, now);
     db.passwordResetTokens = pruneAuthTokenEntries(db.passwordResetTokens, now);
     return db;
@@ -260,7 +309,35 @@ function resolveDbPath() {
 const DB_PATH = resolveDbPath();
 console.log(`[DriveCalc API] Database path: ${DB_PATH}`);
 
-app.use(cors(CORS_ORIGIN ? { origin: CORS_ORIGIN, credentials: true } : { origin: true, credentials: true }));
+if (CORS_ALLOWED_ORIGINS.length) {
+    console.log(`[DriveCalc API] CORS allowlist: ${CORS_ALLOWED_ORIGINS.join(', ')}`);
+}
+
+const corsOptions = {
+    credentials: true,
+    origin(origin, callback) {
+        if (isCorsOriginAllowed(origin)) {
+            callback(null, true);
+            return;
+        }
+        callback(new Error('CORS origin non consentita'));
+    }
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'geolocation=(self), microphone=(), camera=()');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+    if (IS_PRODUCTION && AUTH_COOKIE_SECURE) {
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+});
 app.use(express.json({ limit: '5mb' }));
 
 const WEB_ROOT = path.resolve(__dirname, '..');
@@ -590,6 +667,29 @@ function buildRobotsTxt(origin = '') {
     ].join('\n');
 }
 
+function getStaticCacheControlByFileName(fileName = '') {
+    const safeName = String(fileName || '').trim().toLowerCase();
+    const ext = path.extname(safeName);
+    if (!safeName) return 'public, max-age=900';
+
+    if (safeName === 'sw.js') return 'no-cache, no-store, must-revalidate';
+    if (safeName.endsWith('.html')) return 'no-cache, must-revalidate';
+    if (safeName === 'manifest.webmanifest') return 'public, max-age=600, must-revalidate';
+    if (safeName === 'config.public.js' || safeName === 'script.js' || safeName === 'style.css') {
+        return 'public, max-age=600, must-revalidate';
+    }
+    if (ext === '.js' || ext === '.css') return 'public, max-age=86400, immutable';
+    if (ext === '.json') return 'public, max-age=3600, must-revalidate';
+    if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.ico', '.woff', '.woff2'].includes(ext)) {
+        return 'public, max-age=2592000, immutable';
+    }
+    return 'public, max-age=900';
+}
+
+function applyStaticCacheHeaders(res, fileName = '') {
+    res.setHeader('Cache-Control', getStaticCacheControlByFileName(fileName));
+}
+
 function registerWebClientRoutes() {
     if (!HAS_WEB_CLIENT) return;
 
@@ -600,7 +700,12 @@ function registerWebClientRoutes() {
 
     staticDirs.forEach(([routePrefix, dirPath]) => {
         if (!fs.existsSync(dirPath)) return;
-        app.use(`/${routePrefix}`, express.static(dirPath, { fallthrough: true }));
+        app.use(`/${routePrefix}`, express.static(dirPath, {
+            fallthrough: true,
+            setHeaders(res, filePath) {
+                applyStaticCacheHeaders(res, path.basename(filePath));
+            }
+        }));
     });
 
     const staticFiles = [
@@ -648,7 +753,10 @@ function registerWebClientRoutes() {
     staticFiles.forEach((fileName) => {
         const filePath = path.join(WEB_ROOT, fileName);
         if (!fs.existsSync(filePath)) return;
-        app.get(`/${fileName}`, (_req, res) => res.sendFile(filePath));
+        app.get(`/${fileName}`, (_req, res) => {
+            applyStaticCacheHeaders(res, fileName);
+            return res.sendFile(filePath);
+        });
     });
 
     app.get(/^\/google[0-9a-z]+\.html$/i, (req, res) => {
@@ -657,15 +765,20 @@ function registerWebClientRoutes() {
         if (!filePath.startsWith(WEB_ROOT) || !fs.existsSync(filePath)) {
             return res.status(404).send('Not found');
         }
+        applyStaticCacheHeaders(res, fileName);
         return res.sendFile(filePath);
     });
 
-    app.get('/', (_req, res) => res.sendFile(WEB_INDEX_PATH));
+    app.get('/', (_req, res) => {
+        applyStaticCacheHeaders(res, 'index.html');
+        return res.sendFile(WEB_INDEX_PATH);
+    });
 
     // SPA fallback for non-API routes without explicit file extension.
     app.get(/^\/(?!api(?:\/|$)).+/, (req, res, next) => {
         const pathname = String(req.path || '/');
         if (path.extname(pathname)) return next();
+        applyStaticCacheHeaders(res, 'index.html');
         return res.sendFile(WEB_INDEX_PATH);
     });
 }
@@ -1563,6 +1676,25 @@ function authMiddleware(req, res, next) {
     }
 }
 
+function resolveAuthenticatedUserFromRequest(req, db) {
+    const authHeader = req.headers.authorization || '';
+    const [, bearerToken] = authHeader.split(' ');
+    const cookies = parseCookies(req.headers.cookie || '');
+    const cookieToken = cookies[AUTH_COOKIE_NAME];
+    const token = bearerToken || cookieToken;
+    if (!token) return null;
+
+    try {
+        const payload = jwt.verify(token, JWT_SECRET);
+        const user = db.users.find((u) => u.id === payload.userId);
+        if (!user) return null;
+        if (Number(payload.tokenVersion || 0) !== Number(user.tokenVersion || 1)) return null;
+        return user;
+    } catch (_err) {
+        return null;
+    }
+}
+
 app.post('/api/auth/register', async (req, res) => {
     const { email, password, username } = req.body || {};
     const normalizedEmail = normalizeEmail(email);
@@ -2122,6 +2254,102 @@ function computeUserStats(db, userId) {
     };
 }
 
+function sanitizeTelemetryText(value = '', maxLen = UI_TELEMETRY_PAYLOAD_TEXT_MAX_CHARS) {
+    return String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, Math.max(1, Number(maxLen) || UI_TELEMETRY_PAYLOAD_TEXT_MAX_CHARS));
+}
+
+function sanitizeTelemetrySessionId(value = '') {
+    return sanitizeTelemetryText(value, UI_TELEMETRY_SESSION_ID_MAX_CHARS)
+        .replace(/[^a-zA-Z0-9._:-]/g, '');
+}
+
+function sanitizeTelemetryEventName(value = '') {
+    const safe = sanitizeTelemetryText(value, UI_TELEMETRY_EVENT_NAME_MAX_CHARS).toLowerCase();
+    if (!safe) return '';
+    if (!/^[a-z0-9._:-]{2,80}$/.test(safe)) return '';
+    return safe;
+}
+
+function sanitizeTelemetryPayloadValue(value, depth = 0) {
+    if (value === null || value === undefined) return null;
+    if (depth >= 3) return null;
+
+    if (typeof value === 'string') return sanitizeTelemetryText(value);
+    if (typeof value === 'number') return Number.isFinite(value) ? Number(value.toFixed(4)) : null;
+    if (typeof value === 'boolean') return value;
+
+    if (Array.isArray(value)) {
+        const items = value
+            .slice(0, 16)
+            .map((item) => sanitizeTelemetryPayloadValue(item, depth + 1))
+            .filter((item) => item !== null);
+        return items.length ? items : null;
+    }
+
+    if (typeof value === 'object') {
+        const output = {};
+        Object.entries(value)
+            .slice(0, 20)
+            .forEach(([key, itemValue]) => {
+                const safeKey = sanitizeTelemetryText(key, 32);
+                if (!safeKey) return;
+                const normalized = sanitizeTelemetryPayloadValue(itemValue, depth + 1);
+                if (normalized === null) return;
+                output[safeKey] = normalized;
+            });
+        return Object.keys(output).length ? output : null;
+    }
+
+    return null;
+}
+
+function normalizeTelemetryEventEntry(entry = {}) {
+    const safeName = sanitizeTelemetryEventName(entry.name || entry.event || '');
+    if (!safeName) return null;
+
+    const tsRaw = Number(entry.ts || entry.timestamp);
+    const ts = Number.isFinite(tsRaw) && tsRaw > 0 ? Math.round(tsRaw) : Date.now();
+    const route = sanitizeTelemetryText(entry.route || entry.page || '', UI_TELEMETRY_ROUTE_MAX_CHARS);
+    const payload = sanitizeTelemetryPayloadValue(
+        entry.payload !== undefined ? entry.payload : (entry.meta !== undefined ? entry.meta : entry.data),
+        0
+    );
+
+    const normalized = { name: safeName, ts };
+    if (route) normalized.route = route;
+    if (payload !== null) normalized.payload = payload;
+    return normalized;
+}
+
+function getUiEventsStore(db, actorId = '') {
+    if (!db.uiEvents || typeof db.uiEvents !== 'object') db.uiEvents = {};
+    if (!db.uiEvents[actorId]) db.uiEvents[actorId] = [];
+    if (!Array.isArray(db.uiEvents[actorId])) db.uiEvents[actorId] = [];
+    return db.uiEvents[actorId];
+}
+
+function appendUiEvents(db, actorId = '', events = []) {
+    const safeActorId = sanitizeTelemetryText(actorId, 120);
+    if (!safeActorId) return 0;
+    const sourceEvents = Array.isArray(events) ? events : [];
+    if (!sourceEvents.length) return 0;
+
+    const store = getUiEventsStore(db, safeActorId);
+    sourceEvents.forEach((event) => {
+        if (!event || typeof event !== 'object') return;
+        store.push(event);
+    });
+
+    if (store.length > UI_TELEMETRY_MAX_EVENTS_PER_ACTOR) {
+        db.uiEvents[safeActorId] = store.slice(-UI_TELEMETRY_MAX_EVENTS_PER_ACTOR);
+    }
+
+    return sourceEvents.length;
+}
+
 function normalizeSearchValue(value = '') {
     return String(value)
         .normalize('NFD')
@@ -2521,6 +2749,41 @@ app.delete('/api/mycar-photo/:modelId', authMiddleware, (req, res) => {
         return res.json({ ok: true });
     }
     return res.status(404).json({ error: 'Foto non trovata' });
+});
+
+app.post('/api/telemetry/events', (req, res) => {
+    const incoming = req.body || {};
+    const sourceEvents = Array.isArray(incoming.events) ? incoming.events : [];
+    if (!sourceEvents.length) {
+        return res.status(400).json({ error: 'Eventi telemetry mancanti' });
+    }
+
+    const normalizedEvents = sourceEvents
+        .slice(0, UI_TELEMETRY_MAX_BATCH_SIZE)
+        .map((entry) => normalizeTelemetryEventEntry(entry))
+        .filter(Boolean);
+
+    if (!normalizedEvents.length) {
+        return res.status(400).json({ error: 'Eventi telemetry non validi' });
+    }
+
+    const db = readDb();
+    const user = resolveAuthenticatedUserFromRequest(req, db);
+    const sessionId = sanitizeTelemetrySessionId(
+        incoming.sessionId || req.headers['x-telemetry-session-id'] || ''
+    );
+    const actorId = user?.id ? `user:${user.id}` : (sessionId ? `anon:${sessionId}` : '');
+    if (!actorId) {
+        return res.status(400).json({ error: 'Sessione telemetry mancante' });
+    }
+
+    const accepted = appendUiEvents(db, actorId, normalizedEvents);
+    if (!accepted) {
+        return res.status(400).json({ error: 'Eventi telemetry non validi' });
+    }
+
+    writeDb(db);
+    return res.json({ ok: true, accepted });
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));

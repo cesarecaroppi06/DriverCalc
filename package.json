@@ -1,0 +1,24 @@
+{
+  "name": "drivercalc-mobile-shell",
+  "private": true,
+  "version": "1.0.0",
+  "description": "DriverCalc wrapper mobile personale con Capacitor",
+  "scripts": {
+    "seo:sync-meta": "node scripts/sync-static-meta.mjs",
+    "mobile:web": "node scripts/build-mobile-web.mjs",
+    "mobile:sync": "npm run mobile:web && npx cap sync",
+    "mobile:add:android": "npm run mobile:web && npx cap add android && npx cap sync android",
+    "mobile:add:ios": "npm run mobile:web && npx cap add ios && npx cap sync ios",
+    "mobile:open:android": "npx cap open android",
+    "mobile:open:ios": "npx cap open ios",
+    "mobile:doctor": "npx cap doctor"
+  },
+  "dependencies": {
+    "@capacitor/core": "latest"
+  },
+  "devDependencies": {
+    "@capacitor/android": "latest",
+    "@capacitor/cli": "latest",
+    "@capacitor/ios": "latest"
+  }
+}

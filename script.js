@@ -3720,7 +3720,7 @@ async function fetchUnifiedLocationSuggestions(query, signal) {
     return rankLocationSuggestions(unique, query).slice(0, 10);
 }
 
-function debounce(fn, delay = 250) {
+function debounceAutocomplete(fn, delay = 250) {
     let timer = null;
     return (...args) => {
         if (timer) clearTimeout(timer);
@@ -3790,6 +3790,30 @@ function findExactLocationSuggestion(items = [], query = '') {
     }) || null;
 }
 
+function isStrongAutocompleteMatch(label = '', query = '', { minPrefixLength = 4 } = {}) {
+    const normalizedLabel = normalizeSearchText(label);
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedLabel || !normalizedQuery) return false;
+    if (normalizedLabel === normalizedQuery) return true;
+    if (normalizedLabel.startsWith(normalizedQuery) && normalizedQuery.length >= minPrefixLength) return true;
+
+    const labelTokens = normalizedLabel.split(' ').filter(Boolean);
+    const queryTokens = normalizedQuery.split(' ').filter(Boolean);
+    if (!queryTokens.length) return false;
+    return queryTokens.every((token) => labelTokens.some((word) => word.startsWith(token)));
+}
+
+function findClosestLocationSuggestion(items = [], query = '') {
+    if (!Array.isArray(items) || !items.length) return null;
+    const best = items[0];
+    if (!best) return null;
+    const label = best.kind === 'city'
+        ? (best.city || best.label || '')
+        : (best.label || '');
+    if (!isStrongAutocompleteMatch(label, query, { minPrefixLength: 3 })) return null;
+    return best;
+}
+
 function setupAddressAutocomplete(input, resultsEl, citySelect) {
     if (!input || !resultsEl) return;
     let controller = null;
@@ -3810,12 +3834,18 @@ function setupAddressAutocomplete(input, resultsEl, citySelect) {
             clearResultsContainer(resultsEl);
             return;
         }
+        const closestSuggestion = findClosestLocationSuggestion(items, value);
+        if (closestSuggestion) {
+            applyLocationSuggestionSelection(input, citySelect, closestSuggestion);
+            clearResultsContainer(resultsEl);
+            return;
+        }
         renderResults(resultsEl, items, value, (item) => {
             applyLocationSuggestionSelection(input, citySelect, item);
             clearResultsContainer(resultsEl);
         });
     };
-    const debouncedSearch = debounce(runSearch, 250);
+    const debouncedSearch = debounceAutocomplete(runSearch, 250);
 
     input.addEventListener('input', (e) => {
         const value = e.target.value.trim();
@@ -3959,6 +3989,15 @@ function updateBrandResults(query = '') {
     }
 
     const matches = collectBrandMatches(q).slice(0, 30);
+    const best = matches[0];
+    if (best && isStrongAutocompleteMatch(best.label || best.value || '', q, { minPrefixLength: 3 })) {
+        applyBrandMatch(best, {
+            resetModel: true,
+            preserveModelQuery: false,
+            clearBrandResults: true
+        }).catch(() => {});
+        return;
+    }
     renderResults(carBrandResults, matches, query, (item) => {
         applyBrandMatch(item, {
             resetModel: true,
@@ -4107,6 +4146,15 @@ async function updateModelResults(query = '') {
     }
     const matches = await collectUnifiedModelMatches(query, { includeCustomFallback: true });
     if (requestId !== modelSearchRequestId) return;
+    const best = matches[0];
+    const bestLabel = `${best?.label || ''} ${best?.value || ''}`.trim();
+    if (best && isStrongAutocompleteMatch(bestLabel, q, { minPrefixLength: 3 })) {
+        applyModelMatch(best, {
+            clearModelResults: true,
+            triggerChange: true
+        });
+        return;
+    }
 
     renderResults(carTypeResults, matches, query, (item) => {
         applyModelMatch(item, {
@@ -6031,6 +6079,11 @@ async function runTravelAiAnalysis(base = {}) {
 // Calcola il costo del viaggio
 async function calculateTrip() {
     if (isCalculatingTrip) return;
+    queueUiEvent('trip.calculate_start', {
+        hasDeparture: !!((departureSelect?.value || '').trim() || (departureAddressInput?.value || '').trim()),
+        hasArrival: !!((arrivalSelect?.value || '').trim() || (arrivalAddressInput?.value || '').trim()),
+        hasVehicle: !!((carBrandSelect?.value || '').trim() && (carTypeSelect?.value || '').trim() && (fuelTypeSelect?.value || '').trim())
+    });
     setCalculateBusy(true);
     setTripActionFeedback('');
     const mapStatus = document.getElementById('mapStatus');
@@ -6244,6 +6297,12 @@ async function calculateTrip() {
         
         hideError();
         setTripActionFeedback('Calcolo completato. Puoi salvare o copiare il riepilogo.');
+        queueUiEvent('trip.calculate_success', {
+            distanceKm: Number(totalDistance.toFixed(1)),
+            totalCost: Number(totalCost.toFixed(2)),
+            hasOfficialToll: !!hasOfficialToll,
+            timeSource
+        });
     } finally {
         if (mapStatus && mapStatus.textContent === 'Calcolo percorso in corso...') {
             mapStatus.textContent = '';
@@ -6324,6 +6383,11 @@ function showError(message) {
     errorDiv.style.display = 'block';
     resultsSection.style.display = 'none';
     setTripActionFeedback('');
+    if (isCalculatingTrip) {
+        queueUiEvent('trip.calculate_error', {
+            message: sanitizeTelemetryText(message || 'Errore sconosciuto', 120)
+        });
+    }
 }
 
 // Nascondi errore
@@ -6349,6 +6413,10 @@ const BUDGET_AI_MAX_HISTORY_FOR_REQUEST = 18;
 const FUEL_FINDER_LAST_KEY = 'drivecalc_fuel_finder_last_v1';
 const LOCAL_API_BASE = 'http://localhost:3001/api';
 const CLOUD_API_BASES = ['https://drivercalc.onrender.com/api', 'https://drivecalc.onrender.com/api'];
+const TELEMETRY_SESSION_STORAGE_KEY = 'drivecalc_telemetry_session_v1';
+const TELEMETRY_BATCH_SIZE = 12;
+const TELEMETRY_MAX_QUEUE = 80;
+const TELEMETRY_FLUSH_DEBOUNCE_MS = 2400;
 const LAST_TRIP_SESSION_KEY = 'drivecalc_last_trip_v1';
 const ROUTE_NOTICE_KEY = 'drivecalc_route_notice_v1';
 const COMPANIONS_ROUTE_UI_KEY = 'drivecalc_companions_route_ui_v1';
@@ -6368,43 +6436,53 @@ const MENU_ROUTE_FILES = Object.freeze({
 const MENU_ROUTE_META = Object.freeze({
     home: {
         title: 'DriveCalc | Calcolatore costo viaggio con pedaggi e carburante',
-        subtitle: 'Calcolatore costi di viaggio'
+        subtitle: 'Calcolatore costi di viaggio',
+        description: 'Calcola costo viaggio auto con pedaggi, carburante, tempo e km su autostrada e strade ordinarie.'
     },
     budget: {
         title: 'Bilancio Viaggi | DriveCalc',
-        subtitle: 'Bilancio tratte e trend costi'
+        subtitle: 'Bilancio tratte e trend costi',
+        description: 'Analizza costi, trend e storico tratte con il bilancio intelligente di DriveCalc.'
     },
     companions: {
         title: 'Tratta in Compagnia | DriveCalc',
-        subtitle: 'Condivisione tratte e quota per persona'
+        subtitle: 'Condivisione tratte e quota per persona',
+        description: 'Dividi costi carburante e pedaggi tra amici e salva tratte condivise in modo rapido.'
     },
     friends: {
         title: 'I Miei Amici | DriveCalc',
-        subtitle: 'Gestione amici e condivisioni'
+        subtitle: 'Gestione amici e condivisioni',
+        description: 'Gestisci la rete amici e condividi tratte, preferiti e dati utili in sicurezza.'
     },
     fuelFinder: {
         title: 'Ricerca Benzinaio Smart | DriveCalc',
-        subtitle: 'Trova benzinai e confronta prezzi'
+        subtitle: 'Trova benzinai e confronta prezzi',
+        description: 'Trova benzinai vicini, confronta prezzi e filtra per carburante e distanza.'
     },
     aiChat: {
         title: 'Chat AI Viaggio | DriveCalc',
-        subtitle: 'Assistente viaggio intelligente'
+        subtitle: 'Assistente viaggio intelligente',
+        description: 'Ottieni suggerimenti intelligenti su percorsi, costi e risparmio carburante.'
     },
     favorites: {
         title: 'Preferiti | DriveCalc',
-        subtitle: 'Archivio tratte salvate'
+        subtitle: 'Archivio tratte salvate',
+        description: 'Salva e riusa rapidamente le tratte più frequenti con tutti i dettagli di costo.'
     },
     security: {
         title: 'Sicurezza Account | DriveCalc',
-        subtitle: 'Protezione e password account'
+        subtitle: 'Protezione e password account',
+        description: 'Gestisci password, sessioni e impostazioni di sicurezza del tuo account DriveCalc.'
     },
     account: {
         title: 'Account | DriveCalc',
-        subtitle: 'Profilo, autenticazione e dati personali'
+        subtitle: 'Profilo, autenticazione e dati personali',
+        description: 'Gestisci profilo, auto preferita e impostazioni personali del tuo account.'
     },
     info: {
         title: 'Info e Guida | DriveCalc',
-        subtitle: 'Come funziona il calcolatore'
+        subtitle: 'Come funziona il calcolatore',
+        description: 'Consulta guida, FAQ e dettagli su come DriveCalc stima costi, pedaggi e tempi di viaggio.'
     }
 });
 
@@ -6416,6 +6494,31 @@ function isLocalPageContext() {
     if (typeof window === 'undefined') return false;
     const host = String(window.location.hostname || '').toLowerCase();
     return host === 'localhost' || host === '127.0.0.1' || window.location.protocol === 'file:';
+}
+
+function isNativeCapacitorRuntime() {
+    if (typeof window === 'undefined') return false;
+    const cap = window.Capacitor || window.capacitor;
+    if (!cap) return false;
+
+    try {
+        if (typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
+            return true;
+        }
+    } catch (err) {
+        // Fallback to platform string below.
+    }
+
+    try {
+        const platform = String(
+            typeof cap.getPlatform === 'function'
+                ? cap.getPlatform()
+                : (cap.platform || '')
+        ).toLowerCase();
+        return platform === 'ios' || platform === 'android';
+    } catch (err) {
+        return false;
+    }
 }
 
 function buildApiBaseCandidates() {
@@ -6596,23 +6699,42 @@ function consumePendingTripLoad() {
     }
 }
 
+function setMetaTagContent(selector = '', content = '') {
+    if (typeof document === 'undefined') return;
+    const node = document.querySelector(selector);
+    if (!node) return;
+    node.setAttribute('content', String(content || '').trim());
+}
+
 function applyRouteMetadata() {
     if (typeof document === 'undefined') return;
     const routeKey = getCurrentRouteKey();
     const meta = MENU_ROUTE_META[routeKey] || MENU_ROUTE_META.home;
+    const routePath = routeKey === 'home' ? '' : getRouteFile(routeKey);
+    const pageUrl = (typeof window !== 'undefined')
+        ? (routePath ? `${window.location.origin}/${routePath}` : `${window.location.origin}/`)
+        : '';
+
     if (meta?.title) {
         document.title = meta.title;
+        setMetaTagContent('meta[property="og:title"]', meta.title);
+        setMetaTagContent('meta[name="twitter:title"]', meta.title);
+    }
+    if (meta?.description) {
+        setMetaTagContent('meta[name="description"]', meta.description);
+        setMetaTagContent('meta[property="og:description"]', meta.description);
+        setMetaTagContent('meta[name="twitter:description"]', meta.description);
     }
     const subtitle = document.querySelector('.subtitle');
     if (subtitle && meta?.subtitle) {
         subtitle.textContent = meta.subtitle;
     }
     const canonicalNode = document.querySelector('link[rel="canonical"]');
-    if (canonicalNode && typeof window !== 'undefined') {
-        const routePath = routeKey === 'home' ? '' : getRouteFile(routeKey);
-        canonicalNode.href = routePath
-            ? `${window.location.origin}/${routePath}`
-            : `${window.location.origin}/`;
+    if (canonicalNode && pageUrl) {
+        canonicalNode.href = pageUrl;
+    }
+    if (pageUrl) {
+        setMetaTagContent('meta[property="og:url"]', pageUrl);
     }
 }
 
@@ -6636,6 +6758,7 @@ async function openInitialRouteView() {
     applyRouteMetadata();
     applyDedicatedPageBodyState();
     const routeKey = getCurrentRouteKey();
+    queueUiEvent('route.view', { route: routeKey });
 
     if (routeKey === 'home') {
         const pendingTrip = consumePendingTripLoad();
@@ -6773,6 +6896,10 @@ let shareSettings = {
     shareMyCar: true,
     shareCompanionTrips: true
 };
+let telemetrySessionId = '';
+let telemetryQueue = [];
+let telemetryFlushTimer = null;
+let telemetryFlushInFlight = false;
 
 function isAuthenticated() {
     return !!authToken;
@@ -6787,6 +6914,213 @@ function buildAuthHeaders() {
 
 function getApiBase() {
     return apiBaseRuntime || API_BASES[0] || LOCAL_API_BASE;
+}
+
+function createTelemetrySessionId() {
+    const randomPart = (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function')
+        ? window.crypto.randomUUID().replace(/-/g, '')
+        : `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+    return `s${Date.now().toString(36)}${randomPart.slice(0, 28)}`;
+}
+
+function getTelemetrySessionId() {
+    if (telemetrySessionId) return telemetrySessionId;
+    try {
+        const stored = String(window.sessionStorage.getItem(TELEMETRY_SESSION_STORAGE_KEY) || '').trim();
+        if (stored && /^[a-zA-Z0-9._:-]{8,72}$/.test(stored)) {
+            telemetrySessionId = stored;
+            return telemetrySessionId;
+        }
+    } catch (e) {
+        // Ignore session storage access issues.
+    }
+
+    telemetrySessionId = createTelemetrySessionId();
+    try {
+        window.sessionStorage.setItem(TELEMETRY_SESSION_STORAGE_KEY, telemetrySessionId);
+    } catch (e) {
+        // Ignore session storage access issues.
+    }
+    return telemetrySessionId;
+}
+
+function sanitizeTelemetryText(value = '', maxLen = 120) {
+    return String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, Math.max(1, Number(maxLen) || 120));
+}
+
+function normalizeTelemetryEventName(eventName = '') {
+    const normalized = sanitizeTelemetryText(eventName, 80).toLowerCase();
+    if (!normalized || !/^[a-z0-9._:-]{2,80}$/.test(normalized)) return '';
+    return normalized;
+}
+
+function sanitizeTelemetryPayloadValue(value, depth = 0) {
+    if (value === null || value === undefined) return null;
+    if (depth >= 3) return null;
+
+    if (typeof value === 'string') return sanitizeTelemetryText(value, 160);
+    if (typeof value === 'number') return Number.isFinite(value) ? Number(value.toFixed(4)) : null;
+    if (typeof value === 'boolean') return value;
+
+    if (Array.isArray(value)) {
+        const normalized = value
+            .slice(0, 16)
+            .map((item) => sanitizeTelemetryPayloadValue(item, depth + 1))
+            .filter((item) => item !== null);
+        return normalized.length ? normalized : null;
+    }
+
+    if (typeof value === 'object') {
+        const output = {};
+        Object.entries(value)
+            .slice(0, 18)
+            .forEach(([key, entryValue]) => {
+                const safeKey = sanitizeTelemetryText(key, 32);
+                if (!safeKey) return;
+                const normalized = sanitizeTelemetryPayloadValue(entryValue, depth + 1);
+                if (normalized === null) return;
+                output[safeKey] = normalized;
+            });
+        return Object.keys(output).length ? output : null;
+    }
+
+    return null;
+}
+
+function scheduleTelemetryFlush() {
+    if (telemetryFlushTimer) return;
+    telemetryFlushTimer = window.setTimeout(() => {
+        telemetryFlushTimer = null;
+        flushTelemetryEvents().catch(() => {});
+    }, TELEMETRY_FLUSH_DEBOUNCE_MS);
+}
+
+function queueUiEvent(eventName = '', payload = {}, { immediate = false } = {}) {
+    const name = normalizeTelemetryEventName(eventName);
+    if (!name) return;
+    const route = String(getCurrentRouteKey() || 'home');
+    const normalizedPayload = sanitizeTelemetryPayloadValue(payload, 0);
+    const event = {
+        name,
+        ts: Date.now(),
+        route: sanitizeTelemetryText(route, 40)
+    };
+    if (normalizedPayload !== null) {
+        event.payload = normalizedPayload;
+    }
+
+    telemetryQueue.push(event);
+    if (telemetryQueue.length > TELEMETRY_MAX_QUEUE) {
+        telemetryQueue = telemetryQueue.slice(-TELEMETRY_MAX_QUEUE);
+    }
+
+    if (immediate) {
+        flushTelemetryEvents({ force: true }).catch(() => {});
+        return;
+    }
+    scheduleTelemetryFlush();
+}
+
+function buildTelemetryRequestOptions(events = []) {
+    return {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            ...buildAuthHeaders()
+        },
+        credentials: 'include',
+        keepalive: true,
+        body: JSON.stringify({
+            sessionId: getTelemetrySessionId(),
+            events
+        })
+    };
+}
+
+async function flushTelemetryEvents({ force = false } = {}) {
+    if (!telemetryQueue.length) return true;
+    if (telemetryFlushInFlight) return false;
+    if (!force && typeof document !== 'undefined' && document.visibilityState === 'hidden') return false;
+
+    telemetryFlushInFlight = true;
+    const batch = telemetryQueue.splice(0, TELEMETRY_BATCH_SIZE);
+    const requestOptions = buildTelemetryRequestOptions(batch);
+    const currentBase = getApiBase();
+    const endpoints = [currentBase, ...API_BASES.filter((base) => base !== currentBase)];
+    let sent = false;
+
+    try {
+        for (let i = 0; i < endpoints.length; i += 1) {
+            const base = endpoints[i];
+            try {
+                const res = await fetch(`${base}/telemetry/events`, requestOptions);
+                if (!res.ok) continue;
+                sent = true;
+                if (apiBaseRuntime !== base) apiBaseRuntime = base;
+                break;
+            } catch (e) {
+                // Try next endpoint.
+            }
+        }
+    } finally {
+        if (!sent && batch.length) {
+            telemetryQueue = [...batch, ...telemetryQueue].slice(-TELEMETRY_MAX_QUEUE);
+        }
+        telemetryFlushInFlight = false;
+    }
+
+    if (telemetryQueue.length) {
+        if (force) {
+            return flushTelemetryEvents({ force: false });
+        }
+        scheduleTelemetryFlush();
+    }
+    return sent;
+}
+
+function wireTelemetryLifecycle() {
+    const flushSoon = () => {
+        flushTelemetryEvents({ force: true }).catch(() => {});
+    };
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushSoon();
+    });
+    window.addEventListener('pagehide', flushSoon);
+    window.addEventListener('beforeunload', flushSoon);
+}
+
+function ensureLiveRegion(node, {
+    politeness = 'polite',
+    role = 'status',
+    atomic = true
+} = {}) {
+    if (!node) return;
+    if (role) node.setAttribute('role', role);
+    if (politeness) node.setAttribute('aria-live', politeness);
+    node.setAttribute('aria-atomic', atomic ? 'true' : 'false');
+}
+
+function initializeStatusLiveRegions() {
+    ensureLiveRegion(tripActionFeedback, { role: 'status', politeness: 'polite' });
+    ensureLiveRegion(friendsStatus, { role: 'status', politeness: 'polite' });
+    ensureLiveRegion(friendsStatusMirror, { role: 'status', politeness: 'polite' });
+    ensureLiveRegion(authStatus, { role: 'status', politeness: 'polite' });
+    ensureLiveRegion(accountStatus, { role: 'status', politeness: 'polite' });
+    ensureLiveRegion(securityStatus, { role: 'status', politeness: 'polite' });
+    ensureLiveRegion(aiChatStatus, { role: 'status', politeness: 'polite' });
+    ensureLiveRegion(fuelFinderStatus, { role: 'status', politeness: 'polite' });
+    ensureLiveRegion(authFeedback, { role: 'status', politeness: 'polite' });
+
+    const mapStatus = document.getElementById('mapStatus');
+    ensureLiveRegion(mapStatus, { role: 'status', politeness: 'polite' });
+
+    if (errorDiv) {
+        ensureLiveRegion(errorDiv, { role: 'alert', politeness: 'assertive' });
+    }
 }
 
 async function apiRequest(path, method = 'GET', body) {
@@ -6858,6 +7192,10 @@ async function apiRequest(path, method = 'GET', body) {
 
 function setAuthFeedback(message = '', type = 'info') {
     if (!authFeedback) return;
+    ensureLiveRegion(authFeedback, {
+        role: type === 'error' ? 'alert' : 'status',
+        politeness: type === 'error' ? 'assertive' : 'polite'
+    });
     if (authFeedbackTimer) {
         clearTimeout(authFeedbackTimer);
         authFeedbackTimer = null;
@@ -7066,6 +7404,7 @@ function setCalculateBusy(isBusy) {
 
 function setTripActionFeedback(message = '') {
     if (!tripActionFeedback) return;
+    ensureLiveRegion(tripActionFeedback, { role: 'status', politeness: 'polite' });
     if (tripActionFeedbackTimer) {
         clearTimeout(tripActionFeedbackTimer);
         tripActionFeedbackTimer = null;
@@ -7174,8 +7513,14 @@ async function fetchFriendSearchSuggestions(query = '') {
 }
 
 function setFriendsStatus(message = '') {
-    if (friendsStatus) friendsStatus.textContent = message;
-    if (friendsStatusMirror) friendsStatusMirror.textContent = message;
+    if (friendsStatus) {
+        ensureLiveRegion(friendsStatus, { role: 'status', politeness: 'polite' });
+        friendsStatus.textContent = message;
+    }
+    if (friendsStatusMirror) {
+        ensureLiveRegion(friendsStatusMirror, { role: 'status', politeness: 'polite' });
+        friendsStatusMirror.textContent = message;
+    }
 }
 
 function formatFriendTripDate(value) {
@@ -7655,11 +8000,13 @@ async function sendFriendRequest() {
     const email = (friendSearchInput?.value || '').trim();
     if (!email) {
         setFriendsStatus('Inserisci una email valida');
+        queueUiEvent('friends.request_invalid', { reason: 'empty-email' });
         return;
     }
     const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     if (!isValidEmail) {
         setFriendsStatus('Formato email non valido');
+        queueUiEvent('friends.request_invalid', { reason: 'invalid-email' });
         return;
     }
     setFriendRequestBusy(true);
@@ -7670,12 +8017,16 @@ async function sendFriendRequest() {
         friendsDataLoadedAt = 0;
         await loadFriendsData();
         setFriendsStatus('Richiesta inviata');
+        queueUiEvent('friends.request_sent');
     } catch (e) {
         if ((e.message || '').toLowerCase().includes('sessione scaduta')) {
             await clearAuth();
             openAuth();
         }
         setFriendsStatus(e.message);
+        queueUiEvent('friends.request_error', {
+            reason: sanitizeTelemetryText(e?.message || 'errore', 120)
+        });
     } finally {
         setFriendRequestBusy(false);
     }
@@ -7699,6 +8050,9 @@ function setAuth(token, user) {
 
 async function clearAuth({ remote = true } = {}) {
     const headers = buildAuthHeaders();
+    if (remote) {
+        queueUiEvent('auth.logout', { remote: true }, { immediate: true });
+    }
     authToken = null;
     currentUser = null;
     accountProfile = null;
@@ -7929,6 +8283,7 @@ async function handleAuth(isRegister) {
                 if (authEmailInput) authEmailInput.value = '';
                 if (accountCurrentPassword) accountCurrentPassword.value = '';
                 if (accountNewPassword) accountNewPassword.value = '';
+                queueUiEvent('auth.register_success');
                 return;
             }
 
@@ -7943,6 +8298,7 @@ async function handleAuth(isRegister) {
                 json?.message || 'Registrazione completata. Controlla la tua email per verificare l’account.',
                 'success'
             );
+            queueUiEvent('auth.register_pending_verification');
             authIdentifierInput?.focus();
             return;
         }
@@ -7957,10 +8313,15 @@ async function handleAuth(isRegister) {
         if (authPasswordInput) authPasswordInput.value = '';
         if (accountCurrentPassword) accountCurrentPassword.value = '';
         if (accountNewPassword) accountNewPassword.value = '';
+        queueUiEvent('auth.login_success');
     } catch (err) {
         const errorMessage = err.message || 'Errore autenticazione';
         updateAuthUI(errorMessage);
         setAuthFeedback(errorMessage, 'error');
+        queueUiEvent('auth.error', {
+            mode: registerMode ? 'register' : 'login',
+            reason: sanitizeTelemetryText(errorMessage, 120)
+        });
 
         if (!registerMode && /email non verificata/i.test(errorMessage)) {
             const shouldResend = window.confirm('Email non verificata. Vuoi ricevere un nuovo link di verifica?');
@@ -8290,6 +8651,7 @@ function updateFriendRequestsBadge() {
 
 function setSecurityStatus(message = '') {
     if (!securityStatus) return;
+    ensureLiveRegion(securityStatus, { role: 'status', politeness: 'polite' });
     securityStatus.textContent = message || '';
 }
 
@@ -8624,6 +8986,7 @@ async function resetAiChatHistoryOnServer() {
 
 function setAiChatStatus(message = '') {
     if (!aiChatStatus) return;
+    ensureLiveRegion(aiChatStatus, { role: 'status', politeness: 'polite' });
     aiChatStatus.textContent = message || '';
 }
 
@@ -8843,10 +9206,16 @@ async function sendAiChatMessage() {
         if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
         pushAiChatMessage('assistant', answer || 'Non ho trovato una risposta utile. Riprova con una domanda piu specifica.');
         setAiChatStatus(`Risposta pronta (${sourceLabel}).`);
+        queueUiEvent('ai.chat_message', {
+            source: sanitizeTelemetryText(answerPayload?.source || 'local', 16)
+        });
     } catch (e) {
         if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
         pushAiChatMessage('assistant', buildLocalAiChatFallback(message));
         setAiChatStatus('Risposta fornita in modalita locale.');
+        queueUiEvent('ai.chat_error', {
+            reason: sanitizeTelemetryText(e?.message || 'fallback-local', 120)
+        });
     } finally {
         setAiChatBusy(false);
         aiChatInput?.focus();
@@ -8954,6 +9323,7 @@ function getFuelFinderFreshnessClass(station = {}) {
 
 function setFuelFinderStatus(message = '') {
     if (!fuelFinderStatus) return;
+    ensureLiveRegion(fuelFinderStatus, { role: 'status', politeness: 'polite' });
     fuelFinderStatus.textContent = message || '';
 }
 
@@ -9462,6 +9832,7 @@ async function runFuelFinderSearch({ useLastKnown = true } = {}) {
 
     setFuelFinderBusy(true, { mode: 'search' });
     setFuelFinderStatus('Ricerca benzinai in corso...');
+    queueUiEvent('fuel.search_start');
     let position = null;
 
     try {
@@ -9502,6 +9873,11 @@ async function runFuelFinderSearch({ useLastKnown = true } = {}) {
         } else {
             setFuelFinderStatus(`Ricerca completata: ${items.length} benzinai entro ${payload.radiusKm} km mostrati su mappa e lista.`);
         }
+        queueUiEvent('fuel.search_success', {
+            resultsCount: Number(items.length || 0),
+            radiusKm: Number(payload.radiusKm || 0),
+            fuelType: payload.fuelType || ''
+        });
     } catch (err) {
         if (requestId !== fuelFinderRequestId) return;
         selectedFuelFinderStationKey = '';
@@ -9522,6 +9898,9 @@ async function runFuelFinderSearch({ useLastKnown = true } = {}) {
             statusTextWhenEmpty: 'Mappa pronta. Controlla la connessione e riprova la ricerca.'
         }).catch(() => {});
         setFuelFinderStatus(err?.message || 'Ricerca non disponibile al momento.');
+        queueUiEvent('fuel.search_error', {
+            reason: sanitizeTelemetryText(err?.message || 'search-failed', 120)
+        });
     } finally {
         setFuelFinderBusy(false);
     }
@@ -9720,7 +10099,8 @@ async function copyTripSummary() {
 
 async function saveCurrentToFavorites() {
     if (!lastCalculatedTrip) {
-        alert('Calcola prima un viaggio per salvarlo nei preferiti.');
+        setTripActionFeedback('Calcola prima un viaggio per salvarlo nei preferiti.');
+        queueUiEvent('favorites.save_invalid', { reason: 'missing-trip' });
         return;
     }
     syncCompletedFlag();
@@ -9732,7 +10112,8 @@ async function saveCurrentToFavorites() {
         f.fuelType === lastCalculatedTrip.fuelType
     );
     if (duplicate) {
-        alert('Questa tratta è già nei preferiti.');
+        setTripActionFeedback('Questa tratta è già nei preferiti.');
+        queueUiEvent('favorites.save_duplicate');
         return;
     }
     if (authToken) {
@@ -9741,12 +10122,19 @@ async function saveCurrentToFavorites() {
             const saved = res.item || lastCalculatedTrip;
             favorites = [saved, ...favorites.filter(f => f.tripId !== saved.tripId)];
         } catch (e) {
-            alert('Errore nel salvataggio su cloud');
+            setTripActionFeedback('Errore nel salvataggio su cloud');
+            queueUiEvent('favorites.save_error', {
+                reason: sanitizeTelemetryText(e?.message || 'cloud-save-failed', 120)
+            });
+            return;
         }
     } else {
         favorites.unshift(lastCalculatedTrip);
         persistFavorites();
     }
+    queueUiEvent('favorites.save_success', {
+        storage: authToken ? 'cloud' : 'local'
+    });
     renderFavorites();
     closeFavorites();
 }
@@ -10147,7 +10535,7 @@ function renderCompanionHistory() {
                 try {
                     await apiRequest(`/companions/${trip.tripId}`, 'DELETE');
                 } catch (e) {
-                    alert(e.message || 'Errore rimozione tratta condivisa');
+                    setTripActionFeedback(e.message || 'Errore rimozione tratta condivisa');
                     return;
                 }
             }
@@ -10268,11 +10656,13 @@ function addCompanion() {
 
 async function saveCompanionTrip() {
     if (!lastCalculatedTrip) {
-        alert('Calcola prima una tratta da salvare.');
+        setTripActionFeedback('Calcola prima una tratta da salvare.');
+        queueUiEvent('companions.save_invalid', { reason: 'missing-trip' });
         return;
     }
     if (!currentCompanions.length) {
-        alert('Aggiungi almeno una persona.');
+        setTripActionFeedback('Aggiungi almeno una persona.');
+        queueUiEvent('companions.save_invalid', { reason: 'missing-participants' });
         return;
     }
 
@@ -10303,7 +10693,10 @@ async function saveCompanionTrip() {
             const res = await apiRequest('/companions', 'POST', entry);
             savedEntry = res.item || entry;
         } catch (e) {
-            alert(e.message || 'Errore nel salvataggio della tratta condivisa');
+            setTripActionFeedback(e.message || 'Errore nel salvataggio della tratta condivisa');
+            queueUiEvent('companions.save_error', {
+                reason: sanitizeTelemetryText(e?.message || 'save-failed', 120)
+            });
             return;
         }
     }
@@ -10317,10 +10710,14 @@ async function saveCompanionTrip() {
 
     const sharedCount = Array.isArray(savedEntry.sharedFriendIds) ? savedEntry.sharedFriendIds.length : 0;
     if (sharedCount > 0) {
-        alert(`Tratta salvata e condivisa con ${sharedCount} amic${sharedCount === 1 ? 'o' : 'i'}.`);
+        setTripActionFeedback(`Tratta salvata e condivisa con ${sharedCount} amic${sharedCount === 1 ? 'o' : 'i'}.`);
     } else {
-        alert('Tratta salvata in compagnia.');
+        setTripActionFeedback('Tratta salvata in compagnia.');
     }
+    queueUiEvent('companions.save_success', {
+        participantsCount: Number(savedEntry.participantsCount || currentCompanions.length || 0),
+        sharedFriendsCount: Number(sharedCount || 0)
+    });
 }
 
 async function loadCompanionTrip(trip) {
@@ -11213,6 +11610,7 @@ async function resetBudgetAiHistoryOnServer() {
 
 function setBudgetAiStatus(message = '') {
     if (!budgetAiStatus) return;
+    ensureLiveRegion(budgetAiStatus, { role: 'status', politeness: 'polite' });
     budgetAiStatus.textContent = message || '';
 }
 
@@ -11506,12 +11904,18 @@ async function sendBudgetAiMessage() {
         pushBudgetAiMessage('assistant', finalAnswer);
         rememberBudgetAiExchange(message, finalAnswer);
         setBudgetAiStatus(`Risposta pronta (${sourceLabel}).`);
+        queueUiEvent('ai.budget_message', {
+            source: sanitizeTelemetryText(answerPayload?.source || 'local', 16)
+        });
     } catch (e) {
         if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
         const fallback = buildLocalBudgetAiFallback(message);
         pushBudgetAiMessage('assistant', fallback);
         rememberBudgetAiExchange(message, fallback);
         setBudgetAiStatus('Risposta fornita in modalita locale.');
+        queueUiEvent('ai.budget_error', {
+            reason: sanitizeTelemetryText(e?.message || 'fallback-local', 120)
+        });
     } finally {
         setBudgetAiBusy(false);
         renderBudgetAiQuickActions();
@@ -12107,7 +12511,7 @@ closeFavoritesBtn?.addEventListener('click', closeFavorites);
 saveFavoriteBtn?.addEventListener('click', saveCurrentToFavorites);
 openCompanionFromResultBtn?.addEventListener('click', () => {
     if (!lastCalculatedTrip) {
-        alert('Calcola prima una tratta per aggiungere amici.');
+        setTripActionFeedback('Calcola prima una tratta per aggiungere amici.');
         return;
     }
     openCompanions({ friendsOpen: true, manualOpen: false }).catch(() => {});
@@ -12429,7 +12833,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-const SW_BUILD_VERSION = '2026-02-21-06';
+const SW_BUILD_VERSION = '2026-02-21-08';
 let hasReloadedForServiceWorker = false;
 
 function forceActivateWaitingWorker(registration) {
@@ -12499,6 +12903,13 @@ function isIosDevice() {
 
 function updateInstallButtonState() {
     if (!installAppButtons.length) return;
+
+    if (isNativeCapacitorRuntime()) {
+        installAppButtons.forEach((btn) => {
+            btn.style.display = 'none';
+        });
+        return;
+    }
 
     const setButtonState = (label, disabled, title) => {
         installAppButtons.forEach((btn) => {
@@ -12670,6 +13081,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         });
         updateInstallButtonState();
+        getTelemetrySessionId();
+        wireTelemetryLifecycle();
+        queueUiEvent('app.bootstrap', {
+            route: routeKey,
+            standalone: isStandaloneApp(),
+            native: isNativeCapacitorRuntime()
+        });
+        initializeStatusLiveRegions();
         closeSettingsMenu();
         syncSettingsMenuCloseVisibility();
         wireMobileKeyboardDetection();
@@ -12711,6 +13130,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     } finally {
         markAppReady();
         scheduleDeferredTask(() => bootstrapDeferredData(), 900);
-        scheduleDeferredTask(() => registerServiceWorker().catch(() => {}), 1800);
+        if (!isNativeCapacitorRuntime()) {
+            scheduleDeferredTask(() => registerServiceWorker().catch(() => {}), 1800);
+        }
     }
 });

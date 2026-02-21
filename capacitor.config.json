@@ -1,0 +1,10 @@
+{
+  "appId": "com.cesarecaroppi.drivercalc",
+  "appName": "DriveCalc",
+  "webDir": "mobile-web",
+  "bundledWebRuntime": false,
+  "server": {
+    "cleartext": false,
+    "androidScheme": "https"
+  }
+}
