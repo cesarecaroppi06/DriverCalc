@@ -2867,8 +2867,8 @@ app.post('/api/fuel-stations/nearby', async (req, res) => {
         FUEL_STATION_MAX_RADIUS_KM
     );
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        return res.status(400).json({ error: 'Coordinate non valide' });
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        return res.status(400).json({ error: 'Ricerca invalida: coordinate non valide' });
     }
 
     try {

@@ -6849,13 +6849,18 @@ let friendSearchAbortController = null;
 let friendSearchRequestId = 0;
 const FRIEND_SEARCH_DEBOUNCE_MS = 140;
 const FRIEND_SEARCH_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const FRIEND_SEARCH_REQUEST_TIMEOUT_MS = 4800;
 const FRIENDS_DATA_STALE_MS = 45 * 1000;
 const COMPANION_TRIPS_DATA_STALE_MS = 45 * 1000;
 const COMPANIONS_REMOTE_LOAD_TIMEOUT_MS = 10000;
+const AUTH_SESSION_RESTORE_TIMEOUT_MS = 5200;
+const FUEL_SEARCH_REQUEST_TIMEOUT_MS = 9500;
 const friendSearchCache = new Map();
 let friends = [];
 let friendsDataLoadedAt = 0;
 let friendsDataLoadingPromise = null;
+let authSessionRestorePromise = null;
+let authSessionRestoreResolved = false;
 let incomingFriendRequests = [];
 let outgoingFriendRequests = [];
 let selectedFriendId = '';
@@ -7468,14 +7473,14 @@ async function fetchFriendSearchSuggestions(query = '') {
     friendSearchAbortController = new AbortController();
 
     try {
-        const res = await fetch(`${getApiBase()}/friends/search?q=${encodeURIComponent(q)}`, {
+        const res = await withTimeout(fetch(`${getApiBase()}/friends/search?q=${encodeURIComponent(q)}`, {
             headers: {
                 Accept: 'application/json',
                 ...buildAuthHeaders()
             },
             credentials: 'include',
             signal: friendSearchAbortController.signal
-        });
+        }), FRIEND_SEARCH_REQUEST_TIMEOUT_MS, 'Ricerca utenti troppo lenta');
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(payload.error || 'Ricerca utenti non disponibile');
         if (requestId !== friendSearchRequestId) return;
@@ -7484,9 +7489,9 @@ async function fetchFriendSearchSuggestions(query = '') {
         const items = Array.isArray(payload.items)
             ? payload.items.map((u) => ({
                 id: u.id,
-                value: u.email,
-                label: u.email
-            }))
+                value: u.email || '',
+                label: [u.username, u.email].filter(Boolean).join(' · ')
+            })).filter((item) => item.value && item.label)
             : [];
         writeFriendSearchCache(q, items);
         if (!items.length) {
@@ -7951,10 +7956,9 @@ async function loadFriendsData() {
     }
 
     friendsDataLoadingPromise = (async () => {
-        const [friendsRes, requestsRes, shareRes] = await Promise.allSettled([
-            apiRequest('/friends'),
-            apiRequest('/friends/requests'),
-            apiRequest('/share-settings')
+        const [friendsRes, requestsRes] = await Promise.allSettled([
+            withTimeout(apiRequest('/friends'), 5200, 'Timeout caricamento amici'),
+            withTimeout(apiRequest('/friends/requests'), 5200, 'Timeout caricamento richieste')
         ]);
         if (friendsRes.status === 'fulfilled') {
             friends = Array.isArray(friendsRes.value?.items) ? friendsRes.value.items : [];
@@ -7963,13 +7967,15 @@ async function loadFriendsData() {
             incomingFriendRequests = Array.isArray(requestsRes.value?.incoming) ? requestsRes.value.incoming : [];
             outgoingFriendRequests = Array.isArray(requestsRes.value?.outgoing) ? requestsRes.value.outgoing : [];
         }
-        if (shareRes.status === 'fulfilled') {
-            shareSettings = shareRes.value?.settings || shareSettings;
-        }
         friendsDataLoadedAt = Date.now();
         renderFriends();
         renderFriendRequests();
-        applyShareSettingsToUI();
+        apiRequest('/share-settings')
+            .then((shareRes) => {
+                shareSettings = shareRes?.settings || shareSettings;
+                applyShareSettingsToUI();
+            })
+            .catch(() => {});
     })();
 
     try {
@@ -8035,6 +8041,8 @@ async function sendFriendRequest() {
 function setAuth(token, user) {
     authToken = token || 'cookie-session';
     currentUser = user || null;
+    authSessionRestoreResolved = true;
+    authSessionRestorePromise = null;
     friendsDataLoadedAt = 0;
     friendsDataLoadingPromise = null;
     companionTripsLoadedAt = 0;
@@ -8094,6 +8102,8 @@ async function clearAuth({ remote = true } = {}) {
             // Ignore logout network failures; local session is already cleared.
         }
     }
+    authSessionRestoreResolved = true;
+    authSessionRestorePromise = null;
 }
 
 async function loadAccountProfile() {
@@ -8128,9 +8138,38 @@ async function restoreAuthSession() {
         loadAiChatHistory(true);
         loadBudgetAiState(true);
         updateAuthUI('Sessione ripristinata');
+        authSessionRestoreResolved = true;
+        authSessionRestorePromise = null;
         return true;
     } catch (e) {
+        authSessionRestoreResolved = true;
+        authSessionRestorePromise = null;
         return false;
+    }
+}
+
+async function ensureAuthSessionReady({
+    timeoutMs = AUTH_SESSION_RESTORE_TIMEOUT_MS,
+    forceRetry = false
+} = {}) {
+    if (isAuthenticated()) return true;
+    if (forceRetry) {
+        authSessionRestoreResolved = false;
+        authSessionRestorePromise = null;
+    }
+    if (authSessionRestoreResolved) return false;
+    if (!authSessionRestorePromise) {
+        authSessionRestorePromise = withTimeout(
+            restoreAuthSession(),
+            timeoutMs,
+            'Timeout ripristino sessione'
+        ).catch(() => false);
+    }
+    try {
+        const restored = await authSessionRestorePromise;
+        return !!restored || isAuthenticated();
+    } catch (e) {
+        return isAuthenticated();
     }
 }
 
@@ -8718,7 +8757,13 @@ function closeSecurity() {
 }
 
 async function openFriendRequestsView() {
-    if (!authToken) {
+    if (!isAuthenticated()) {
+        await ensureAuthSessionReady({
+            timeoutMs: AUTH_SESSION_RESTORE_TIMEOUT_MS,
+            forceRetry: true
+        });
+    }
+    if (!isAuthenticated()) {
         openAuth();
         updateAuthUI('Accedi per inviare o gestire richieste amicizia');
         return;
@@ -8735,7 +8780,13 @@ async function openFriendRequestsView() {
 
 async function openFriendsView() {
     if (maybeNavigateToRoute('friends')) return;
-    if (!authToken) {
+    if (!isAuthenticated()) {
+        await ensureAuthSessionReady({
+            timeoutMs: AUTH_SESSION_RESTORE_TIMEOUT_MS,
+            forceRetry: true
+        });
+    }
+    if (!isAuthenticated()) {
         const notice = 'Accedi per visualizzare I miei amici';
         if (isCurrentRoute('friends')) {
             openAuth();
@@ -9389,6 +9440,25 @@ function getFuelFinderStoredPosition() {
     return { lat, lng };
 }
 
+function isValidGeoCoordinatePair(lat = NaN, lng = NaN) {
+    const safeLat = Number(lat);
+    const safeLng = Number(lng);
+    if (!Number.isFinite(safeLat) || !Number.isFinite(safeLng)) return false;
+    if (Math.abs(safeLat) > 90 || Math.abs(safeLng) > 180) return false;
+    return true;
+}
+
+function looksInvalidFuelSearchError(err = null) {
+    const message = String(err?.message || '').toLowerCase();
+    if (!message) return false;
+    return (
+        message.includes('coordinat')
+        || message.includes('ricerca invalida')
+        || message.includes('search invalid')
+        || message.includes('invalid coordinate')
+    );
+}
+
 function getFuelFinderRadiusKm(rawValue) {
     const parsed = Number(rawValue);
     const base = Number.isFinite(parsed) && parsed > 0 ? parsed : FUEL_FINDER_DEFAULT_RADIUS_KM;
@@ -9441,9 +9511,12 @@ function getFuelFinderDisplayStations(items = [], radiusKm = FUEL_FINDER_DEFAULT
 function buildFuelFinderRequestPayload(position) {
     const radiusKm = getFuelFinderRadiusKm(fuelFinderRadius?.value || FUEL_FINDER_DEFAULT_RADIUS_KM);
     const fuelType = normalizeFuelFinderType(fuelFinderFuelType?.value || fuelTypeSelect?.value || 'benzina');
+    const lat = Number(position?.lat);
+    const lng = Number(position?.lng);
+    if (!isValidGeoCoordinatePair(lat, lng)) return null;
     return {
-        lat: Number(position.lat),
-        lng: Number(position.lng),
+        lat,
+        lng,
         radiusKm,
         fuelType
     };
@@ -9844,8 +9917,43 @@ async function runFuelFinderSearch({ useLastKnown = true } = {}) {
             persistFuelFinderPosition(position);
         }
 
-        const payload = buildFuelFinderRequestPayload(position);
-        const result = await apiRequest('/fuel-stations/nearby', 'POST', payload);
+        let payload = buildFuelFinderRequestPayload(position);
+        if (!payload) {
+            position = await locateUserPosition();
+            persistFuelFinderPosition(position);
+            payload = buildFuelFinderRequestPayload(position);
+        }
+        if (!payload) {
+            throw new Error('Ricerca invalida: posizione non valida. Premi "Usa la mia posizione" e riprova.');
+        }
+
+        let result;
+        try {
+            result = await withTimeout(
+                apiRequest('/fuel-stations/nearby', 'POST', payload),
+                FUEL_SEARCH_REQUEST_TIMEOUT_MS,
+                'Ricerca benzinai troppo lenta. Riprova.'
+            );
+        } catch (searchErr) {
+            if (looksInvalidFuelSearchError(searchErr)) {
+                const freshPosition = await locateUserPosition();
+                persistFuelFinderPosition(freshPosition);
+                const freshPayload = buildFuelFinderRequestPayload(freshPosition);
+                if (!freshPayload) {
+                    throw new Error('Ricerca invalida: posizione non valida. Premi "Usa la mia posizione" e riprova.');
+                }
+                payload = freshPayload;
+                result = await withTimeout(
+                    apiRequest('/fuel-stations/nearby', 'POST', payload),
+                    FUEL_SEARCH_REQUEST_TIMEOUT_MS,
+                    'Ricerca benzinai troppo lenta. Riprova.'
+                );
+                setFuelFinderStatus('Posizione aggiornata automaticamente. Ricerca benzinai in corso...');
+            } else {
+                throw searchErr;
+            }
+        }
+
         if (requestId !== fuelFinderRequestId) return;
         const rawItems = Array.isArray(result?.items) ? result.items : [];
         const items = filterFuelStationsByRadius(rawItems, payload.radiusKm);
@@ -12221,7 +12329,8 @@ function resolveMobileBottomNavKeyFromMenuButton(button = null) {
     if (!id) return 'home';
     if (id === 'budgetBtn') return 'budget';
     if (id === 'aiChatBtn') return 'ai';
-    if (id === 'accountBtn' || id === 'securityBtn' || id === 'friendsBtn') return 'account';
+    if (id === 'accountBtn' || id === 'securityBtn') return 'account';
+    if (id === 'friendsBtn') return 'home';
     return 'home';
 }
 
@@ -13022,7 +13131,10 @@ async function bootstrapDeferredData() {
     setSecurityStatus('');
 
     await handleAuthActionFromUrl();
-    const hasSession = await restoreAuthSession();
+    const hasSession = await ensureAuthSessionReady({
+        timeoutMs: 5200,
+        forceRetry: true
+    });
 
     if (hasSession || isAuthenticated()) {
         try {
