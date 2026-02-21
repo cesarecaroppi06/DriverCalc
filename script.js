@@ -9595,10 +9595,14 @@ function setCompanionPickerPanelsState({ friendsOpen = false, manualOpen = false
         companionManualPanel.style.display = companionManualPanelOpen ? 'flex' : 'none';
     }
     if (openCompanionFriendsBtn) {
-        openCompanionFriendsBtn.textContent = companionFriendsPanelOpen ? 'Nascondi amici' : 'Aggiungi amico';
+        openCompanionFriendsBtn.textContent = companionFriendsPanelOpen
+            ? 'Nascondi amici'
+            : (isMobileViewport() ? 'Amico registrato' : 'Aggiungi amico');
     }
     if (toggleManualCompanionBtn) {
-        toggleManualCompanionBtn.textContent = companionManualPanelOpen ? 'Nascondi campo nome' : 'Aggiungi non iscritto';
+        toggleManualCompanionBtn.textContent = companionManualPanelOpen
+            ? (isMobileViewport() ? 'Nascondi nome' : 'Nascondi campo nome')
+            : (isMobileViewport() ? 'Nome manuale' : 'Aggiungi non iscritto');
     }
 }
 
@@ -9918,7 +9922,12 @@ async function openCompanions({ friendsOpen = false, manualOpen = false } = {}) 
             : 'Calcola una tratta per attivare la divisione dei costi.';
     }
     if (companionNameInput) companionNameInput.value = '';
-    setCompanionPickerPanelsState({ friendsOpen, manualOpen });
+    const mobileDefaultFriendsOpen = isMobileViewport() && authToken && !manualOpen && !friendsOpen;
+    const mobileDefaultManualOpen = isMobileViewport() && !authToken && !friendsOpen && !manualOpen;
+    setCompanionPickerPanelsState({
+        friendsOpen: friendsOpen || mobileDefaultFriendsOpen,
+        manualOpen: manualOpen || mobileDefaultManualOpen
+    });
     renderCompanionsList();
     renderCompanionFriendsPicker();
     updateSplitSummary();
@@ -12118,7 +12127,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-const SW_BUILD_VERSION = '2026-02-21-02';
+const SW_BUILD_VERSION = '2026-02-21-05';
 let hasReloadedForServiceWorker = false;
 
 function forceActivateWaitingWorker(registration) {
