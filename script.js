@@ -3918,6 +3918,10 @@ const mobileMenuToggle = document.getElementById('mobileMenuToggle');
 const mobileMenuBackdrop = document.getElementById('mobileMenuBackdrop');
 const closeSettingsMenuBtn = document.getElementById('closeSettingsMenu');
 const settingsMenuButtons = Array.from(document.querySelectorAll('#settingsMenu ul button'));
+const MOBILE_BOTTOM_NAV_ID = 'mobileBottomNav';
+const MOBILE_VIEWPORT_QUERY = '(max-width: 768px)';
+let mobileBottomNav = null;
+let mobileBottomNavButtons = [];
 const favoritesBtn = document.getElementById('favoritesBtn');
 const favoritesOverlay = document.getElementById('favoritesOverlay');
 const favoritesList = document.getElementById('favoritesList');
@@ -4183,7 +4187,9 @@ function syncMobileUiState() {
     const infoVisible = !!(infoPage && infoPage.style.display === 'block');
     const overlayVisible = isAnyBlockingOverlayOpen();
     const menuOpen = document.body.classList.contains('mobile-menu-open');
-    const shouldHideTopActions = isMobileViewport() && (overlayVisible || infoVisible || menuOpen);
+    const isDedicatedPage = document.body.classList.contains('dedicated-page');
+    const shouldHideTopActions = isMobileViewport()
+        && (infoVisible || menuOpen || (overlayVisible && !isDedicatedPage));
 
     document.body.classList.toggle('info-view-open', infoVisible);
     document.body.classList.toggle('mobile-actions-hidden', shouldHideTopActions);
@@ -10917,7 +10923,75 @@ async function openMyCar() {
 
 // Gestione viste (calcolatore vs pagina info)
 function isMobileViewport() {
-    return window.matchMedia('(max-width: 768px)').matches;
+    return window.matchMedia(MOBILE_VIEWPORT_QUERY).matches;
+}
+
+function setMobileBottomNavActive(navKey = 'home') {
+    if (!mobileBottomNavButtons.length) return;
+    const safeKey = mobileBottomNavButtons.some((btn) => btn.dataset.navKey === navKey) ? navKey : 'home';
+    mobileBottomNavButtons.forEach((btn) => {
+        btn.classList.toggle('is-active', btn.dataset.navKey === safeKey);
+    });
+}
+
+function resolveMobileBottomNavKeyFromMenuButton(button = null) {
+    const id = String(button?.id || '').trim();
+    if (!id) return 'home';
+    if (id === 'budgetBtn') return 'budget';
+    if (id === 'aiChatBtn') return 'ai';
+    if (id === 'accountBtn' || id === 'securityBtn' || id === 'friendsBtn') return 'account';
+    return 'home';
+}
+
+function syncMobileBottomNavFromMenuButton(button = null) {
+    setMobileBottomNavActive(resolveMobileBottomNavKeyFromMenuButton(button));
+}
+
+function ensureMobileBottomNav() {
+    if (!document.body) return;
+    if (!mobileBottomNav) {
+        mobileBottomNav = document.getElementById(MOBILE_BOTTOM_NAV_ID);
+    }
+    if (!mobileBottomNav) {
+        const nav = document.createElement('nav');
+        nav.id = MOBILE_BOTTOM_NAV_ID;
+        nav.className = 'mobile-bottom-nav';
+        nav.setAttribute('aria-label', 'Navigazione mobile rapida');
+        nav.innerHTML = `
+            <button type="button" class="mobile-bottom-nav-btn is-active" data-nav-key="home">Home</button>
+            <button type="button" class="mobile-bottom-nav-btn" data-nav-key="budget">Bilancio</button>
+            <button type="button" class="mobile-bottom-nav-btn" data-nav-key="ai">AI</button>
+            <button type="button" class="mobile-bottom-nav-btn" data-nav-key="account">Account</button>
+        `;
+        document.body.appendChild(nav);
+        mobileBottomNav = nav;
+    }
+
+    mobileBottomNavButtons = Array.from(mobileBottomNav.querySelectorAll('.mobile-bottom-nav-btn'));
+    const navActions = {
+        home: () => showCalculatorView(),
+        budget: () => { openBudget().catch(() => {}); },
+        ai: () => openAiChat(),
+        account: () => openAuth()
+    };
+
+    mobileBottomNavButtons.forEach((btn) => {
+        if (btn.dataset.wired === '1') return;
+        btn.dataset.wired = '1';
+        btn.addEventListener('click', () => {
+            const navKey = String(btn.dataset.navKey || 'home').trim() || 'home';
+            if (document.body.classList.contains('mobile-menu-open')) {
+                closeSettingsMenu();
+            }
+            setMobileBottomNavActive(navKey);
+            const action = navActions[navKey];
+            if (typeof action === 'function') action();
+        });
+    });
+
+    const activeMenuButton = settingsMenuButtons.find((btn) => btn.classList.contains('active')) || homeBtn;
+    syncMobileBottomNavFromMenuButton(activeMenuButton);
+    syncMobileUiState();
 }
 
 function setSettingsMenuToggleExpanded(isExpanded) {
@@ -10931,6 +11005,7 @@ function setActiveMenu(button) {
     if (button) {
         button.classList.add('active');
     }
+    syncMobileBottomNavFromMenuButton(button);
     if (isMobileViewport()) {
         closeSettingsMenu();
     }
@@ -11670,6 +11745,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateInstallButtonState();
         closeSettingsMenu();
         syncSettingsMenuCloseVisibility();
+        ensureMobileBottomNav();
         syncMobileUiState();
         loadAiChatHistory(true);
         loadBudgetAiState(true);
