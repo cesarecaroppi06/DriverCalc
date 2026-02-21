@@ -45,6 +45,17 @@ const AI_CHAT_MAX_OUTPUT_TOKENS = 3072;
 const AI_CHAT_GEMINI_CONTINUATION_STEPS = 8;
 const AI_CHAT_RATE_WINDOW_MS = 60 * 1000;
 const AI_CHAT_RATE_MAX_REQUESTS = 12;
+const AI_CHAT_HISTORY_TURNS = 14;
+const AI_CHAT_CONTEXT_MAX_CHARS = 9000;
+const AI_CHAT_BUDGET_TOP_ROUTES_LIMIT = 8;
+const AI_CHAT_BUDGET_RECENT_TRIPS_LIMIT = 12;
+const AI_CHAT_BUDGET_MEMORY_NOTES_LIMIT = 36;
+const AI_BUDGET_MEMORY_MAX_HISTORY = 320;
+const AI_BUDGET_MEMORY_MAX_NOTES = 420;
+const AI_BUDGET_MESSAGE_MAX_CHARS = 7000;
+const AI_BUDGET_NOTE_MAX_CHARS = 420;
+const AI_CHAT_MEMORY_MAX_HISTORY = 320;
+const AI_CHAT_MESSAGE_MAX_CHARS = 7000;
 const aiChatRateBuckets = new Map();
 const FUEL_ZONE_API_URL = 'https://carburanti.mise.gov.it/ospzApi/search/zone';
 const FUEL_STATION_MIN_RADIUS_KM = 1;
@@ -191,6 +202,8 @@ function ensureDbShape(db) {
     if (!db.favorites || typeof db.favorites !== 'object') db.favorites = {};
     if (!db.companions || typeof db.companions !== 'object') db.companions = {};
     if (!db.completed || typeof db.completed !== 'object') db.completed = {};
+    if (!db.aiChatMemory || typeof db.aiChatMemory !== 'object') db.aiChatMemory = {};
+    if (!db.aiBudgetMemory || typeof db.aiBudgetMemory !== 'object') db.aiBudgetMemory = {};
     if (!db.mycarPhotos || typeof db.mycarPhotos !== 'object') db.mycarPhotos = {};
     if (!Array.isArray(db.friendRequests)) db.friendRequests = [];
     if (!db.friendships || typeof db.friendships !== 'object') db.friendships = {};
@@ -737,11 +750,207 @@ function isAiChatRateLimited(req) {
     return false;
 }
 
+function sanitizeAiContextLine(value = '', maxLen = 220) {
+    return String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, Math.max(1, Number(maxLen) || 220));
+}
+
+function parseAiNumeric(value, fallback = 0) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function isBudgetAssistantContext(context = {}) {
+    return !!(context && typeof context === 'object' && (context.budgetAssistant || context.budget));
+}
+
+function buildBudgetContextNarrative(context = {}) {
+    if (!isBudgetAssistantContext(context)) return '';
+    const budget = context && typeof context === 'object' ? (context.budget || {}) : {};
+    const period = budget && typeof budget.period === 'object' ? budget.period : {};
+    const range = budget && typeof budget.range === 'object' ? budget.range : {};
+    const history = budget && typeof budget.history === 'object' ? budget.history : {};
+    const trend = range && typeof range.trend === 'object' ? range.trend : {};
+    const peakMonth = range && typeof range.peakMonth === 'object' ? range.peakMonth : null;
+    const lines = [];
+
+    const periodLabel = sanitizeAiContextLine(period.label || 'Periodo non specificato', 120);
+    const periodMonths = parseAiNumeric(period.months, 0);
+    const periodTrips = parseAiNumeric(range.tripsCount, 0);
+    const periodTotal = parseAiNumeric(range.totalCost, 0);
+    const periodFuel = parseAiNumeric(range.totalFuel, 0);
+    const periodToll = parseAiNumeric(range.totalToll, 0);
+    const periodKm = parseAiNumeric(range.totalKm, 0);
+    const avgTrip = parseAiNumeric(range.avgCostPerTrip, 0);
+    const avgMonth = parseAiNumeric(range.avgCostPerMonth, 0);
+
+    lines.push('Modalita assistente bilancio attiva.');
+    lines.push(`Periodo selezionato: ${periodLabel} (${periodMonths} mesi).`);
+    lines.push(`Riepilogo periodo: ${periodTrips} tratte, totale ${formatMoney(periodTotal)}, carburante ${formatMoney(periodFuel)}, pedaggi ${formatMoney(periodToll)}, km ${periodKm.toFixed(1)}, media tratta ${formatMoney(avgTrip)}, media mese ${formatMoney(avgMonth)}.`);
+
+    if (peakMonth) {
+        lines.push(`Mese di picco: ${sanitizeAiContextLine(peakMonth.label || '-', 90)} con ${formatMoney(parseAiNumeric(peakMonth.totalCost, 0))}.`);
+    }
+
+    const trendDirection = sanitizeAiContextLine(trend.direction || 'stable', 24);
+    const trendDelta = parseAiNumeric(trend.delta, 0);
+    const trendPercent = parseAiNumeric(trend.percent, 0);
+    lines.push(`Trend periodo: ${trendDirection}, variazione ${formatMoney(trendDelta)} (${trendPercent.toFixed(1)}%).`);
+
+    const topRoutes = Array.isArray(range.topRoutes)
+        ? range.topRoutes.slice(0, AI_CHAT_BUDGET_TOP_ROUTES_LIMIT)
+        : [];
+    if (topRoutes.length) {
+        const routeLine = topRoutes.map((item, index) => {
+            const route = sanitizeAiContextLine(item?.route || '-', 100);
+            const trips = parseAiNumeric(item?.trips, 0);
+            const total = parseAiNumeric(item?.totalCost, 0);
+            const avg = parseAiNumeric(item?.avgCostPerTrip, 0);
+            return `${index + 1}) ${route}: ${trips} tratte, totale ${formatMoney(total)}, media ${formatMoney(avg)}`;
+        }).join(' | ');
+        lines.push(`Top tratte periodo: ${routeLine}`);
+    }
+
+    const historyTrips = parseAiNumeric(history.tripsCount, 0);
+    const historyTotal = parseAiNumeric(history.totalCost, 0);
+    const historyFuel = parseAiNumeric(history.totalFuel, 0);
+    const historyToll = parseAiNumeric(history.totalToll, 0);
+    const historyKm = parseAiNumeric(history.totalKm, 0);
+    lines.push(`Storico completo: ${historyTrips} tratte, totale ${formatMoney(historyTotal)}, carburante ${formatMoney(historyFuel)}, pedaggi ${formatMoney(historyToll)}, km ${historyKm.toFixed(1)}.`);
+
+    const recentTrips = Array.isArray(history.recentTrips)
+        ? history.recentTrips.slice(0, AI_CHAT_BUDGET_RECENT_TRIPS_LIMIT)
+        : [];
+    if (recentTrips.length) {
+        const recentLine = recentTrips.map((trip) => {
+            const departure = sanitizeAiContextLine(trip?.departure || '-', 40);
+            const arrival = sanitizeAiContextLine(trip?.arrival || '-', 40);
+            const total = formatMoney(parseAiNumeric(trip?.totalCost, 0));
+            const dateIso = sanitizeAiContextLine(trip?.dateIso || '', 40);
+            return `${dateIso || 'data-n/d'} ${departure}->${arrival} ${total}`;
+        }).join(' | ');
+        lines.push(`Ultime tratte: ${recentLine}`);
+    }
+
+    const memoryNotes = Array.isArray(context?.memory?.notes)
+        ? context.memory.notes
+            .map((note) => sanitizeAiContextLine(note, 180))
+            .filter(Boolean)
+            .slice(-AI_CHAT_BUDGET_MEMORY_NOTES_LIMIT)
+        : [];
+    if (memoryNotes.length) {
+        lines.push(`Memoria conversazione (ordine cronologico): ${memoryNotes.join(' || ')}`);
+    }
+
+    return sanitizeAiContextLine(lines.join('\n'), AI_CHAT_CONTEXT_MAX_CHARS);
+}
+
+function buildAiContextNarrative(context = {}) {
+    const safeContext = context && typeof context === 'object' ? context : {};
+    const lines = [];
+
+    const trip = safeContext.trip && typeof safeContext.trip === 'object' ? safeContext.trip : null;
+    if (trip) {
+        lines.push(`Tratta corrente: ${sanitizeAiContextLine(trip.departure || '-', 48)} -> ${sanitizeAiContextLine(trip.arrival || '-', 48)}, ${parseAiNumeric(trip.distanceKm, 0).toFixed(1)} km, totale ${formatMoney(parseAiNumeric(trip.totalCost, 0))}, carburante ${formatMoney(parseAiNumeric(trip.fuelCost, 0))}, pedaggi ${formatMoney(parseAiNumeric(trip.tollCost, 0))}.`);
+    }
+
+    const travelAi = safeContext.travelAi && typeof safeContext.travelAi === 'object' ? safeContext.travelAi : null;
+    if (travelAi) {
+        const weatherLine = sanitizeAiContextLine(travelAi.weatherLine || '', 220);
+        const impactLine = sanitizeAiContextLine(travelAi.impactLine || '', 220);
+        if (weatherLine) lines.push(`Meteo: ${weatherLine}`);
+        if (impactLine) lines.push(`Impatto stimato: ${impactLine}`);
+    }
+
+    const budgetNarrative = buildBudgetContextNarrative(safeContext);
+    if (budgetNarrative) {
+        lines.push(budgetNarrative);
+    }
+
+    if (!lines.length) {
+        const contextJson = sanitizeAiContextLine(JSON.stringify(safeContext || {}), AI_CHAT_CONTEXT_MAX_CHARS);
+        lines.push(`Contesto app: ${contextJson}`);
+    }
+
+    return sanitizeAiContextLine(lines.join('\n'), AI_CHAT_CONTEXT_MAX_CHARS);
+}
+
+function buildAiSystemPrompt(context = {}) {
+    const lines = [
+        'Sei un assistente AI conversazionale, utile e preciso.',
+        'Rispondi in italiano (o nella lingua richiesta dall utente).',
+        'Quando mancano dati certi, dichiaralo chiaramente senza inventare numeri.',
+        'Mantieni coerenza con il contesto disponibile.'
+    ];
+
+    if (isBudgetAssistantContext(context)) {
+        lines.push(
+            'Modalita attiva: Assistente Bilancio DriveCalc.',
+            'Analizza i dati di bilancio e storico tratte presenti nel contesto, spiegandoli in modo chiaro.',
+            'Struttura preferita: sintesi numerica iniziale, spiegazione in punti, consigli pratici.',
+            'Rispondi sempre alla domanda dell utente, anche se non strettamente legata al bilancio.',
+            'Usa la memoria conversazione nel contesto per mantenere continuita.'
+        );
+    } else {
+        lines.push('Usa il contesto viaggio solo quando e pertinente alla richiesta.');
+    }
+
+    return lines.join(' ');
+}
+
+function buildLocalBudgetAiChatReply(message = '', context = {}) {
+    const q = sanitizeAiContextLine(message, 220).toLowerCase();
+    const budget = context && typeof context === 'object' ? (context.budget || null) : null;
+    if (!budget || typeof budget !== 'object') return '';
+
+    const period = budget.period && typeof budget.period === 'object' ? budget.period : {};
+    const range = budget.range && typeof budget.range === 'object' ? budget.range : {};
+    const trend = range.trend && typeof range.trend === 'object' ? range.trend : {};
+    const topRoute = Array.isArray(range.topRoutes) ? range.topRoutes[0] : null;
+    const peakMonth = range.peakMonth && typeof range.peakMonth === 'object' ? range.peakMonth : null;
+
+    const summary = `Periodo ${sanitizeAiContextLine(period.label || 'selezionato', 80)}: ${parseAiNumeric(range.tripsCount, 0)} tratte, totale ${formatMoney(parseAiNumeric(range.totalCost, 0))}, carburante ${formatMoney(parseAiNumeric(range.totalFuel, 0))}, pedaggi ${formatMoney(parseAiNumeric(range.totalToll, 0))}, km ${parseAiNumeric(range.totalKm, 0).toFixed(1)}.`;
+    const trendLine = `Trend ${sanitizeAiContextLine(trend.direction || 'stable', 24)}: ${formatMoney(parseAiNumeric(trend.delta, 0))} (${parseAiNumeric(trend.percent, 0).toFixed(1)}%).`;
+
+    if (q.includes('totale') || q.includes('spesa') || q.includes('quanto')) {
+        return summary;
+    }
+
+    if (q.includes('carbur')) {
+        return `${summary} Carburante periodo: ${formatMoney(parseAiNumeric(range.totalFuel, 0))}.`;
+    }
+
+    if (q.includes('pedagg') || q.includes('autostrad')) {
+        return `${summary} Pedaggi periodo: ${formatMoney(parseAiNumeric(range.totalToll, 0))}.`;
+    }
+
+    if (q.includes('trend') || q.includes('andamento') || q.includes('mese')) {
+        const peakLine = peakMonth
+            ? `Mese di picco: ${sanitizeAiContextLine(peakMonth.label || '-', 80)} (${formatMoney(parseAiNumeric(peakMonth.totalCost, 0))}).`
+            : 'Mese di picco non disponibile.';
+        return `${trendLine} ${peakLine}`;
+    }
+
+    if (q.includes('tratta') || q.includes('route') || q.includes('percorso')) {
+        if (topRoute) {
+            return `Tratta piu impattante nel periodo: ${sanitizeAiContextLine(topRoute.route || '-', 120)}, ${parseAiNumeric(topRoute.trips, 0)} tratte per ${formatMoney(parseAiNumeric(topRoute.totalCost, 0))} (media ${formatMoney(parseAiNumeric(topRoute.avgCostPerTrip, 0))}).`;
+        }
+        return 'Non ho abbastanza tratte nel periodo per individuare il percorso piu costoso.';
+    }
+
+    return `${summary} ${trendLine}`;
+}
+
 function buildLocalAiChatReply(message = '', context = {}) {
     const q = normalizeAiChatText(message, AI_CHAT_MAX_MESSAGE_CHARS).toLowerCase();
     const trip = context && typeof context === 'object' ? (context.trip || null) : null;
     const travelAi = context && typeof context === 'object' ? (context.travelAi || null) : null;
     const remoteUnavailable = !!(context && typeof context === 'object' && context.__remoteAiUnavailable);
+
+    const budgetReply = buildLocalBudgetAiChatReply(q, context);
+    if (budgetReply) return budgetReply.slice(0, AI_CHAT_MAX_REPLY_CHARS);
 
     if (q.includes('meteo')) {
         if (travelAi && travelAi.weatherLine) {
@@ -798,20 +1007,20 @@ async function requestOpenAiChatReply(message = '', history = [], context = {}) 
                 text: normalizeAiChatText(item && item.text, AI_CHAT_MAX_MESSAGE_CHARS)
             }))
             .filter((item) => item.text)
-            .slice(-8)
+            .slice(-AI_CHAT_HISTORY_TURNS)
         : [];
 
-    const contextJsonRaw = JSON.stringify(context || {});
-    const contextJson = contextJsonRaw.length > 2400 ? `${contextJsonRaw.slice(0, 2400)}...` : contextJsonRaw;
+    const contextNarrative = buildAiContextNarrative(context);
+    const systemPrompt = buildAiSystemPrompt(context);
     const messages = [
         {
             role: 'system',
-            content: 'Sei un assistente AI conversazionale, utile e preciso. Rispondi in italiano (o nella lingua richiesta dall’utente). Puoi parlare di qualsiasi argomento; usa il contesto viaggio solo se pertinente alla richiesta. Quando mancano dati certi, dichiaralo chiaramente e non inventare.'
+            content: systemPrompt
         },
-        {
+        ...(contextNarrative ? [{
             role: 'system',
-            content: `Contesto app (JSON): ${contextJson}`
-        },
+            content: `Contesto app: ${contextNarrative}`
+        }] : []),
         ...safeHistory.map((item) => ({
             role: item.role,
             content: item.text
@@ -871,18 +1080,14 @@ async function requestGeminiChatReply(message = '', history = [], context = {}) 
                 text: normalizeAiChatText(item && item.text, AI_CHAT_MAX_MESSAGE_CHARS)
             }))
             .filter((item) => item.text)
-            .slice(-8)
+            .slice(-AI_CHAT_HISTORY_TURNS)
         : [];
 
-    const contextJsonRaw = JSON.stringify(context || {});
-    const contextJson = contextJsonRaw.length > 2400 ? `${contextJsonRaw.slice(0, 2400)}...` : contextJsonRaw;
+    const contextNarrative = buildAiContextNarrative(context);
+    const systemPromptBase = buildAiSystemPrompt(context);
     const systemPrompt = [
-        'Sei un assistente AI conversazionale, utile e preciso.',
-        'Rispondi in italiano (o nella lingua richiesta dall’utente).',
-        'Puoi parlare di qualsiasi argomento.',
-        'Usa il contesto viaggio solo quando è pertinente.',
-        'Quando mancano dati certi, dichiaralo senza inventare numeri.',
-        `Contesto app (JSON): ${contextJson}`
+        systemPromptBase,
+        `Contesto app: ${contextNarrative}`
     ].join(' ');
 
     const contents = [
@@ -1720,6 +1925,157 @@ function getCollection(db, key, userId) {
     return db[key][userId];
 }
 
+function buildAiChatMessageKey(item = {}) {
+    return `${item.role || 'assistant'}|${Number(item.timestamp) || 0}|${String(item.text || '')}`;
+}
+
+function normalizeAiChatMemoryItem(item = {}) {
+    const role = item && item.role === 'user' ? 'user' : 'assistant';
+    const maxLen = role === 'user' ? AI_CHAT_MAX_MESSAGE_CHARS : AI_CHAT_MESSAGE_MAX_CHARS;
+    const text = normalizeAiChatText(item && item.text, maxLen);
+    if (!text) return null;
+
+    const rawTimestamp = Number(item && item.timestamp);
+    const timestamp = Number.isFinite(rawTimestamp) && rawTimestamp > 0
+        ? Math.round(rawTimestamp)
+        : Date.now();
+    return { role, text, timestamp };
+}
+
+function normalizeAiChatMemoryShape(memory = {}) {
+    const safe = memory && typeof memory === 'object' ? memory : {};
+    const history = Array.isArray(safe.history)
+        ? safe.history
+            .map((item) => normalizeAiChatMemoryItem(item))
+            .filter(Boolean)
+            .slice(-AI_CHAT_MEMORY_MAX_HISTORY)
+        : [];
+    const updatedAtRaw = Number(safe.updatedAt);
+    const updatedAt = Number.isFinite(updatedAtRaw) && updatedAtRaw > 0 ? Math.round(updatedAtRaw) : Date.now();
+    return { history, updatedAt };
+}
+
+function getAiChatMemoryStore(db, userId) {
+    if (!db.aiChatMemory || typeof db.aiChatMemory !== 'object') {
+        db.aiChatMemory = {};
+    }
+    const existing = db.aiChatMemory[userId];
+    const normalized = normalizeAiChatMemoryShape(existing || {});
+    db.aiChatMemory[userId] = normalized;
+    return normalized;
+}
+
+function appendAiChatMemory(store = {}, incoming = {}) {
+    const memory = normalizeAiChatMemoryShape(store);
+    const sourceMessages = Array.isArray(incoming?.messages) ? incoming.messages : [];
+    const existingMessageKeys = new Set(memory.history.map((item) => buildAiChatMessageKey(item)));
+
+    sourceMessages
+        .map((item) => normalizeAiChatMemoryItem(item))
+        .filter(Boolean)
+        .forEach((item) => {
+            const key = buildAiChatMessageKey(item);
+            if (existingMessageKeys.has(key)) return;
+            existingMessageKeys.add(key);
+            memory.history.push(item);
+        });
+
+    if (memory.history.length > AI_CHAT_MEMORY_MAX_HISTORY) {
+        memory.history = memory.history.slice(-AI_CHAT_MEMORY_MAX_HISTORY);
+    }
+
+    memory.updatedAt = Date.now();
+    return memory;
+}
+
+function buildBudgetAiMessageKey(item = {}) {
+    return `${item.role || 'assistant'}|${Number(item.timestamp) || 0}|${String(item.text || '')}`;
+}
+
+function normalizeBudgetAiHistoryItem(item = {}) {
+    const role = item && item.role === 'user' ? 'user' : 'assistant';
+    const text = normalizeAiChatText(item && item.text, AI_BUDGET_MESSAGE_MAX_CHARS);
+    if (!text) return null;
+
+    const rawTimestamp = Number(item && item.timestamp);
+    const timestamp = Number.isFinite(rawTimestamp) && rawTimestamp > 0
+        ? Math.round(rawTimestamp)
+        : Date.now();
+    return { role, text, timestamp };
+}
+
+function normalizeBudgetAiNote(note = '') {
+    const text = normalizeAiChatText(note, AI_BUDGET_NOTE_MAX_CHARS);
+    return text || '';
+}
+
+function normalizeBudgetAiMemoryShape(memory = {}) {
+    const safe = memory && typeof memory === 'object' ? memory : {};
+    const history = Array.isArray(safe.history)
+        ? safe.history
+            .map((item) => normalizeBudgetAiHistoryItem(item))
+            .filter(Boolean)
+            .slice(-AI_BUDGET_MEMORY_MAX_HISTORY)
+        : [];
+    const notes = Array.isArray(safe.notes)
+        ? safe.notes
+            .map((item) => normalizeBudgetAiNote(item))
+            .filter(Boolean)
+            .slice(-AI_BUDGET_MEMORY_MAX_NOTES)
+        : [];
+    const updatedAtRaw = Number(safe.updatedAt);
+    const updatedAt = Number.isFinite(updatedAtRaw) && updatedAtRaw > 0 ? Math.round(updatedAtRaw) : Date.now();
+    return { history, notes, updatedAt };
+}
+
+function getBudgetAiMemoryStore(db, userId) {
+    if (!db.aiBudgetMemory || typeof db.aiBudgetMemory !== 'object') {
+        db.aiBudgetMemory = {};
+    }
+    const existing = db.aiBudgetMemory[userId];
+    const normalized = normalizeBudgetAiMemoryShape(existing || {});
+    db.aiBudgetMemory[userId] = normalized;
+    return normalized;
+}
+
+function appendBudgetAiMemory(store = {}, incoming = {}) {
+    const memory = normalizeBudgetAiMemoryShape(store);
+    const sourceMessages = Array.isArray(incoming?.messages) ? incoming.messages : [];
+    const sourceNotes = Array.isArray(incoming?.notes) ? incoming.notes : [];
+
+    const existingMessageKeys = new Set(memory.history.map((item) => buildBudgetAiMessageKey(item)));
+    sourceMessages
+        .map((item) => normalizeBudgetAiHistoryItem(item))
+        .filter(Boolean)
+        .forEach((item) => {
+            const key = buildBudgetAiMessageKey(item);
+            if (existingMessageKeys.has(key)) return;
+            existingMessageKeys.add(key);
+            memory.history.push(item);
+        });
+
+    if (memory.history.length > AI_BUDGET_MEMORY_MAX_HISTORY) {
+        memory.history = memory.history.slice(-AI_BUDGET_MEMORY_MAX_HISTORY);
+    }
+
+    const seenNotes = new Set(memory.notes.map((item) => String(item)));
+    sourceNotes
+        .map((item) => normalizeBudgetAiNote(item))
+        .filter(Boolean)
+        .forEach((note) => {
+            if (seenNotes.has(note)) return;
+            seenNotes.add(note);
+            memory.notes.push(note);
+        });
+
+    if (memory.notes.length > AI_BUDGET_MEMORY_MAX_NOTES) {
+        memory.notes = memory.notes.slice(-AI_BUDGET_MEMORY_MAX_NOTES);
+    }
+
+    memory.updatedAt = Date.now();
+    return memory;
+}
+
 function getFriendList(db, userId) {
     if (!db.friendships[userId]) db.friendships[userId] = [];
     return db.friendships[userId];
@@ -2351,6 +2707,60 @@ app.post('/api/ai/chat', async (req, res) => {
         }),
         source: 'local'
     });
+});
+
+app.get('/api/ai/chat-memory', authMiddleware, (req, res) => {
+    const db = readDb();
+    const memory = getAiChatMemoryStore(db, req.user.userId);
+    writeDb(db);
+    return res.json({ memory });
+});
+
+app.post('/api/ai/chat-memory/append', authMiddleware, (req, res) => {
+    const db = readDb();
+    const memory = getAiChatMemoryStore(db, req.user.userId);
+    const incoming = req.body || {};
+    const nextMemory = appendAiChatMemory(memory, incoming);
+    db.aiChatMemory[req.user.userId] = nextMemory;
+    writeDb(db);
+    return res.json({ memory: nextMemory });
+});
+
+app.post('/api/ai/chat-memory/reset', authMiddleware, (req, res) => {
+    const db = readDb();
+    const memory = getAiChatMemoryStore(db, req.user.userId);
+    memory.history = [];
+    memory.updatedAt = Date.now();
+    db.aiChatMemory[req.user.userId] = memory;
+    writeDb(db);
+    return res.json({ memory });
+});
+
+app.get('/api/ai/budget-memory', authMiddleware, (req, res) => {
+    const db = readDb();
+    const memory = getBudgetAiMemoryStore(db, req.user.userId);
+    writeDb(db);
+    return res.json({ memory });
+});
+
+app.post('/api/ai/budget-memory/append', authMiddleware, (req, res) => {
+    const db = readDb();
+    const memory = getBudgetAiMemoryStore(db, req.user.userId);
+    const incoming = req.body || {};
+    const nextMemory = appendBudgetAiMemory(memory, incoming);
+    db.aiBudgetMemory[req.user.userId] = nextMemory;
+    writeDb(db);
+    return res.json({ memory: nextMemory });
+});
+
+app.post('/api/ai/budget-memory/reset-history', authMiddleware, (req, res) => {
+    const db = readDb();
+    const memory = getBudgetAiMemoryStore(db, req.user.userId);
+    memory.history = [];
+    memory.updatedAt = Date.now();
+    db.aiBudgetMemory[req.user.userId] = memory;
+    writeDb(db);
+    return res.json({ memory });
 });
 
 app.get('/api/share-settings', authMiddleware, (req, res) => {

@@ -2463,6 +2463,77 @@ body.no-scroll {
     max-height: min(38vh, 320px);
 }
 
+.budget-ai-panel {
+    margin-top: 12px;
+    margin-bottom: 10px;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    background: linear-gradient(165deg, rgba(8, 18, 36, 0.82), rgba(7, 15, 31, 0.96));
+}
+
+.budget-ai-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.budget-ai-header .section-title {
+    margin: 0;
+}
+
+.budget-ai-subtitle {
+    margin: 8px 0 10px;
+    color: #c8dcff;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.budget-ai-messages {
+    min-height: 170px;
+    max-height: min(34vh, 340px);
+}
+
+.budget-ai-quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.budget-ai-chip {
+    padding: 8px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(125, 211, 252, 0.34);
+    background: rgba(8, 22, 46, 0.78);
+    color: #dbeafe;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.budget-ai-chip:hover {
+    border-color: rgba(125, 211, 252, 0.7);
+    background: rgba(11, 34, 67, 0.88);
+}
+
+.budget-ai-chip:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.budget-ai-actions {
+    margin-top: 10px;
+}
+
+.budget-ai-actions input {
+    min-height: 44px;
+}
+
 @media (max-width: 768px) {
     .budget-header-row {
         align-items: stretch;
@@ -2479,6 +2550,20 @@ body.no-scroll {
     .budget-trend-svg {
         min-width: 420px;
         height: 208px;
+    }
+
+    .budget-ai-messages {
+        min-height: 160px;
+        max-height: min(40vh, 320px);
+    }
+
+    .budget-ai-actions {
+        flex-wrap: wrap;
+    }
+
+    .budget-ai-actions input,
+    .budget-ai-actions .pill-btn {
+        width: 100%;
     }
 }
 

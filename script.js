@@ -4066,6 +4066,13 @@ const budgetMonthlyAvg = document.getElementById('budgetMonthlyAvg');
 const budgetPeakMonth = document.getElementById('budgetPeakMonth');
 const budgetTrendBars = document.getElementById('budgetTrendBars');
 const budgetChartHint = document.getElementById('budgetChartHint');
+let budgetAiPanel = document.getElementById('budgetAiPanel');
+let budgetAiStatus = document.getElementById('budgetAiStatus');
+let budgetAiMessages = document.getElementById('budgetAiMessages');
+let budgetAiInput = document.getElementById('budgetAiInput');
+let budgetAiSendBtn = document.getElementById('budgetAiSendBtn');
+let budgetAiNewBtn = document.getElementById('budgetAiNewBtn');
+let budgetAiQuickActions = document.getElementById('budgetAiQuickActions');
 const myCarImage = document.getElementById('myCarImage');
 const myCarTitle = document.getElementById('myCarTitle');
 const myCarMeta = document.getElementById('myCarMeta');
@@ -5851,8 +5858,15 @@ const COMPANIONS_KEY = 'drivecalc_companions_v1';
 const COMPLETED_KEY = 'drivecalc_completed_v1';
 const MYCAR_PHOTOS_KEY = 'drivecalc_mycar_photos_v1';
 const AI_CHAT_HISTORY_KEY = 'drivecalc_ai_chat_history_v1';
+const BUDGET_AI_HISTORY_KEY = 'drivecalc_budget_ai_history_v1';
+const BUDGET_AI_MEMORY_KEY = 'drivecalc_budget_ai_memory_v1';
 const AI_CHAT_INPUT_MAX_CHARS = 1800;
 const AI_CHAT_REPLY_MAX_CHARS = 7000;
+const AI_CHAT_MAX_STORED_MESSAGES = 260;
+const AI_CHAT_MAX_HISTORY_FOR_REQUEST = 12;
+const BUDGET_AI_MAX_STORED_MESSAGES = 260;
+const BUDGET_AI_MAX_STORED_MEMORY_NOTES = 320;
+const BUDGET_AI_MAX_HISTORY_FOR_REQUEST = 18;
 const FUEL_FINDER_LAST_KEY = 'drivecalc_fuel_finder_last_v1';
 const LOCAL_API_BASE = 'http://localhost:3001/api';
 const CLOUD_API_BASES = ['https://drivercalc.onrender.com/api', 'https://drivecalc.onrender.com/api'];
@@ -6243,6 +6257,14 @@ let lastTravelAiSnapshot = null;
 const weatherRouteCache = new Map();
 let aiChatHistory = [];
 let aiChatPending = false;
+let aiChatStorageScope = '';
+let aiChatServerHydratedScope = '';
+let budgetAiHistory = [];
+let budgetAiMemory = [];
+let budgetAiPending = false;
+let budgetAiStorageScope = '';
+let budgetAiContextSnapshot = null;
+let budgetAiServerHydratedScope = '';
 let fuelFinderPending = false;
 let fuelFinderLastPosition = null;
 let fuelFinderLastResults = [];
@@ -7108,6 +7130,8 @@ async function sendFriendRequest() {
 function setAuth(token, user) {
     authToken = token || 'cookie-session';
     currentUser = user || null;
+    loadAiChatHistory(true);
+    loadBudgetAiState(true);
     updateAuthUI();
     if (isAuthenticated()) {
         loadAllRemoteData().catch(() => {});
@@ -7124,6 +7148,8 @@ async function clearAuth({ remote = true } = {}) {
     incomingFriendRequests = [];
     outgoingFriendRequests = [];
     selectedFriendId = '';
+    loadAiChatHistory(true);
+    loadBudgetAiState(true);
     updateAuthUI();
     renderAccountProfile();
     renderFriends();
@@ -7175,6 +7201,8 @@ async function restoreAuthSession() {
         currentUser = payload.user;
         accountProfile = payload.user;
         accountStats = payload.stats || accountStats;
+        loadAiChatHistory(true);
+        loadBudgetAiState(true);
         updateAuthUI('Sessione ripristinata');
         return true;
     } catch (e) {
@@ -7478,12 +7506,15 @@ async function loadAllRemoteData() {
         loadCompanionTrips(),
         loadCompletedTrips(),
         loadMyCarPhotos(),
+        loadAiChatHistoryFromServer().catch(() => {}),
+        loadBudgetAiMemoryFromServer().catch(() => {}),
         loadFriendsData().catch(() => {}),
         loadAccountProfile().catch(() => {})
     ]);
     renderFavorites();
     renderCompanionHistory();
     renderBudget();
+    renderAiChatHistory();
     renderAccountProfile();
 }
 
@@ -7881,35 +7912,147 @@ function getAiChatFallbackGreeting() {
     return `Hai una tratta attiva: ${lastCalculatedTrip.departure || '-'} -> ${lastCalculatedTrip.arrival || '-'} (${lastCalculatedTrip.distance || '-'} km). Chiedimi pure come ottimizzarla.`;
 }
 
+function getAiChatStorageScope() {
+    const userId = String(accountProfile?.id || currentUser?.id || '').trim();
+    return userId ? `user_${userId}` : 'guest';
+}
+
+function getAiChatHistoryStorageKey(scope = '') {
+    const safeScope = String(scope || getAiChatStorageScope()).trim() || 'guest';
+    return `${AI_CHAT_HISTORY_KEY}_${safeScope}`;
+}
+
+function normalizeAiChatHistoryItems(items = []) {
+    if (!Array.isArray(items)) return [];
+    return items
+        .map((item) => ({
+            role: item?.role === 'user' ? 'user' : 'assistant',
+            text: item?.role === 'user'
+                ? normalizeAiChatText(item?.text || '', AI_CHAT_INPUT_MAX_CHARS)
+                : normalizeAiAssistantText(item?.text || '', AI_CHAT_REPLY_MAX_CHARS),
+            timestamp: Number(item?.timestamp) || Date.now()
+        }))
+        .filter((item) => item.text)
+        .slice(-AI_CHAT_MAX_STORED_MESSAGES);
+}
+
+function buildAiChatMessageKey(item = {}) {
+    return `${item.role || 'assistant'}|${Number(item.timestamp) || 0}|${String(item.text || '')}`;
+}
+
+function buildAiChatServerMessagePayload(message = null) {
+    if (!message || typeof message !== 'object') return null;
+    return {
+        role: message.role === 'user' ? 'user' : 'assistant',
+        text: String(message.text || ''),
+        timestamp: Number(message.timestamp) || Date.now()
+    };
+}
+
 function persistAiChatHistory() {
     try {
-        const trimmed = Array.isArray(aiChatHistory) ? aiChatHistory.slice(-18) : [];
-        localStorage.setItem(AI_CHAT_HISTORY_KEY, JSON.stringify(trimmed));
+        const safeScope = aiChatStorageScope || getAiChatStorageScope();
+        const trimmed = Array.isArray(aiChatHistory) ? aiChatHistory.slice(-AI_CHAT_MAX_STORED_MESSAGES) : [];
+        localStorage.setItem(getAiChatHistoryStorageKey(safeScope), JSON.stringify(trimmed));
     } catch (e) {}
 }
 
-function loadAiChatHistory() {
+function loadAiChatHistory(force = false) {
+    const scope = getAiChatStorageScope();
+    if (!force && aiChatStorageScope === scope) return;
+    aiChatStorageScope = scope;
+    if (!isAuthenticated()) {
+        aiChatServerHydratedScope = '';
+    }
     try {
-        const raw = localStorage.getItem(AI_CHAT_HISTORY_KEY);
+        const scopedKey = getAiChatHistoryStorageKey(scope);
+        let raw = localStorage.getItem(scopedKey);
+        if (!raw && scope === 'guest') {
+            raw = localStorage.getItem(AI_CHAT_HISTORY_KEY);
+            if (raw) {
+                localStorage.setItem(scopedKey, raw);
+            }
+        }
         if (!raw) {
             aiChatHistory = [];
             return;
         }
         const parsed = JSON.parse(raw);
-        aiChatHistory = Array.isArray(parsed)
-            ? parsed
-                .map((item) => ({
-                    role: item?.role === 'user' ? 'user' : 'assistant',
-                    text: item?.role === 'user'
-                        ? normalizeAiChatText(item?.text || '', AI_CHAT_INPUT_MAX_CHARS)
-                        : normalizeAiAssistantText(item?.text || '', AI_CHAT_REPLY_MAX_CHARS),
-                    timestamp: Number(item?.timestamp) || Date.now()
-                }))
-                .filter((item) => item.text)
-                .slice(-18)
-            : [];
+        aiChatHistory = normalizeAiChatHistoryItems(parsed);
     } catch (e) {
         aiChatHistory = [];
+    }
+    if (isOverlayOpen(aiChatOverlay)) {
+        renderAiChatHistory();
+    }
+}
+
+async function loadAiChatHistoryFromServer({ force = false } = {}) {
+    if (!isAuthenticated()) return false;
+    const scope = getAiChatStorageScope();
+    if (!scope || !scope.startsWith('user_')) return false;
+    if (!force && aiChatServerHydratedScope === scope) return true;
+    try {
+        const localHistory = normalizeAiChatHistoryItems(aiChatHistory);
+        const res = await apiRequest('/ai/chat-memory');
+        const serverHistory = normalizeAiChatHistoryItems(res?.memory?.history || []);
+
+        const mergedMap = new Map();
+        serverHistory.forEach((item) => mergedMap.set(buildAiChatMessageKey(item), item));
+        localHistory.forEach((item) => {
+            const key = buildAiChatMessageKey(item);
+            if (!mergedMap.has(key)) mergedMap.set(key, item);
+        });
+        aiChatHistory = Array.from(mergedMap.values())
+            .sort((a, b) => (Number(a?.timestamp) || 0) - (Number(b?.timestamp) || 0))
+            .slice(-AI_CHAT_MAX_STORED_MESSAGES);
+
+        persistAiChatHistory();
+        aiChatServerHydratedScope = scope;
+        if (isOverlayOpen(aiChatOverlay)) {
+            renderAiChatHistory();
+        }
+
+        const serverKeys = new Set(serverHistory.map((item) => buildAiChatMessageKey(item)));
+        const missingMessages = aiChatHistory.filter((item) => !serverKeys.has(buildAiChatMessageKey(item)));
+        if (missingMessages.length) {
+            appendAiChatHistoryToServer({ messages: missingMessages }).catch(() => {});
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+async function appendAiChatHistoryToServer({ messages = [] } = {}) {
+    if (!isAuthenticated()) return false;
+    const scope = getAiChatStorageScope();
+    if (!scope || !scope.startsWith('user_')) return false;
+
+    const safeMessages = (Array.isArray(messages) ? messages : [])
+        .map((item) => buildAiChatServerMessagePayload(item))
+        .filter(Boolean);
+    if (!safeMessages.length) return true;
+
+    try {
+        await apiRequest('/ai/chat-memory/append', 'POST', { messages: safeMessages });
+        aiChatServerHydratedScope = scope;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+async function resetAiChatHistoryOnServer() {
+    if (!isAuthenticated()) return false;
+    const scope = getAiChatStorageScope();
+    if (!scope || !scope.startsWith('user_')) return false;
+    try {
+        await apiRequest('/ai/chat-memory/reset', 'POST', {});
+        aiChatServerHydratedScope = scope;
+        return true;
+    } catch (e) {
+        return false;
     }
 }
 
@@ -7944,14 +8087,20 @@ function pushAiChatMessage(role = 'assistant', text = '') {
         ? normalizeAiChatText(text, AI_CHAT_INPUT_MAX_CHARS)
         : normalizeAiAssistantText(text, AI_CHAT_REPLY_MAX_CHARS);
     if (!normalizedText) return;
-    aiChatHistory.push({
+    const message = {
         role: role === 'user' ? 'user' : 'assistant',
         text: normalizedText,
         timestamp: Date.now()
-    });
-    if (aiChatHistory.length > 18) aiChatHistory = aiChatHistory.slice(-18);
+    };
+    aiChatHistory.push(message);
+    if (aiChatHistory.length > AI_CHAT_MAX_STORED_MESSAGES) {
+        aiChatHistory = aiChatHistory.slice(-AI_CHAT_MAX_STORED_MESSAGES);
+    }
     persistAiChatHistory();
     renderAiChatHistory();
+    if (isAuthenticated()) {
+        appendAiChatHistoryToServer({ messages: [message] }).catch(() => {});
+    }
 }
 
 function setAiChatBusy(isBusy) {
@@ -7970,6 +8119,9 @@ function startNewAiChat() {
     aiChatHistory = [];
     persistAiChatHistory();
     renderAiChatHistory();
+    if (isAuthenticated()) {
+        resetAiChatHistoryOnServer().catch(() => {});
+    }
     if (aiChatInput) aiChatInput.value = '';
     setAiChatStatus('Nuova chat avviata.');
     aiChatInput?.focus();
@@ -8047,7 +8199,7 @@ function buildLocalAiChatFallback(question = '') {
 async function requestAiChatReply(question = '') {
     const message = normalizeAiChatText(question, AI_CHAT_INPUT_MAX_CHARS);
     if (!message) return { reply: '', source: 'local' };
-    const history = aiChatHistory.slice(-8).map((item) => ({
+    const history = aiChatHistory.slice(-AI_CHAT_MAX_HISTORY_FOR_REQUEST).map((item) => ({
         role: item.role === 'user' ? 'user' : 'assistant',
         text: item.text
     }));
@@ -8145,6 +8297,16 @@ function openAiChat() {
     renderAiChatHistory();
     setAiChatStatus('Pronto. Scrivi la tua domanda.');
     aiChatInput?.focus();
+    if (isAuthenticated()) {
+        loadAiChatHistoryFromServer({ force: true }).then((ok) => {
+            if (!ok) return;
+            if (!isOverlayOpen(aiChatOverlay)) return;
+            renderAiChatHistory();
+            if (!aiChatPending) {
+                setAiChatStatus('Cronologia AI sincronizzata su account.');
+            }
+        }).catch(() => {});
+    }
 }
 
 function closeAiChat() {
@@ -9879,14 +10041,780 @@ function renderBudgetTripsList(trips = []) {
     });
 }
 
+function roundBudgetMetric(value, decimals = 2) {
+    const factor = 10 ** Math.max(0, Number(decimals) || 0);
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return 0;
+    return Math.round(amount * factor) / factor;
+}
+
+function computeBudgetTotals(trips = []) {
+    const safeTrips = Array.isArray(trips) ? trips : [];
+    return safeTrips.reduce((acc, trip) => {
+        acc.totalCost += parseBudgetAmount(trip.totalCost);
+        acc.totalFuel += parseBudgetAmount(trip.fuelCost);
+        acc.totalToll += parseBudgetAmount(trip.tollCost);
+        acc.totalKm += parseBudgetAmount(trip.distance);
+        return acc;
+    }, {
+        totalCost: 0,
+        totalFuel: 0,
+        totalToll: 0,
+        totalKm: 0
+    });
+}
+
+function buildBudgetRouteAggregates(trips = [], limit = 10) {
+    const grouped = new Map();
+    const safeTrips = Array.isArray(trips) ? trips : [];
+
+    safeTrips.forEach((trip) => {
+        const departure = String(trip?.departure || '').trim() || '-';
+        const arrival = String(trip?.arrival || '').trim() || '-';
+        const route = `${departure} → ${arrival}`;
+        if (!grouped.has(route)) {
+            grouped.set(route, {
+                route,
+                trips: 0,
+                totalCost: 0,
+                totalFuel: 0,
+                totalToll: 0,
+                totalKm: 0,
+                latestAt: 0
+            });
+        }
+        const bucket = grouped.get(route);
+        bucket.trips += 1;
+        bucket.totalCost += parseBudgetAmount(trip?.totalCost);
+        bucket.totalFuel += parseBudgetAmount(trip?.fuelCost);
+        bucket.totalToll += parseBudgetAmount(trip?.tollCost);
+        bucket.totalKm += parseBudgetAmount(trip?.distance);
+        bucket.latestAt = Math.max(bucket.latestAt, getBudgetTripDate(trip)?.getTime() || 0);
+    });
+
+    return Array.from(grouped.values())
+        .sort((a, b) => {
+            if (b.totalCost !== a.totalCost) return b.totalCost - a.totalCost;
+            if (b.trips !== a.trips) return b.trips - a.trips;
+            return b.latestAt - a.latestAt;
+        })
+        .slice(0, Math.max(1, Number(limit) || 10))
+        .map((item) => ({
+            route: item.route,
+            trips: item.trips,
+            totalCost: roundBudgetMetric(item.totalCost, 2),
+            totalFuel: roundBudgetMetric(item.totalFuel, 2),
+            totalToll: roundBudgetMetric(item.totalToll, 2),
+            totalKm: roundBudgetMetric(item.totalKm, 1),
+            avgCostPerTrip: item.trips > 0 ? roundBudgetMetric(item.totalCost / item.trips, 2) : 0
+        }));
+}
+
+function summarizeBudgetTripForContext(trip = {}) {
+    const date = getBudgetTripDate(trip);
+    return {
+        tripId: String(trip?.tripId || ''),
+        dateIso: date ? date.toISOString() : '',
+        departure: String(trip?.departure || '').trim(),
+        arrival: String(trip?.arrival || '').trim(),
+        distanceKm: roundBudgetMetric(parseBudgetAmount(trip?.distance), 1),
+        totalCost: roundBudgetMetric(parseBudgetAmount(trip?.totalCost), 2),
+        fuelCost: roundBudgetMetric(parseBudgetAmount(trip?.fuelCost), 2),
+        tollCost: roundBudgetMetric(parseBudgetAmount(trip?.tollCost), 2),
+        carLabel: String(trip?.carLabel || '').trim(),
+        fuelLabel: String(trip?.fuelLabel || '').trim(),
+        type: String(trip?.type || '').trim() || 'solo'
+    };
+}
+
+function computeBudgetTrendDelta(series = []) {
+    const safeSeries = Array.isArray(series) ? series : [];
+    if (safeSeries.length < 2) {
+        return {
+            direction: 'stable',
+            delta: 0,
+            percent: 0
+        };
+    }
+    const firstCost = parseBudgetAmount(safeSeries[0]?.totalCost);
+    const lastCost = parseBudgetAmount(safeSeries[safeSeries.length - 1]?.totalCost);
+    const delta = lastCost - firstCost;
+    const percent = firstCost > 0
+        ? (delta / firstCost) * 100
+        : (lastCost > 0 ? 100 : 0);
+    const direction = delta > 0.5 ? 'up' : (delta < -0.5 ? 'down' : 'stable');
+    return {
+        direction,
+        delta: roundBudgetMetric(delta, 2),
+        percent: roundBudgetMetric(percent, 2)
+    };
+}
+
+function buildBudgetAssistantSnapshot({
+    range = '1m',
+    now = new Date(),
+    trips = [],
+    monthlySeries = [],
+    trendSeries = [],
+    rangeWindow = null,
+    totals = null,
+    peakMonth = null
+} = {}) {
+    const safeRange = normalizeBudgetRange(range);
+    const safeNow = now instanceof Date ? now : new Date();
+    const safeRangeWindow = rangeWindow || getBudgetRangeWindow(safeRange, safeNow);
+    const rangeTrips = Array.isArray(trips) ? trips : [];
+    const rangeTotals = totals || computeBudgetTotals(rangeTrips);
+    const allTrips = Array.isArray(completedTrips)
+        ? completedTrips
+            .filter((trip) => trip?.completed !== false)
+            .sort((a, b) => (getBudgetTripDate(b)?.getTime() || 0) - (getBudgetTripDate(a)?.getTime() || 0))
+        : [];
+    const allTotals = computeBudgetTotals(allTrips);
+    const safeMonthlySeries = Array.isArray(monthlySeries) ? monthlySeries : [];
+    const peak = peakMonth || safeMonthlySeries.reduce((best, month) => {
+        if (!best) return month;
+        return parseBudgetAmount(month?.totalCost) > parseBudgetAmount(best?.totalCost) ? month : best;
+    }, null);
+    const trend = computeBudgetTrendDelta(trendSeries);
+    const monthlyAvgRange = safeRangeWindow.months > 0
+        ? (rangeTotals.totalCost / safeRangeWindow.months)
+        : rangeTotals.totalCost;
+
+    return {
+        generatedAtIso: new Date().toISOString(),
+        selectedRange: safeRange,
+        period: {
+            label: safeRangeWindow.label,
+            months: safeRangeWindow.months,
+            startIso: safeRangeWindow.start.toISOString(),
+            endExclusiveIso: safeRangeWindow.endExclusive.toISOString()
+        },
+        range: {
+            tripsCount: rangeTrips.length,
+            totalCost: roundBudgetMetric(rangeTotals.totalCost, 2),
+            totalFuel: roundBudgetMetric(rangeTotals.totalFuel, 2),
+            totalToll: roundBudgetMetric(rangeTotals.totalToll, 2),
+            totalKm: roundBudgetMetric(rangeTotals.totalKm, 1),
+            avgCostPerTrip: rangeTrips.length > 0
+                ? roundBudgetMetric(rangeTotals.totalCost / rangeTrips.length, 2)
+                : 0,
+            avgCostPerMonth: roundBudgetMetric(monthlyAvgRange, 2),
+            peakMonth: peak
+                ? {
+                    label: String(peak?.monthFullLabel || '-'),
+                    totalCost: roundBudgetMetric(parseBudgetAmount(peak?.totalCost), 2)
+                }
+                : null,
+            topRoutes: buildBudgetRouteAggregates(rangeTrips, 8),
+            trend: trend,
+            monthlySeries: safeMonthlySeries.map((item) => ({
+                monthLabel: String(item?.monthLabel || ''),
+                monthFullLabel: String(item?.monthFullLabel || ''),
+                trips: Number(item?.trips) || 0,
+                totalCost: roundBudgetMetric(parseBudgetAmount(item?.totalCost), 2),
+                totalFuel: roundBudgetMetric(parseBudgetAmount(item?.totalFuel), 2),
+                totalToll: roundBudgetMetric(parseBudgetAmount(item?.totalToll), 2),
+                totalKm: roundBudgetMetric(parseBudgetAmount(item?.totalKm), 1)
+            }))
+        },
+        history: {
+            tripsCount: allTrips.length,
+            totalCost: roundBudgetMetric(allTotals.totalCost, 2),
+            totalFuel: roundBudgetMetric(allTotals.totalFuel, 2),
+            totalToll: roundBudgetMetric(allTotals.totalToll, 2),
+            totalKm: roundBudgetMetric(allTotals.totalKm, 1),
+            topRoutes: buildBudgetRouteAggregates(allTrips, 12),
+            recentTrips: allTrips.slice(0, 20).map((trip) => summarizeBudgetTripForContext(trip))
+        }
+    };
+}
+
+function buildBudgetAiSummaryLine(snapshot = null) {
+    const snap = snapshot || budgetAiContextSnapshot;
+    if (!snap?.period || !snap?.range) {
+        return 'Non ho ancora dati bilancio da analizzare.';
+    }
+    return `Periodo ${snap.period.label}: ${snap.range.tripsCount} tratte, totale ${formatBudgetCurrency(snap.range.totalCost)}, media ${formatBudgetCurrency(snap.range.avgCostPerTrip)} a tratta, ${snap.range.totalKm.toFixed(0)} km.`;
+}
+
+function buildBudgetAiTrendLine(snapshot = null) {
+    const trend = snapshot?.range?.trend;
+    if (!trend) return 'Trend non disponibile.';
+    if (trend.direction === 'up') {
+        return `Trend in aumento: +${formatBudgetCurrency(Math.abs(trend.delta))} (${Math.abs(trend.percent).toFixed(1)}%) rispetto all'inizio del periodo.`;
+    }
+    if (trend.direction === 'down') {
+        return `Trend in calo: -${formatBudgetCurrency(Math.abs(trend.delta))} (${Math.abs(trend.percent).toFixed(1)}%) rispetto all'inizio del periodo.`;
+    }
+    return "Trend stabile: variazioni contenute rispetto all'inizio del periodo.";
+}
+
+function buildBudgetAiTips(snapshot = null) {
+    const snap = snapshot || budgetAiContextSnapshot;
+    if (!snap?.range) return [];
+    const tips = [];
+    const totalCost = parseBudgetAmount(snap.range.totalCost);
+    const fuelCost = parseBudgetAmount(snap.range.totalFuel);
+    const tollCost = parseBudgetAmount(snap.range.totalToll);
+    const km = parseBudgetAmount(snap.range.totalKm);
+
+    if (totalCost > 0 && fuelCost / totalCost > 0.62) {
+        tips.push('Il carburante pesa molto sul totale: valuta velocita costante e partenze fuori picco.');
+    }
+    if (totalCost > 0 && tollCost / totalCost > 0.28) {
+        tips.push('I pedaggi incidono in modo rilevante: confronta percorsi alternativi e tratte extraurbane.');
+    }
+    if (km > 0 && totalCost > 0) {
+        const avgPerKm = totalCost / km;
+        tips.push(`Costo medio stimato: ${formatBudgetCurrency(avgPerKm)} per km nel periodo selezionato.`);
+    }
+    if (!tips.length) {
+        tips.push('Spesa equilibrata: continua a monitorare il trend per anticipare eventuali aumenti.');
+    }
+    return tips.slice(0, 3);
+}
+
+function getBudgetAiStorageScope() {
+    const userId = String(accountProfile?.id || currentUser?.id || '').trim();
+    return userId ? `user_${userId}` : 'guest';
+}
+
+function getBudgetAiHistoryStorageKey(scope = '') {
+    const safeScope = String(scope || getBudgetAiStorageScope()).trim() || 'guest';
+    return `${BUDGET_AI_HISTORY_KEY}_${safeScope}`;
+}
+
+function getBudgetAiMemoryStorageKey(scope = '') {
+    const safeScope = String(scope || getBudgetAiStorageScope()).trim() || 'guest';
+    return `${BUDGET_AI_MEMORY_KEY}_${safeScope}`;
+}
+
+function loadBudgetAiState(force = false) {
+    const nextScope = getBudgetAiStorageScope();
+    if (!force && budgetAiStorageScope === nextScope) return;
+    budgetAiStorageScope = nextScope;
+    budgetAiHistory = [];
+    budgetAiMemory = [];
+    if (!isAuthenticated()) {
+        budgetAiServerHydratedScope = '';
+    }
+
+    try {
+        const rawHistory = localStorage.getItem(getBudgetAiHistoryStorageKey(nextScope));
+        const parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
+        budgetAiHistory = Array.isArray(parsedHistory)
+            ? parsedHistory
+                .map((item) => ({
+                    role: item?.role === 'user' ? 'user' : 'assistant',
+                    text: item?.role === 'user'
+                        ? normalizeAiChatText(item?.text || '', AI_CHAT_INPUT_MAX_CHARS)
+                        : normalizeAiAssistantText(item?.text || '', AI_CHAT_REPLY_MAX_CHARS),
+                    timestamp: Number(item?.timestamp) || Date.now()
+                }))
+                .filter((item) => !!item.text)
+                .slice(-BUDGET_AI_MAX_STORED_MESSAGES)
+            : [];
+    } catch (e) {
+        budgetAiHistory = [];
+    }
+
+    try {
+        const rawMemory = localStorage.getItem(getBudgetAiMemoryStorageKey(nextScope));
+        const parsedMemory = rawMemory ? JSON.parse(rawMemory) : [];
+        budgetAiMemory = Array.isArray(parsedMemory)
+            ? parsedMemory
+                .map((note) => normalizeAiAssistantText(String(note || ''), 420))
+                .filter(Boolean)
+                .slice(-BUDGET_AI_MAX_STORED_MEMORY_NOTES)
+            : [];
+    } catch (e) {
+        budgetAiMemory = [];
+    }
+
+    renderBudgetAiHistory();
+    renderBudgetAiQuickActions();
+}
+
+function persistBudgetAiHistory() {
+    try {
+        const safeScope = budgetAiStorageScope || getBudgetAiStorageScope();
+        const trimmed = Array.isArray(budgetAiHistory)
+            ? budgetAiHistory.slice(-BUDGET_AI_MAX_STORED_MESSAGES)
+            : [];
+        localStorage.setItem(getBudgetAiHistoryStorageKey(safeScope), JSON.stringify(trimmed));
+    } catch (e) {}
+}
+
+function persistBudgetAiMemory() {
+    try {
+        const safeScope = budgetAiStorageScope || getBudgetAiStorageScope();
+        const trimmed = Array.isArray(budgetAiMemory)
+            ? budgetAiMemory.slice(-BUDGET_AI_MAX_STORED_MEMORY_NOTES)
+            : [];
+        localStorage.setItem(getBudgetAiMemoryStorageKey(safeScope), JSON.stringify(trimmed));
+    } catch (e) {}
+}
+
+function normalizeBudgetAiHistoryItems(items = []) {
+    if (!Array.isArray(items)) return [];
+    return items
+        .map((item) => ({
+            role: item?.role === 'user' ? 'user' : 'assistant',
+            text: item?.role === 'user'
+                ? normalizeAiChatText(item?.text || '', AI_CHAT_INPUT_MAX_CHARS)
+                : normalizeAiAssistantText(item?.text || '', AI_CHAT_REPLY_MAX_CHARS),
+            timestamp: Number(item?.timestamp) || Date.now()
+        }))
+        .filter((item) => !!item.text)
+        .slice(-BUDGET_AI_MAX_STORED_MESSAGES);
+}
+
+function normalizeBudgetAiNotes(items = []) {
+    if (!Array.isArray(items)) return [];
+    return items
+        .map((item) => normalizeAiAssistantText(String(item || ''), 420))
+        .filter(Boolean)
+        .slice(-BUDGET_AI_MAX_STORED_MEMORY_NOTES);
+}
+
+function buildBudgetAiServerMessagePayload(message = null) {
+    if (!message || typeof message !== 'object') return null;
+    return {
+        role: message.role === 'user' ? 'user' : 'assistant',
+        text: String(message.text || ''),
+        timestamp: Number(message.timestamp) || Date.now()
+    };
+}
+
+async function loadBudgetAiMemoryFromServer({ force = false } = {}) {
+    if (!isAuthenticated()) return false;
+    const scope = getBudgetAiStorageScope();
+    if (!scope || !scope.startsWith('user_')) return false;
+    if (!force && budgetAiServerHydratedScope === scope) return true;
+    try {
+        const localHistory = normalizeBudgetAiHistoryItems(budgetAiHistory);
+        const localNotes = normalizeBudgetAiNotes(budgetAiMemory);
+        const res = await apiRequest('/ai/budget-memory');
+        const memory = res?.memory || {};
+        const serverHistory = normalizeBudgetAiHistoryItems(memory.history || []);
+        const serverNotes = normalizeBudgetAiNotes(memory.notes || []);
+
+        const historyKey = (item) => `${item.role}|${item.timestamp}|${item.text}`;
+        const mergedHistoryMap = new Map();
+        serverHistory.forEach((item) => mergedHistoryMap.set(historyKey(item), item));
+        localHistory.forEach((item) => {
+            const key = historyKey(item);
+            if (!mergedHistoryMap.has(key)) mergedHistoryMap.set(key, item);
+        });
+        budgetAiHistory = Array.from(mergedHistoryMap.values())
+            .sort((a, b) => (Number(a?.timestamp) || 0) - (Number(b?.timestamp) || 0))
+            .slice(-BUDGET_AI_MAX_STORED_MESSAGES);
+
+        const mergedNotesSet = new Set();
+        const mergedNotes = [];
+        [...serverNotes, ...localNotes].forEach((note) => {
+            const normalized = normalizeAiAssistantText(note, 420);
+            if (!normalized || mergedNotesSet.has(normalized)) return;
+            mergedNotesSet.add(normalized);
+            mergedNotes.push(normalized);
+        });
+        budgetAiMemory = mergedNotes.slice(-BUDGET_AI_MAX_STORED_MEMORY_NOTES);
+
+        persistBudgetAiHistory();
+        persistBudgetAiMemory();
+        budgetAiServerHydratedScope = scope;
+        renderBudgetAiHistory();
+        renderBudgetAiQuickActions();
+
+        const serverHistoryKeys = new Set(serverHistory.map((item) => historyKey(item)));
+        const serverNotesSet = new Set(serverNotes);
+        const missingMessages = budgetAiHistory.filter((item) => !serverHistoryKeys.has(historyKey(item)));
+        const missingNotes = budgetAiMemory.filter((note) => !serverNotesSet.has(note));
+        if (missingMessages.length || missingNotes.length) {
+            appendBudgetAiMemoryToServer({
+                messages: missingMessages,
+                notes: missingNotes
+            }).catch(() => {});
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+async function appendBudgetAiMemoryToServer({ messages = [], notes = [] } = {}) {
+    if (!isAuthenticated()) return false;
+    const scope = getBudgetAiStorageScope();
+    if (!scope || !scope.startsWith('user_')) return false;
+
+    const safeMessages = (Array.isArray(messages) ? messages : [])
+        .map((item) => buildBudgetAiServerMessagePayload(item))
+        .filter(Boolean);
+    const safeNotes = normalizeBudgetAiNotes(notes || []);
+    if (!safeMessages.length && !safeNotes.length) return true;
+
+    try {
+        await apiRequest('/ai/budget-memory/append', 'POST', {
+            messages: safeMessages,
+            notes: safeNotes
+        });
+        budgetAiServerHydratedScope = scope;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+async function resetBudgetAiHistoryOnServer() {
+    if (!isAuthenticated()) return false;
+    const scope = getBudgetAiStorageScope();
+    if (!scope || !scope.startsWith('user_')) return false;
+    try {
+        await apiRequest('/ai/budget-memory/reset-history', 'POST', {});
+        budgetAiServerHydratedScope = scope;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function setBudgetAiStatus(message = '') {
+    if (!budgetAiStatus) return;
+    budgetAiStatus.textContent = message || '';
+}
+
+function ensureBudgetAiUi() {
+    if (!budgetOverlay) return false;
+    const budgetCard = budgetOverlay.querySelector('.budget-card');
+    if (!budgetCard) return false;
+
+    let panel = budgetCard.querySelector('#budgetAiPanel');
+    if (!panel) {
+        panel = document.createElement('section');
+        panel.id = 'budgetAiPanel';
+        panel.className = 'budget-ai-panel';
+        panel.innerHTML = `
+            <div class="budget-ai-header">
+                <h4 class="section-title">Assistente AI Bilancio</h4>
+                <span id="budgetAiStatus" class="helper-text">Pronto.</span>
+            </div>
+            <p class="budget-ai-subtitle">Analisi chiara dei costi, trend e tratte storiche. Puoi fare qualsiasi domanda sul bilancio.</p>
+            <div id="budgetAiMessages" class="ai-chat-messages budget-ai-messages" role="log" aria-live="polite"></div>
+            <div id="budgetAiQuickActions" class="budget-ai-quick-actions"></div>
+            <div class="ai-chat-actions budget-ai-actions">
+                <input id="budgetAiInput" type="text" placeholder="Es: perche questo mese spendo di piu?" maxlength="1800">
+                <button id="budgetAiNewBtn" class="pill-btn" type="button">Nuova chat</button>
+                <button id="budgetAiSendBtn" class="pill-btn primary" type="button">Invia</button>
+            </div>
+        `;
+
+        const titleBeforeList = budgetEmpty?.previousElementSibling;
+        const insertBeforeNode = titleBeforeList && titleBeforeList.classList?.contains('section-title')
+            ? titleBeforeList
+            : budgetEmpty;
+        if (insertBeforeNode && insertBeforeNode.parentNode === budgetCard) {
+            budgetCard.insertBefore(panel, insertBeforeNode);
+        } else {
+            budgetCard.appendChild(panel);
+        }
+    }
+
+    budgetAiPanel = panel;
+    budgetAiStatus = document.getElementById('budgetAiStatus');
+    budgetAiMessages = document.getElementById('budgetAiMessages');
+    budgetAiInput = document.getElementById('budgetAiInput');
+    budgetAiSendBtn = document.getElementById('budgetAiSendBtn');
+    budgetAiNewBtn = document.getElementById('budgetAiNewBtn');
+    budgetAiQuickActions = document.getElementById('budgetAiQuickActions');
+
+    if (budgetAiPanel && budgetAiPanel.dataset.wired !== '1') {
+        budgetAiSendBtn?.addEventListener('click', () => {
+            sendBudgetAiMessage().catch(() => {});
+        });
+        budgetAiNewBtn?.addEventListener('click', startNewBudgetAiChat);
+        budgetAiInput?.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            sendBudgetAiMessage().catch(() => {});
+        });
+        budgetAiPanel.dataset.wired = '1';
+    }
+    return true;
+}
+
+function renderBudgetAiHistory() {
+    ensureBudgetAiUi();
+    if (!budgetAiMessages) return;
+    budgetAiMessages.innerHTML = '';
+    const greeting = buildBudgetAiSummaryLine();
+    const items = budgetAiHistory.length
+        ? budgetAiHistory
+        : [{ role: 'assistant', text: greeting, timestamp: Date.now() }];
+
+    const fragment = document.createDocumentFragment();
+    items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = `ai-chat-row ${item.role === 'user' ? 'user' : 'assistant'}`;
+        const bubble = document.createElement('div');
+        bubble.className = 'ai-chat-bubble';
+        bubble.textContent = item.text || '';
+        row.appendChild(bubble);
+        fragment.appendChild(row);
+    });
+    budgetAiMessages.appendChild(fragment);
+    budgetAiMessages.scrollTop = budgetAiMessages.scrollHeight;
+}
+
+function pushBudgetAiMessage(role = 'assistant', text = '') {
+    loadBudgetAiState();
+    const normalizedText = role === 'user'
+        ? normalizeAiChatText(text, AI_CHAT_INPUT_MAX_CHARS)
+        : normalizeAiAssistantText(text, AI_CHAT_REPLY_MAX_CHARS);
+    if (!normalizedText) return;
+
+    const message = {
+        role: role === 'user' ? 'user' : 'assistant',
+        text: normalizedText,
+        timestamp: Date.now()
+    };
+    budgetAiHistory.push(message);
+    if (budgetAiHistory.length > BUDGET_AI_MAX_STORED_MESSAGES) {
+        budgetAiHistory = budgetAiHistory.slice(-BUDGET_AI_MAX_STORED_MESSAGES);
+    }
+    persistBudgetAiHistory();
+    renderBudgetAiHistory();
+    if (isAuthenticated()) {
+        appendBudgetAiMemoryToServer({ messages: [message] }).catch(() => {});
+    }
+}
+
+function setBudgetAiBusy(isBusy) {
+    budgetAiPending = !!isBusy;
+    if (budgetAiSendBtn) budgetAiSendBtn.disabled = budgetAiPending;
+    if (budgetAiNewBtn) budgetAiNewBtn.disabled = budgetAiPending;
+    if (budgetAiInput) budgetAiInput.disabled = budgetAiPending;
+    if (budgetAiMessages) budgetAiMessages.setAttribute('aria-busy', budgetAiPending ? 'true' : 'false');
+    renderBudgetAiQuickActions();
+}
+
+function rememberBudgetAiExchange(question = '', answer = '') {
+    const safeQuestion = normalizeAiChatText(question, 260);
+    const safeAnswer = normalizeAiAssistantText(answer, 420).replace(/\n+/g, ' ').trim();
+    if (!safeQuestion || !safeAnswer) return;
+    const note = `Q: ${safeQuestion} | A: ${safeAnswer}`;
+    budgetAiMemory.push(note);
+    if (budgetAiMemory.length > BUDGET_AI_MAX_STORED_MEMORY_NOTES) {
+        budgetAiMemory = budgetAiMemory.slice(-BUDGET_AI_MAX_STORED_MEMORY_NOTES);
+    }
+    persistBudgetAiMemory();
+    if (isAuthenticated()) {
+        appendBudgetAiMemoryToServer({ notes: [note] }).catch(() => {});
+    }
+}
+
+function buildBudgetAiQuickPrompts(snapshot = null) {
+    const topRoute = String(snapshot?.range?.topRoutes?.[0]?.route || '').trim();
+    const prompts = [
+        `Spiegami in modo semplice il mio bilancio del periodo ${snapshot?.period?.label || 'selezionato'}.`,
+        'Quale voce pesa di piu tra carburante e pedaggi?',
+        topRoute
+            ? `Analizza la tratta ${topRoute} e dimmi come ridurre il costo.`
+            : 'Quali tratte mi costano di piu e perche?',
+        'Dammi un piano pratico per spendere meno nel prossimo mese.'
+    ];
+    return Array.from(new Set(prompts.map((item) => String(item || '').trim()).filter(Boolean))).slice(0, 4);
+}
+
+function renderBudgetAiQuickActions(snapshot = null) {
+    ensureBudgetAiUi();
+    if (!budgetAiQuickActions) return;
+    budgetAiQuickActions.innerHTML = '';
+    const prompts = buildBudgetAiQuickPrompts(snapshot || budgetAiContextSnapshot);
+    prompts.forEach((prompt) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'budget-ai-chip';
+        button.textContent = prompt;
+        button.disabled = budgetAiPending;
+        button.addEventListener('click', () => {
+            if (!budgetAiInput || budgetAiPending) return;
+            budgetAiInput.value = prompt;
+            sendBudgetAiMessage().catch(() => {});
+        });
+        budgetAiQuickActions.appendChild(button);
+    });
+}
+
+function startNewBudgetAiChat() {
+    if (budgetAiPending) {
+        setBudgetAiStatus('Attendi la risposta in corso prima di iniziare una nuova chat.');
+        return;
+    }
+    budgetAiHistory = [];
+    persistBudgetAiHistory();
+    renderBudgetAiHistory();
+    if (isAuthenticated()) {
+        resetBudgetAiHistoryOnServer().catch(() => {});
+    }
+    if (budgetAiInput) budgetAiInput.value = '';
+    setBudgetAiStatus('Nuova chat avviata. Memoria storica del bilancio mantenuta.');
+    budgetAiInput?.focus();
+}
+
+function buildBudgetAiContextPayload() {
+    const snapshot = budgetAiContextSnapshot || {};
+    const memoryNotes = Array.isArray(budgetAiMemory)
+        ? budgetAiMemory
+            .slice(-120)
+            .map((note) => normalizeAiAssistantText(String(note || ''), 220))
+            .filter(Boolean)
+        : [];
+    return {
+        nowIso: new Date().toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Rome',
+        budgetAssistant: true,
+        budget: snapshot,
+        memory: {
+            notesCount: budgetAiMemory.length,
+            notes: memoryNotes
+        }
+    };
+}
+
+function buildLocalBudgetAiFallback(question = '') {
+    const q = String(question || '').toLowerCase();
+    const snapshot = budgetAiContextSnapshot;
+    if (!snapshot?.period || !snapshot?.range) {
+        return 'Non ho ancora dati bilancio sufficienti. Completa almeno una tratta e riapri il Bilancio.';
+    }
+
+    if (q.includes('totale') || q.includes('spesa') || q.includes('quanto')) {
+        return buildBudgetAiSummaryLine(snapshot);
+    }
+
+    if (q.includes('trend') || q.includes('andamento') || q.includes('mese')) {
+        return `${buildBudgetAiTrendLine(snapshot)} Mese piu costoso: ${snapshot.range.peakMonth?.label || '-'} (${formatBudgetCurrency(snapshot.range.peakMonth?.totalCost || 0)}).`;
+    }
+
+    if (q.includes('tratta') || q.includes('route') || q.includes('percorso')) {
+        const topRoute = snapshot?.range?.topRoutes?.[0];
+        if (topRoute) {
+            return `Tratta piu impattante nel periodo: ${topRoute.route}, ${topRoute.trips} tratte per ${formatBudgetCurrency(topRoute.totalCost)} totali.`;
+        }
+        return 'Nel periodo selezionato non ci sono ancora tratte sufficienti per ranking percorsi.';
+    }
+
+    const tips = buildBudgetAiTips(snapshot);
+    return `${buildBudgetAiSummaryLine(snapshot)} ${buildBudgetAiTrendLine(snapshot)} ${tips.join(' ')}`.trim();
+}
+
+async function requestBudgetAiReply(question = '') {
+    const message = normalizeAiChatText(question, AI_CHAT_INPUT_MAX_CHARS);
+    if (!message) return { reply: '', source: 'local' };
+    const history = budgetAiHistory.slice(-BUDGET_AI_MAX_HISTORY_FOR_REQUEST).map((item) => ({
+        role: item.role === 'user' ? 'user' : 'assistant',
+        text: item.text
+    }));
+
+    try {
+        const response = await apiRequest('/ai/chat', 'POST', {
+            message,
+            history,
+            context: buildBudgetAiContextPayload()
+        });
+        const reply = normalizeAiAssistantText(response?.reply || response?.message || '', AI_CHAT_REPLY_MAX_CHARS);
+        if (reply) {
+            return {
+                reply,
+                source: String(response?.source || 'remote').trim().toLowerCase() || 'remote'
+            };
+        }
+    } catch (e) {
+        // fallback below
+    }
+
+    return {
+        reply: buildLocalBudgetAiFallback(message),
+        source: 'local'
+    };
+}
+
+async function sendBudgetAiMessage() {
+    if (budgetAiPending) return;
+    ensureBudgetAiUi();
+    loadBudgetAiState();
+    const message = normalizeAiChatText(budgetAiInput?.value || '', AI_CHAT_INPUT_MAX_CHARS);
+    if (!message) {
+        setBudgetAiStatus('Scrivi una domanda prima di inviare.');
+        return;
+    }
+
+    pushBudgetAiMessage('user', message);
+    if (budgetAiInput) budgetAiInput.value = '';
+    setBudgetAiBusy(true);
+    setBudgetAiStatus('Analizzo bilancio e storico tratte...');
+
+    const typingRow = document.createElement('div');
+    typingRow.className = 'ai-chat-row assistant';
+    typingRow.dataset.typing = '1';
+    const typingBubble = document.createElement('div');
+    typingBubble.className = 'ai-chat-bubble';
+    typingBubble.textContent = 'Sto analizzando i dati del bilancio...';
+    typingRow.appendChild(typingBubble);
+    budgetAiMessages?.appendChild(typingRow);
+    if (budgetAiMessages) budgetAiMessages.scrollTop = budgetAiMessages.scrollHeight;
+
+    try {
+        const answerPayload = await requestBudgetAiReply(message);
+        const answer = normalizeAiAssistantText(answerPayload?.reply || '', AI_CHAT_REPLY_MAX_CHARS);
+        const sourceLabel = getAiProviderLabel(answerPayload?.source || '');
+        if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
+        const finalAnswer = answer || 'Non ho trovato una risposta utile. Riprova con una domanda piu specifica.';
+        pushBudgetAiMessage('assistant', finalAnswer);
+        rememberBudgetAiExchange(message, finalAnswer);
+        setBudgetAiStatus(`Risposta pronta (${sourceLabel}).`);
+    } catch (e) {
+        if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
+        const fallback = buildLocalBudgetAiFallback(message);
+        pushBudgetAiMessage('assistant', fallback);
+        rememberBudgetAiExchange(message, fallback);
+        setBudgetAiStatus('Risposta fornita in modalita locale.');
+    } finally {
+        setBudgetAiBusy(false);
+        renderBudgetAiQuickActions();
+        budgetAiInput?.focus();
+    }
+}
+
 function renderBudget() {
     if (!budgetTripsList || !budgetEmpty) return;
+    ensureBudgetAiUi();
+    loadBudgetAiState();
     const now = new Date();
     const range = normalizeBudgetRange(selectedBudgetRange);
     const rangeWindow = getBudgetRangeWindow(range, now);
     const trips = getBudgetTripsForRange(range, now);
     const monthlySeries = buildBudgetMonthlySeries(trips, range, now);
     const trendSeries = buildBudgetTrendSeries(trips, range, now);
+    const totals = computeBudgetTotals(trips);
+    const monthlyAvgCost = rangeWindow.months > 0 ? (totals.totalCost / rangeWindow.months) : totals.totalCost;
+    const peakMonth = monthlySeries.reduce((best, month) => {
+        if (!best) return month;
+        return parseBudgetAmount(month.totalCost) > parseBudgetAmount(best.totalCost) ? month : best;
+    }, null);
+    budgetAiContextSnapshot = buildBudgetAssistantSnapshot({
+        range,
+        now,
+        trips,
+        monthlySeries,
+        trendSeries,
+        rangeWindow,
+        totals,
+        peakMonth
+    });
+    renderBudgetAiQuickActions(budgetAiContextSnapshot);
+    renderBudgetAiHistory();
 
     if (budgetMonthLabel) budgetMonthLabel.textContent = rangeWindow.label;
     if (budgetChartHint) {
@@ -9908,28 +10836,12 @@ function renderBudget() {
         if (budgetTotalKm) budgetTotalKm.textContent = '0 km';
         if (budgetMonthlyAvg) budgetMonthlyAvg.textContent = '€0.00';
         if (budgetPeakMonth) budgetPeakMonth.textContent = '-';
+        if (!budgetAiPending) {
+            setBudgetAiStatus("Pronto. Aggiungi tratte completate per un'analisi piu approfondita.");
+        }
         return;
     }
     budgetEmpty.style.display = 'none';
-
-    const totals = trips.reduce((acc, trip) => {
-        acc.totalCost += parseBudgetAmount(trip.totalCost);
-        acc.totalFuel += parseBudgetAmount(trip.fuelCost);
-        acc.totalToll += parseBudgetAmount(trip.tollCost);
-        acc.totalKm += parseBudgetAmount(trip.distance);
-        return acc;
-    }, {
-        totalCost: 0,
-        totalFuel: 0,
-        totalToll: 0,
-        totalKm: 0
-    });
-
-    const monthlyAvgCost = rangeWindow.months > 0 ? (totals.totalCost / rangeWindow.months) : totals.totalCost;
-    const peakMonth = monthlySeries.reduce((best, month) => {
-        if (!best) return month;
-        return parseBudgetAmount(month.totalCost) > parseBudgetAmount(best.totalCost) ? month : best;
-    }, null);
 
     if (budgetTotalTrips) budgetTotalTrips.textContent = trips.length.toString();
     if (budgetTotalCost) budgetTotalCost.textContent = formatBudgetCurrency(totals.totalCost);
@@ -9944,11 +10856,17 @@ function renderBudget() {
             ? `${peakMonth.monthFullLabel} (${formatBudgetCurrency(peakCost)})`
             : '-';
     }
+    if (!budgetAiPending) {
+        setBudgetAiStatus('Assistente bilancio pronto. Chiedimi analisi su costi, trend e storico.');
+    }
 }
 
 async function openBudget() {
     if (maybeNavigateToRoute('budget')) return;
-    if (authToken) await loadCompletedTrips();
+    if (authToken) {
+        await loadCompletedTrips();
+        await loadBudgetAiMemoryFromServer({ force: true });
+    }
     closeAccountSubPanels({ clearSearch: false });
     closePrimaryModalOverlays(budgetOverlay);
     setActiveMenu(budgetBtn);
@@ -10753,7 +11671,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         closeSettingsMenu();
         syncSettingsMenuCloseVisibility();
         syncMobileUiState();
-        loadAiChatHistory();
+        loadAiChatHistory(true);
+        loadBudgetAiState(true);
         loadFuelFinderPosition();
 
         const handleViewportResize = debounce(() => {
