@@ -4138,6 +4138,51 @@ function debounce(fn, waitMs = 140) {
     };
 }
 
+function withTimeout(promiseLike, timeoutMs = 0, timeoutMessage = 'Operazione scaduta') {
+    const safeTimeout = Number(timeoutMs);
+    if (!Number.isFinite(safeTimeout) || safeTimeout <= 0) {
+        return Promise.resolve(promiseLike);
+    }
+    return new Promise((resolve, reject) => {
+        const timeoutId = window.setTimeout(() => {
+            reject(new Error(timeoutMessage));
+        }, safeTimeout);
+        Promise.resolve(promiseLike)
+            .then((value) => {
+                clearTimeout(timeoutId);
+                resolve(value);
+            })
+            .catch((err) => {
+                clearTimeout(timeoutId);
+                reject(err);
+            });
+    });
+}
+
+function readFriendSearchCache(query = '') {
+    const key = String(query || '').trim().toLowerCase();
+    if (!key) return null;
+    const cached = friendSearchCache.get(key);
+    if (!cached) return null;
+    if ((Date.now() - Number(cached.ts || 0)) > FRIEND_SEARCH_CACHE_MAX_AGE_MS) {
+        friendSearchCache.delete(key);
+        return null;
+    }
+    return Array.isArray(cached.items) ? cached.items : null;
+}
+
+function writeFriendSearchCache(query = '', items = []) {
+    const key = String(query || '').trim().toLowerCase();
+    if (!key || !Array.isArray(items)) return;
+    friendSearchCache.set(key, {
+        ts: Date.now(),
+        items
+    });
+    if (friendSearchCache.size <= 120) return;
+    const oldestKey = friendSearchCache.keys().next().value;
+    if (oldestKey) friendSearchCache.delete(oldestKey);
+}
+
 function showModalOverlay(overlay) {
     if (!overlay) return;
     if (overlay._hideTimer) {
@@ -4289,11 +4334,43 @@ function wireModalBackdropCloseHandlers() {
         const handler = getOverlayCloseHandlerById(id);
         if (!overlay || overlay.dataset.backdropCloseBound === '1') return;
         overlay.dataset.backdropCloseBound = '1';
+        let backdropPointerStarted = false;
+        overlay.addEventListener('pointerdown', (event) => {
+            backdropPointerStarted = event.target === overlay;
+        }, { passive: true });
+        overlay.addEventListener('touchstart', (event) => {
+            const target = event.target;
+            backdropPointerStarted = target === overlay;
+        }, { passive: true });
+        overlay.addEventListener('mousedown', (event) => {
+            backdropPointerStarted = event.target === overlay;
+        });
+        overlay.addEventListener('pointercancel', () => {
+            backdropPointerStarted = false;
+        });
         overlay.addEventListener('click', (event) => {
-            if (event.target !== overlay) return;
+            const shouldClose = backdropPointerStarted && event.target === overlay;
+            backdropPointerStarted = false;
+            if (!shouldClose) return;
             if (typeof handler === 'function') handler();
         });
     });
+}
+
+function isInteractiveTouchTarget(node = null) {
+    if (!node || !(node instanceof HTMLElement)) return false;
+    const interactiveSelectors = [
+        'button',
+        'a',
+        'input',
+        'textarea',
+        'select',
+        'label',
+        '[role="button"]',
+        '.favorite-item',
+        '.filter-result-item'
+    ];
+    return interactiveSelectors.some((selector) => !!node.closest(selector));
 }
 
 function wireMobileModalSwipeClose() {
@@ -4327,8 +4404,16 @@ function wireMobileModalSwipeClose() {
         card.addEventListener('touchstart', (event) => {
             if (!isMobileViewport() || mobileKeyboardOpen || !isOverlayOpen(overlay)) return;
             if (event.touches.length !== 1) return;
-            if ((card.scrollTop || 0) > 8) return;
+            if ((card.scrollTop || 0) > 2) return;
+            const target = event.target instanceof HTMLElement ? event.target : null;
+            if (!target) return;
+            if (isInteractiveTouchTarget(target)) return;
+            const header = target.closest('.modal-header');
+            if (!header) return;
             const touch = event.touches[0];
+            const cardRect = card.getBoundingClientRect();
+            const startOffsetTop = Number(touch.clientY || 0) - Number(cardRect.top || 0);
+            if (startOffsetTop > 88) return;
             startX = Number(touch.clientX || 0);
             startY = Number(touch.clientY || 0);
             startTime = Date.now();
@@ -4344,7 +4429,7 @@ function wireMobileModalSwipeClose() {
             const touch = event.touches[0];
             const deltaY = Number(touch.clientY || 0) - startY;
             const deltaX = Math.abs(Number(touch.clientX || 0) - startX);
-            if (deltaY < -12 || deltaX > 92) {
+            if (deltaY < -12 || deltaX > 86) {
                 tracking = false;
             }
         }, { passive: true });
@@ -4362,9 +4447,11 @@ function wireMobileModalSwipeClose() {
             const elapsedMs = Math.max(Date.now() - startTime, 1);
             const velocity = deltaY / elapsedMs;
 
-            if (deltaY < 96) return;
-            if (deltaX > 92) return;
-            if (velocity < 0.28 && deltaY < 150) return;
+            if (elapsedMs > 820) return;
+            if (deltaY < 140) return;
+            if (deltaX > 86) return;
+            if (deltaY < (deltaX * 1.7)) return;
+            if (velocity < 0.33 && deltaY < 190) return;
 
             const handler = getOverlayCloseHandlerById(id);
             if (typeof handler === 'function') {
@@ -6377,10 +6464,22 @@ let tripActionFeedbackTimer = null;
 let friendSearchTimer = null;
 let friendSearchAbortController = null;
 let friendSearchRequestId = 0;
+const FRIEND_SEARCH_DEBOUNCE_MS = 140;
+const FRIEND_SEARCH_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const FRIENDS_DATA_STALE_MS = 45 * 1000;
+const COMPANION_TRIPS_DATA_STALE_MS = 45 * 1000;
+const COMPANIONS_REMOTE_LOAD_TIMEOUT_MS = 10000;
+const friendSearchCache = new Map();
 let friends = [];
+let friendsDataLoadedAt = 0;
+let friendsDataLoadingPromise = null;
 let incomingFriendRequests = [];
 let outgoingFriendRequests = [];
 let selectedFriendId = '';
+let companionTripsLoadedAt = 0;
+let companionTripsLoadingPromise = null;
+let companionsOpenRequestId = 0;
+let companionFriendsRenderToken = 0;
 let imagePreviewOverlay = null;
 let imagePreviewImage = null;
 let deferredInstallPrompt = null;
@@ -6731,6 +6830,10 @@ function setFriendRequestBusy(isBusy) {
 }
 
 function clearFriendSearchResults() {
+    if (friendSearchTimer) {
+        clearTimeout(friendSearchTimer);
+        friendSearchTimer = null;
+    }
     if (friendSearchAbortController) {
         try { friendSearchAbortController.abort(); } catch (e) {}
         friendSearchAbortController = null;
@@ -6747,6 +6850,19 @@ async function fetchFriendSearchSuggestions(query = '') {
     }
 
     const requestId = ++friendSearchRequestId;
+    const currentInputValue = String(friendSearchInput?.value || '').trim();
+    if (currentInputValue && currentInputValue !== q) return;
+
+    const cachedItems = readFriendSearchCache(q);
+    if (cachedItems && cachedItems.length) {
+        renderResults(friendSearchResults, cachedItems, q, (item) => {
+            if (friendSearchInput) friendSearchInput.value = item.value || '';
+            clearResultsContainer(friendSearchResults);
+            setFriendsStatus('');
+        });
+    }
+
+    setFriendsStatus('Ricerca utenti...');
     if (friendSearchAbortController) {
         try { friendSearchAbortController.abort(); } catch (e) {}
     }
@@ -6764,6 +6880,7 @@ async function fetchFriendSearchSuggestions(query = '') {
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(payload.error || 'Ricerca utenti non disponibile');
         if (requestId !== friendSearchRequestId) return;
+        if (String(friendSearchInput?.value || '').trim() !== q) return;
 
         const items = Array.isArray(payload.items)
             ? payload.items.map((u) => ({
@@ -6772,8 +6889,10 @@ async function fetchFriendSearchSuggestions(query = '') {
                 label: u.email
             }))
             : [];
+        writeFriendSearchCache(q, items);
         if (!items.length) {
             clearResultsContainer(friendSearchResults);
+            setFriendsStatus('Nessun utente trovato');
             return;
         }
         renderResults(friendSearchResults, items, q, (item) => {
@@ -6781,10 +6900,12 @@ async function fetchFriendSearchSuggestions(query = '') {
             clearResultsContainer(friendSearchResults);
             setFriendsStatus('');
         });
+        setFriendsStatus('');
     } catch (e) {
         if (e?.name === 'AbortError') return;
         if (requestId !== friendSearchRequestId) return;
         clearResultsContainer(friendSearchResults);
+        setFriendsStatus('Ricerca utenti non disponibile');
     } finally {
         if (requestId === friendSearchRequestId) {
             friendSearchAbortController = null;
@@ -7143,6 +7264,7 @@ function renderFriendRequests() {
                 acceptBtn.addEventListener('click', async () => {
                     try {
                         await apiRequest(`/friends/requests/${item.id}/accept`, 'POST');
+                        friendsDataLoadedAt = 0;
                         await loadFriendsData();
                         setFriendsStatus('Richiesta accettata');
                     } catch (e) {
@@ -7155,6 +7277,7 @@ function renderFriendRequests() {
                 rejectBtn.addEventListener('click', async () => {
                     try {
                         await apiRequest(`/friends/requests/${item.id}/reject`, 'POST');
+                        friendsDataLoadedAt = 0;
                         await loadFriendsData();
                         setFriendsStatus('Richiesta rifiutata');
                     } catch (e) {
@@ -7198,19 +7321,57 @@ function applyShareSettingsToUI() {
 }
 
 async function loadFriendsData() {
-    if (!authToken) return;
-    const [friendsRes, requestsRes, shareRes] = await Promise.all([
-        apiRequest('/friends').catch(() => ({ items: [] })),
-        apiRequest('/friends/requests').catch(() => ({ incoming: [], outgoing: [] })),
-        apiRequest('/share-settings').catch(() => ({ settings: shareSettings }))
-    ]);
-    friends = friendsRes.items || [];
-    incomingFriendRequests = requestsRes.incoming || [];
-    outgoingFriendRequests = requestsRes.outgoing || [];
-    shareSettings = shareRes.settings || shareSettings;
-    renderFriends();
-    renderFriendRequests();
-    applyShareSettingsToUI();
+    if (!authToken) {
+        friends = [];
+        incomingFriendRequests = [];
+        outgoingFriendRequests = [];
+        friendsDataLoadedAt = 0;
+        renderFriends();
+        renderFriendRequests();
+        applyShareSettingsToUI();
+        return;
+    }
+
+    const cacheAge = Date.now() - Number(friendsDataLoadedAt || 0);
+    const cacheIsFresh = friendsDataLoadedAt > 0 && cacheAge < FRIENDS_DATA_STALE_MS;
+    if (cacheIsFresh) {
+        renderFriends();
+        renderFriendRequests();
+        applyShareSettingsToUI();
+        return;
+    }
+    if (friendsDataLoadingPromise) {
+        await friendsDataLoadingPromise;
+        return;
+    }
+
+    friendsDataLoadingPromise = (async () => {
+        const [friendsRes, requestsRes, shareRes] = await Promise.allSettled([
+            apiRequest('/friends'),
+            apiRequest('/friends/requests'),
+            apiRequest('/share-settings')
+        ]);
+        if (friendsRes.status === 'fulfilled') {
+            friends = Array.isArray(friendsRes.value?.items) ? friendsRes.value.items : [];
+        }
+        if (requestsRes.status === 'fulfilled') {
+            incomingFriendRequests = Array.isArray(requestsRes.value?.incoming) ? requestsRes.value.incoming : [];
+            outgoingFriendRequests = Array.isArray(requestsRes.value?.outgoing) ? requestsRes.value.outgoing : [];
+        }
+        if (shareRes.status === 'fulfilled') {
+            shareSettings = shareRes.value?.settings || shareSettings;
+        }
+        friendsDataLoadedAt = Date.now();
+        renderFriends();
+        renderFriendRequests();
+        applyShareSettingsToUI();
+    })();
+
+    try {
+        await friendsDataLoadingPromise;
+    } finally {
+        friendsDataLoadingPromise = null;
+    }
 }
 
 async function saveShareSettings() {
@@ -7246,6 +7407,7 @@ async function sendFriendRequest() {
         await apiRequest('/friends/request', 'POST', { email });
         friendSearchInput.value = '';
         clearFriendSearchResults();
+        friendsDataLoadedAt = 0;
         await loadFriendsData();
         setFriendsStatus('Richiesta inviata');
     } catch (e) {
@@ -7262,6 +7424,11 @@ async function sendFriendRequest() {
 function setAuth(token, user) {
     authToken = token || 'cookie-session';
     currentUser = user || null;
+    friendsDataLoadedAt = 0;
+    friendsDataLoadingPromise = null;
+    companionTripsLoadedAt = 0;
+    companionTripsLoadingPromise = null;
+    friendSearchCache.clear();
     loadAiChatHistory(true);
     loadBudgetAiState(true);
     updateAuthUI();
@@ -7279,6 +7446,12 @@ async function clearAuth({ remote = true } = {}) {
     friends = [];
     incomingFriendRequests = [];
     outgoingFriendRequests = [];
+    friendsDataLoadedAt = 0;
+    friendsDataLoadingPromise = null;
+    companionTrips = [];
+    companionTripsLoadedAt = 0;
+    companionTripsLoadingPromise = null;
+    friendSearchCache.clear();
     selectedFriendId = '';
     loadAiChatHistory(true);
     loadBudgetAiState(true);
@@ -7331,6 +7504,11 @@ async function restoreAuthSession() {
         if (!payload?.user) return false;
         authToken = 'cookie-session';
         currentUser = payload.user;
+        friendsDataLoadedAt = 0;
+        friendsDataLoadingPromise = null;
+        companionTripsLoadedAt = 0;
+        companionTripsLoadingPromise = null;
+        friendSearchCache.clear();
         accountProfile = payload.user;
         accountStats = payload.stats || accountStats;
         loadAiChatHistory(true);
@@ -7927,12 +8105,10 @@ async function openFriendRequestsView() {
     setFriendRequestsWindowState(true);
     setFriendsStatus('Gestisci richieste amicizia');
     clearFriendSearchResults();
-    try {
-        await loadFriendsData();
-    } catch (e) {
-        setFriendsStatus('Impossibile caricare richieste amicizia');
-    }
     if (friendSearchInput) friendSearchInput.focus();
+    loadFriendsData().catch(() => {
+        setFriendsStatus('Impossibile caricare richieste amicizia');
+    });
 }
 
 async function openFriendsView() {
@@ -7956,11 +8132,9 @@ async function openFriendsView() {
     showModalOverlay(friendsOverlay);
     setActiveMenu(friendsBtn);
     setFriendsStatus('Clicca un amico per vedere profilo e condivisioni');
-    try {
-        await loadFriendsData();
-    } catch (e) {
+    loadFriendsData().catch(() => {
         setFriendsStatus('Impossibile caricare amici');
-    }
+    });
 }
 
 function closeAuth() {
@@ -9430,6 +9604,7 @@ function setCompanionPickerPanelsState({ friendsOpen = false, manualOpen = false
 
 function renderCompanionFriendsPicker() {
     if (!companionFriendsList || !companionFriendsEmpty) return;
+    companionFriendsRenderToken += 1;
     companionFriendsList.innerHTML = '';
 
     if (!authToken) {
@@ -9440,86 +9615,145 @@ function renderCompanionFriendsPicker() {
 
     if (!friends.length) {
         companionFriendsEmpty.style.display = 'block';
-        companionFriendsEmpty.textContent = 'Nessun amico disponibile. Aggiungi amici per selezionarli qui.';
+        companionFriendsEmpty.textContent = friendsDataLoadingPromise
+            ? 'Caricamento amici in corso...'
+            : 'Nessun amico disponibile. Aggiungi amici per selezionarli qui.';
         return;
     }
 
     companionFriendsEmpty.style.display = 'none';
-    friends.forEach((friend) => {
-        const friendId = String(friend.id || '').trim();
-        if (!friendId) return;
+    const renderToken = companionFriendsRenderToken;
+    const friendsSnapshot = friends.slice();
+    const chunkSize = 24;
+    let cursor = 0;
 
-        const li = document.createElement('li');
-        li.className = 'favorite-item companion-friend-item';
+    const renderChunk = () => {
+        if (renderToken !== companionFriendsRenderToken) return;
+        if (!companionFriendsList) return;
 
-        const meta = document.createElement('div');
-        meta.className = 'favorite-meta companion-friend-meta';
-        const top = document.createElement('div');
-        top.className = 'companion-friend-top';
+        const fragment = document.createDocumentFragment();
+        for (let processed = 0; processed < chunkSize && cursor < friendsSnapshot.length; processed += 1, cursor += 1) {
+            const friend = friendsSnapshot[cursor];
+            const friendId = String(friend.id || '').trim();
+            if (!friendId) continue;
 
-        const avatar = document.createElement('img');
-        avatar.className = 'companion-friend-avatar';
-        avatar.src = friend.avatarUrl || buildDefaultAccountAvatar(getFriendDisplayName(friend));
-        avatar.alt = `Avatar ${getFriendDisplayName(friend)}`;
+            const li = document.createElement('li');
+            li.className = 'favorite-item companion-friend-item';
 
-        const identity = document.createElement('div');
-        identity.className = 'companion-friend-identity';
-        const title = document.createElement('strong');
-        title.textContent = getFriendDisplayName(friend);
-        const subtitle = document.createElement('span');
-        subtitle.textContent = friend.email || 'Account registrato';
-        identity.append(title, subtitle);
-        top.append(avatar, identity);
-        meta.append(top);
+            const meta = document.createElement('div');
+            meta.className = 'favorite-meta companion-friend-meta';
+            const top = document.createElement('div');
+            top.className = 'companion-friend-top';
 
-        const actions = document.createElement('div');
-        actions.className = 'favorite-actions';
-        const addBtn = document.createElement('button');
-        const previewParticipant = {
-            type: 'registered',
-            friendId,
-            name: getFriendDisplayName(friend),
-            email: friend.email || '',
-            avatarUrl: friend.avatarUrl || ''
-        };
-        const alreadySelected = currentCompanions.some((item) => (
-            getCompanionParticipantId(item) === getCompanionParticipantId(previewParticipant)
-        ));
-        addBtn.className = `pill-btn ${alreadySelected ? '' : 'primary'}`.trim();
-        addBtn.type = 'button';
-        addBtn.textContent = alreadySelected ? 'Aggiunto' : 'Aggiungi';
-        addBtn.disabled = alreadySelected;
-        addBtn.addEventListener('click', () => {
-            const added = addCompanionParticipant(previewParticipant);
-            if (!added) return;
-            renderCompanionsList();
-            renderCompanionFriendsPicker();
-            updateSplitSummary();
-        });
-        actions.append(addBtn);
+            const avatar = document.createElement('img');
+            avatar.className = 'companion-friend-avatar';
+            avatar.src = friend.avatarUrl || buildDefaultAccountAvatar(getFriendDisplayName(friend));
+            avatar.alt = `Avatar ${getFriendDisplayName(friend)}`;
 
-        li.append(meta, actions);
-        companionFriendsList.appendChild(li);
+            const identity = document.createElement('div');
+            identity.className = 'companion-friend-identity';
+            const title = document.createElement('strong');
+            title.textContent = getFriendDisplayName(friend);
+            const subtitle = document.createElement('span');
+            subtitle.textContent = friend.email || 'Account registrato';
+            identity.append(title, subtitle);
+            top.append(avatar, identity);
+            meta.append(top);
+
+            const actions = document.createElement('div');
+            actions.className = 'favorite-actions';
+            const addBtn = document.createElement('button');
+            const previewParticipant = {
+                type: 'registered',
+                friendId,
+                name: getFriendDisplayName(friend),
+                email: friend.email || '',
+                avatarUrl: friend.avatarUrl || ''
+            };
+            const alreadySelected = currentCompanions.some((item) => (
+                getCompanionParticipantId(item) === getCompanionParticipantId(previewParticipant)
+            ));
+            addBtn.dataset.friendId = friendId;
+            addBtn.className = `pill-btn ${alreadySelected ? '' : 'primary'}`.trim();
+            addBtn.type = 'button';
+            addBtn.textContent = alreadySelected ? 'Aggiunto' : 'Aggiungi';
+            addBtn.disabled = alreadySelected;
+            addBtn.addEventListener('click', () => {
+                const added = addCompanionParticipant(previewParticipant);
+                if (!added) return;
+                renderCompanionsList();
+                setCompanionFriendButtonSelected(friendId, true);
+                updateSplitSummary();
+            });
+            actions.append(addBtn);
+
+            li.append(meta, actions);
+            fragment.appendChild(li);
+        }
+
+        companionFriendsList.appendChild(fragment);
+        if (cursor < friendsSnapshot.length) {
+            window.requestAnimationFrame(renderChunk);
+        }
+    };
+
+    renderChunk();
+}
+
+function setCompanionFriendButtonSelected(friendId = '', isSelected = false) {
+    if (!companionFriendsList || !friendId) return;
+    const targetId = String(friendId || '').trim();
+    if (!targetId) return;
+    const buttons = companionFriendsList.querySelectorAll('button[data-friend-id]');
+    buttons.forEach((btn) => {
+        if (String(btn.dataset.friendId || '').trim() !== targetId) return;
+        btn.disabled = !!isSelected;
+        btn.textContent = isSelected ? 'Aggiunto' : 'Aggiungi';
+        btn.classList.toggle('primary', !isSelected);
     });
 }
 
-async function loadCompanionTrips() {
-    try {
-        if (authToken) {
-            const res = await apiRequest('/companions');
-            companionTrips = res.items || [];
-        } else {
-            const raw = localStorage.getItem(COMPANIONS_KEY);
-            companionTrips = raw ? JSON.parse(raw) : [];
+async function loadCompanionTrips({ force = false } = {}) {
+    const shouldUseCache = authToken
+        && !force
+        && companionTripsLoadedAt > 0
+        && ((Date.now() - companionTripsLoadedAt) < COMPANION_TRIPS_DATA_STALE_MS);
+    if (shouldUseCache) return companionTrips;
+    if (companionTripsLoadingPromise) {
+        await companionTripsLoadingPromise;
+        return companionTrips;
+    }
+
+    companionTripsLoadingPromise = (async () => {
+        try {
+            if (authToken) {
+                const res = await apiRequest('/companions');
+                companionTrips = res.items || [];
+                companionTripsLoadedAt = Date.now();
+            } else {
+                const raw = localStorage.getItem(COMPANIONS_KEY);
+                companionTrips = raw ? JSON.parse(raw) : [];
+                companionTripsLoadedAt = Date.now();
+            }
+        } catch (e) {
+            companionTrips = [];
+            companionTripsLoadedAt = Date.now();
         }
-    } catch (e) {
-        companionTrips = [];
+        return companionTrips;
+    })();
+
+    try {
+        await companionTripsLoadingPromise;
+        return companionTrips;
+    } finally {
+        companionTripsLoadingPromise = null;
     }
 }
 
 async function persistCompanionTrips() {
     if (authToken) return;
     localStorage.setItem(COMPANIONS_KEY, JSON.stringify(companionTrips));
+    companionTripsLoadedAt = Date.now();
 }
 
 function renderCompanionsList() {
@@ -9563,9 +9797,12 @@ function renderCompanionsList() {
         removeBtn.type = 'button';
         removeBtn.textContent = 'Rimuovi';
         removeBtn.addEventListener('click', () => {
+            const removed = normalizeCompanionParticipant(currentCompanions[index]);
             currentCompanions.splice(index, 1);
             renderCompanionsList();
-            renderCompanionFriendsPicker();
+            if (removed?.type === 'registered' && removed.friendId) {
+                setCompanionFriendButtonSelected(removed.friendId, false);
+            }
             updateSplitSummary();
         });
         actions.append(removeBtn);
@@ -9588,11 +9825,13 @@ function upsertCompanionTripInMemory(entry = {}) {
     const tripId = String(entry.tripId || '');
     if (!tripId) {
         companionTrips.unshift(entry);
+        companionTripsLoadedAt = Date.now();
         return;
     }
     const idx = companionTrips.findIndex((trip) => String(trip.tripId || '') === tripId);
     if (idx >= 0) companionTrips[idx] = entry;
     else companionTrips.unshift(entry);
+    companionTripsLoadedAt = Date.now();
 }
 
 function renderCompanionHistory() {
@@ -9600,6 +9839,7 @@ function renderCompanionHistory() {
     companionsHistoryList.innerHTML = '';
     if (!companionTrips.length) {
         companionsHistoryEmpty.style.display = 'block';
+        companionsHistoryEmpty.textContent = 'Nessuna tratta in compagnia salvata.';
         return;
     }
     companionsHistoryEmpty.style.display = 'none';
@@ -9648,6 +9888,7 @@ function renderCompanionHistory() {
                 }
             }
             companionTrips.splice(index, 1);
+            companionTripsLoadedAt = Date.now();
             await persistCompanionTrips();
             renderCompanionHistory();
         });
@@ -9663,10 +9904,7 @@ async function openCompanions({ friendsOpen = false, manualOpen = false } = {}) 
         setPendingCompanionsRouteUiState({ friendsOpen, manualOpen });
         if (navigateToRoute('companions')) return;
     }
-    await loadCompanionTrips();
-    if (authToken) {
-        await loadFriendsData().catch(() => {});
-    }
+    const requestId = ++companionsOpenRequestId;
     closeAccountSubPanels({ clearSearch: false });
     closePrimaryModalOverlays(companionsOverlay);
     setActiveMenu(companionsBtn);
@@ -9681,13 +9919,63 @@ async function openCompanions({ friendsOpen = false, manualOpen = false } = {}) 
     }
     if (companionNameInput) companionNameInput.value = '';
     setCompanionPickerPanelsState({ friendsOpen, manualOpen });
-    renderCompanionFriendsPicker();
     renderCompanionsList();
+    renderCompanionFriendsPicker();
     updateSplitSummary();
     renderCompanionHistory();
+
+    if (!companionTrips.length && companionsHistoryEmpty) {
+        companionsHistoryEmpty.style.display = 'block';
+        companionsHistoryEmpty.textContent = 'Caricamento tratte in corso...';
+    }
+    if (authToken && companionFriendsEmpty && !friends.length) {
+        companionFriendsEmpty.style.display = 'block';
+        companionFriendsEmpty.textContent = 'Caricamento amici in corso...';
+    }
+
+    withTimeout(
+        loadCompanionTrips(),
+        COMPANIONS_REMOTE_LOAD_TIMEOUT_MS,
+        'Timeout caricamento tratte'
+    )
+        .then(() => {
+            if (requestId !== companionsOpenRequestId) return;
+            if (!isOverlayOpen(companionsOverlay)) return;
+            renderCompanionHistory();
+        })
+        .catch(() => {
+            if (requestId !== companionsOpenRequestId) return;
+            if (!isOverlayOpen(companionsOverlay)) return;
+            if (companionsHistoryEmpty && !companionTrips.length) {
+                companionsHistoryEmpty.style.display = 'block';
+                companionsHistoryEmpty.textContent = 'Impossibile caricare le tratte ora. Riprova.';
+            }
+        });
+
+    if (authToken) {
+        withTimeout(
+            loadFriendsData(),
+            COMPANIONS_REMOTE_LOAD_TIMEOUT_MS,
+            'Timeout caricamento amici'
+        )
+            .then(() => {
+                if (requestId !== companionsOpenRequestId) return;
+                if (!isOverlayOpen(companionsOverlay)) return;
+                renderCompanionFriendsPicker();
+            })
+            .catch(() => {
+                if (requestId !== companionsOpenRequestId) return;
+                if (!isOverlayOpen(companionsOverlay)) return;
+                if (companionFriendsEmpty && !friends.length) {
+                    companionFriendsEmpty.style.display = 'block';
+                    companionFriendsEmpty.textContent = 'Impossibile caricare amici ora. Riprova.';
+                }
+            });
+    }
 }
 
 function closeCompanions() {
+    companionsOpenRequestId += 1;
     if (closeDedicatedRouteToHome('companions')) return;
     hideModalOverlay(companionsOverlay);
     setActiveMenu(homeBtn);
@@ -9706,7 +9994,6 @@ function addCompanion() {
     if (!added) return;
     if (companionNameInput) companionNameInput.value = '';
     renderCompanionsList();
-    renderCompanionFriendsPicker();
     updateSplitSummary();
 }
 
@@ -11706,11 +11993,12 @@ friendSearchInput?.addEventListener('input', (e) => {
     const value = (e.target.value || '').trim();
     if (!authToken || value.length < 2) {
         clearFriendSearchResults();
+        setFriendsStatus('');
         return;
     }
     friendSearchTimer = setTimeout(() => {
         fetchFriendSearchSuggestions(value);
-    }, 220);
+    }, FRIEND_SEARCH_DEBOUNCE_MS);
 });
 friendSearchInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -11830,7 +12118,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-const SW_BUILD_VERSION = '2026-02-21-01';
+const SW_BUILD_VERSION = '2026-02-21-02';
 let hasReloadedForServiceWorker = false;
 
 function forceActivateWaitingWorker(registration) {
