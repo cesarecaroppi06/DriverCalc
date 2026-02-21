@@ -3920,8 +3920,13 @@ const closeSettingsMenuBtn = document.getElementById('closeSettingsMenu');
 const settingsMenuButtons = Array.from(document.querySelectorAll('#settingsMenu ul button'));
 const MOBILE_BOTTOM_NAV_ID = 'mobileBottomNav';
 const MOBILE_VIEWPORT_QUERY = '(max-width: 768px)';
+const FUEL_FINDER_LIST_COLLAPSED_CLASS = 'fuel-finder-list-collapsed';
 let mobileBottomNav = null;
 let mobileBottomNavButtons = [];
+let mobileKeyboardOpen = false;
+let mobileLiteEffectsEnabled = false;
+let fuelFinderListToggleBtn = null;
+let fuelFinderListCollapsed = false;
 const favoritesBtn = document.getElementById('favoritesBtn');
 const favoritesOverlay = document.getElementById('favoritesOverlay');
 const favoritesList = document.getElementById('favoritesList');
@@ -3958,6 +3963,8 @@ const fuelFinderMapMount = document.getElementById('fuelFinderMapMount');
 const fuelFinderSummary = document.getElementById('fuelFinderSummary');
 const fuelStationsList = document.getElementById('fuelStationsList');
 const fuelStationsEmpty = document.getElementById('fuelStationsEmpty');
+const fuelFinderModalCard = fuelFinderOverlay?.querySelector('.fuel-finder-card') || null;
+const fuelFinderActionsRow = fuelFinderOverlay?.querySelector('.fuel-finder-actions') || null;
 const mapSectionHomeMount = document.getElementById('mapSectionHomeMount');
 const aiChatBtn = document.getElementById('aiChatBtn');
 const aiChatOverlay = document.getElementById('aiChatOverlay');
@@ -4189,7 +4196,7 @@ function syncMobileUiState() {
     const menuOpen = document.body.classList.contains('mobile-menu-open');
     const isDedicatedPage = document.body.classList.contains('dedicated-page');
     const shouldHideTopActions = isMobileViewport()
-        && (infoVisible || menuOpen || (overlayVisible && !isDedicatedPage));
+        && (infoVisible || menuOpen || mobileKeyboardOpen || (overlayVisible && !isDedicatedPage));
 
     document.body.classList.toggle('info-view-open', infoVisible);
     document.body.classList.toggle('mobile-actions-hidden', shouldHideTopActions);
@@ -8998,13 +9005,56 @@ async function centerFuelFinderOnUserPosition() {
     }
 }
 
+function updateFuelFinderListToggleButton() {
+    if (!fuelFinderListToggleBtn) return;
+    const expanded = !fuelFinderListCollapsed;
+    fuelFinderListToggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    fuelFinderListToggleBtn.textContent = expanded ? 'Nascondi elenco' : 'Mostra elenco';
+}
+
+function setFuelFinderListCollapsed(nextCollapsed = false, { silent = false } = {}) {
+    const shouldCollapse = isMobileViewport() ? !!nextCollapsed : false;
+    fuelFinderListCollapsed = shouldCollapse;
+    if (fuelFinderOverlay) {
+        fuelFinderOverlay.classList.toggle(FUEL_FINDER_LIST_COLLAPSED_CLASS, shouldCollapse);
+    }
+    updateFuelFinderListToggleButton();
+    if (!silent && fuelFinderModalCard) {
+        fuelFinderModalCard.scrollTop = 0;
+    }
+}
+
+function ensureFuelFinderListToggle() {
+    if (!fuelFinderActionsRow || !fuelFinderOverlay) return;
+    if (!fuelFinderListToggleBtn) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = 'fuelFinderListToggleBtn';
+        btn.className = 'pill-btn fuel-finder-list-toggle';
+        btn.addEventListener('click', () => {
+            setFuelFinderListCollapsed(!fuelFinderListCollapsed);
+        });
+        fuelFinderActionsRow.prepend(btn);
+        fuelFinderListToggleBtn = btn;
+    }
+
+    const mobileMode = isMobileViewport();
+    fuelFinderListToggleBtn.style.display = mobileMode ? 'inline-flex' : 'none';
+    if (!mobileMode) {
+        setFuelFinderListCollapsed(false, { silent: true });
+        return;
+    }
+    updateFuelFinderListToggleButton();
+}
+
 function openFuelFinder() {
     if (maybeNavigateToRoute('fuelFinder')) return;
     if (!fuelFinderOverlay) return;
     closeAccountSubPanels({ clearSearch: false });
     closePrimaryModalOverlays(fuelFinderOverlay);
-    const fuelFinderCard = fuelFinderOverlay.querySelector('.fuel-finder-card');
-    if (fuelFinderCard) fuelFinderCard.scrollTop = 0;
+    if (fuelFinderModalCard) fuelFinderModalCard.scrollTop = 0;
+    ensureFuelFinderListToggle();
+    setFuelFinderListCollapsed(isMobileViewport(), { silent: true });
     moveMapSectionToFuelFinder();
     const mapSection = getMapSectionNode();
     if (mapSection) {
@@ -9068,6 +9118,7 @@ function openFuelFinder() {
 function closeFuelFinder() {
     fuelFinderRequestId += 1;
     setFuelFinderBodyState(false);
+    setFuelFinderListCollapsed(false, { silent: true });
     if (closeDedicatedRouteToHome('fuelFinder')) return;
     hideModalOverlay(fuelFinderOverlay);
     setActiveMenu(homeBtn);
@@ -10926,6 +10977,86 @@ function isMobileViewport() {
     return window.matchMedia(MOBILE_VIEWPORT_QUERY).matches;
 }
 
+function isTextEntryElement(node = null) {
+    if (!node || !(node instanceof HTMLElement)) return false;
+    if (node.isContentEditable) return true;
+    const tag = String(node.tagName || '').toLowerCase();
+    if (tag === 'textarea') return true;
+    if (tag !== 'input') return false;
+    const type = String(node.getAttribute('type') || 'text').trim().toLowerCase();
+    return !['button', 'checkbox', 'radio', 'range', 'submit', 'reset', 'color', 'file'].includes(type);
+}
+
+function detectMobileKeyboardFromViewport() {
+    if (!isMobileViewport()) return false;
+    if (!window.visualViewport) return false;
+    const viewportHeight = Number(window.visualViewport.height || 0);
+    const layoutHeight = Number(window.innerHeight || document.documentElement?.clientHeight || 0);
+    if (!viewportHeight || !layoutHeight) return false;
+    return (layoutHeight - viewportHeight) > 120;
+}
+
+function setMobileKeyboardOpen(nextOpen = false) {
+    mobileKeyboardOpen = !!nextOpen && isMobileViewport();
+    if (document.body) {
+        document.body.classList.toggle('mobile-keyboard-open', mobileKeyboardOpen);
+    }
+}
+
+function syncMobileKeyboardState() {
+    if (!isMobileViewport()) {
+        setMobileKeyboardOpen(false);
+        return;
+    }
+    const focusedEditable = isTextEntryElement(document.activeElement);
+    const viewportKeyboardOpen = detectMobileKeyboardFromViewport();
+    setMobileKeyboardOpen(focusedEditable || viewportKeyboardOpen);
+}
+
+function wireMobileKeyboardDetection() {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('focusin', (event) => {
+        if (!isMobileViewport()) return;
+        if (!isTextEntryElement(event.target)) return;
+        setMobileKeyboardOpen(true);
+        syncMobileUiState();
+    });
+    document.addEventListener('focusout', (event) => {
+        if (!isMobileViewport()) return;
+        if (!isTextEntryElement(event.target)) return;
+        window.setTimeout(() => {
+            syncMobileKeyboardState();
+            syncMobileUiState();
+        }, 90);
+    });
+    if (window.visualViewport) {
+        const onViewportChange = debounce(() => {
+            syncMobileKeyboardState();
+            syncMobileUiState();
+        }, 70);
+        window.visualViewport.addEventListener('resize', onViewportChange);
+        window.visualViewport.addEventListener('scroll', onViewportChange);
+    }
+}
+
+function shouldUseMobileLiteEffects() {
+    if (!isMobileViewport()) return false;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return true;
+    const deviceMemory = Number(window.navigator?.deviceMemory || 0);
+    const cpuCores = Number(window.navigator?.hardwareConcurrency || 0);
+    if (Number.isFinite(deviceMemory) && deviceMemory > 0 && deviceMemory <= 4) return true;
+    if (Number.isFinite(cpuCores) && cpuCores > 0 && cpuCores <= 6) return true;
+    return false;
+}
+
+function syncMobilePerformanceMode() {
+    mobileLiteEffectsEnabled = shouldUseMobileLiteEffects();
+    if (document.body) {
+        document.body.classList.toggle('mobile-lite-effects', mobileLiteEffectsEnabled);
+    }
+}
+
 function setMobileBottomNavActive(navKey = 'home') {
     if (!mobileBottomNavButtons.length) return;
     const safeKey = mobileBottomNavButtons.some((btn) => btn.dataset.navKey === navKey) ? navKey : 'home';
@@ -11745,7 +11876,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateInstallButtonState();
         closeSettingsMenu();
         syncSettingsMenuCloseVisibility();
+        wireMobileKeyboardDetection();
+        syncMobilePerformanceMode();
         ensureMobileBottomNav();
+        ensureFuelFinderListToggle();
+        syncMobileKeyboardState();
         syncMobileUiState();
         loadAiChatHistory(true);
         loadBudgetAiState(true);
@@ -11756,6 +11891,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!isMobileViewport()) {
                 closeSettingsMenu();
             }
+            syncMobilePerformanceMode();
+            ensureFuelFinderListToggle();
+            syncMobileKeyboardState();
             syncMobileUiState();
         }, 120);
         window.addEventListener('resize', handleViewportResize);

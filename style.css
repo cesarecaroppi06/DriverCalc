@@ -1,12 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Public+Sans:wght@500;600;700;800&display=swap');
 
 :root {
-    --header-hero-image: url('header-hero.jpg');
+    --header-hero-image: image-set(
+        url('header-hero-sm.jpg') 1x,
+        url('header-hero.jpg') 2x
+    );
 }
 
 @media (max-width: 900px) {
     :root {
-        --header-hero-image: url('header-hero-mobile.jpg');
+        --header-hero-image: image-set(
+            url('header-hero-mobile-sm.jpg') 1x,
+            url('header-hero-mobile.jpg') 2x
+        );
     }
 }
 
@@ -6064,5 +6070,94 @@ body.dedicated-page:not(.route-info) #fuelFinderOverlay.fuel-finder-overlay-full
     .mobile-bottom-nav-btn {
         min-height: 44px;
         font-size: 12px;
+    }
+}
+
+/* ===== Fuel Finder mobile map/list toggle ===== */
+.fuel-finder-list-toggle {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    #fuelFinderOverlay .fuel-finder-list-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        min-width: 130px;
+    }
+
+    #fuelFinderOverlay.fuel-finder-list-collapsed .fuel-finder-list-column {
+        display: none !important;
+    }
+
+    #fuelFinderOverlay.fuel-finder-list-collapsed .fuel-finder-map-column {
+        grid-column: 1 / -1;
+    }
+
+    #fuelFinderOverlay.fuel-finder-list-collapsed .fuel-finder-map-mount .map-canvas {
+        height: min(56vh, 420px);
+    }
+}
+
+@media (max-width: 560px) {
+    #fuelFinderOverlay.fuel-finder-list-collapsed .fuel-finder-map-mount .map-canvas {
+        height: min(52vh, 360px);
+    }
+}
+
+/* ===== Mobile keyboard and lite performance mode ===== */
+@media (max-width: 768px) {
+    body.mobile-keyboard-open {
+        padding-bottom: 12px !important;
+    }
+
+    body.mobile-keyboard-open .mobile-bottom-nav {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translateY(16px);
+    }
+
+    body.mobile-lite-effects::before {
+        opacity: 0.08;
+        background-size: 52px 52px;
+    }
+
+    body.mobile-lite-effects header,
+    body.mobile-lite-effects main,
+    body.mobile-lite-effects .info-page,
+    body.mobile-lite-effects .settings-menu,
+    body.mobile-lite-effects .modal-card,
+    body.mobile-lite-effects .mobile-top-actions,
+    body.mobile-lite-effects .mobile-bottom-nav {
+        backdrop-filter: blur(6px) saturate(108%) !important;
+    }
+
+    body.mobile-lite-effects header,
+    body.mobile-lite-effects .settings-menu,
+    body.mobile-lite-effects main,
+    body.mobile-lite-effects .info-page,
+    body.mobile-lite-effects .modal-card {
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34) !important;
+    }
+
+    body.mobile-lite-effects .result-card,
+    body.mobile-lite-effects .info-card,
+    body.mobile-lite-effects .budget-card-item,
+    body.mobile-lite-effects .favorite-item,
+    body.mobile-lite-effects .mycar-stat {
+        animation: none !important;
+        box-shadow: 0 6px 12px rgba(2, 8, 22, 0.22);
+    }
+
+    body.mobile-lite-effects .result-card:hover,
+    body.mobile-lite-effects .info-card:hover,
+    body.mobile-lite-effects .pill-btn:hover,
+    body.mobile-lite-effects .favorite-btn:hover,
+    body.mobile-lite-effects .calculate-btn:hover,
+    body.mobile-lite-effects .reset-btn:hover {
+        transform: none !important;
+        box-shadow: 0 8px 16px rgba(2, 8, 22, 0.24) !important;
     }
 }
