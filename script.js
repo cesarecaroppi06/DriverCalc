@@ -3581,6 +3581,76 @@ function fetchCitySuggestions(query) {
         }));
 }
 
+const ADDRESS_QUERY_HINTS = new Set([
+    'via', 'viale', 'piazza', 'piazzale', 'corso', 'largo', 'lungomare',
+    'strada', 'vicolo', 'vico', 'borgo', 'localita', 'localita\'',
+    'stazione', 'aeroporto', 'porto', 'uscita', 'casello',
+    'autostrada', 'superstrada', 'tangenziale', 'ss', 'sp', 'sr'
+]);
+
+function isLikelyAddressQuery(query = '') {
+    const raw = String(query || '').trim().toLowerCase();
+    if (!raw) return false;
+    if (raw.includes(',')) return true;
+    if (/\d/.test(raw)) return true;
+
+    const tokens = normalizeSearchText(raw).split(' ').filter(Boolean);
+    if (!tokens.length) return false;
+    if (tokens.some(token => ADDRESS_QUERY_HINTS.has(token))) return true;
+    return tokens.length >= 3;
+}
+
+function getSuggestionSearchLabel(item = {}) {
+    if (!item) return '';
+    if (item.kind === 'city') return item.city || item.label || '';
+    return item.label || '';
+}
+
+function scoreLocationSuggestion(item, query = '') {
+    const label = getSuggestionSearchLabel(item);
+    let score = scoreTextAgainstQuery(label, query);
+    if (phraseInText(label, query)) score += 25;
+
+    const queryIsAddress = isLikelyAddressQuery(query);
+    if (item.kind === 'city') {
+        const normalizedQuery = normalizeCityName(query);
+        const normalizedCity = normalizeCityName(item.city || item.label || '');
+        if (normalizedQuery && normalizedCity && normalizedCity === normalizedQuery) {
+            score += 120;
+        }
+        score += queryIsAddress ? -45 : 20;
+    }
+
+    if (item.kind === 'place') {
+        score += queryIsAddress ? 30 : 10;
+    }
+
+    if (item.kind === 'address') {
+        score += queryIsAddress ? 35 : 5;
+        if (/\b\d+[a-z]?\b/i.test(label)) score += 8;
+    }
+
+    const normalizedLabel = normalizeSearchText(label);
+    const normalizedQuery = normalizeSearchText(query);
+    if (normalizedQuery && normalizedLabel.startsWith(normalizedQuery)) score += 15;
+
+    return score;
+}
+
+function rankLocationSuggestions(items, query = '') {
+    return items
+        .map((item, index) => ({
+            item,
+            index,
+            score: scoreLocationSuggestion(item, query)
+        }))
+        .sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return a.index - b.index;
+        })
+        .map(entry => entry.item);
+}
+
 function formatGoogleAutocompleteLabel(prediction = {}) {
     const structured = prediction.structured_formatting || {};
     const mainText = String(structured.main_text || '').trim();
@@ -3639,14 +3709,15 @@ async function fetchUnifiedLocationSuggestions(query, signal) {
 
     const all = [...cityItems, ...googlePlaceItems, ...mappedAddresses];
     const seen = new Set();
-    return all.filter(item => {
+    const unique = all.filter(item => {
         const key = item.kind === 'place'
             ? `${item.kind}|${String(item.placeId || '').toLowerCase()}`
             : `${item.kind}|${(item.city || item.label || '').toLowerCase()}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
-    }).slice(0, 10);
+    });
+    return rankLocationSuggestions(unique, query).slice(0, 10);
 }
 
 function debounce(fn, delay = 250) {
@@ -3657,6 +3728,68 @@ function debounce(fn, delay = 250) {
     };
 }
 
+function applyLocationSuggestionSelection(input, citySelect, item) {
+    if (!input || !item) return false;
+    input.dataset.kind = item.kind || '';
+
+    if (item.kind === 'city') {
+        const cityValue = String(item.city || item.label || '').trim();
+        if (!cityValue) return false;
+        input.value = cityValue;
+        input.dataset.city = cityValue;
+        input.dataset.placeId = '';
+        input.dataset.lat = '';
+        input.dataset.lng = '';
+        if (citySelect) citySelect.value = cityValue;
+        return true;
+    }
+
+    if (item.kind === 'place') {
+        const placeLabel = String(item.label || '').trim();
+        if (!placeLabel) return false;
+        input.value = placeLabel;
+        input.dataset.city = '';
+        input.dataset.placeId = String(item.placeId || '').trim();
+        input.dataset.lat = '';
+        input.dataset.lng = '';
+        if (citySelect) citySelect.value = '';
+        return true;
+    }
+
+    const addressLabel = String(item.label || '').trim();
+    if (!addressLabel) return false;
+    input.value = addressLabel;
+    input.dataset.city = '';
+    input.dataset.placeId = '';
+    input.dataset.lat = Number.isFinite(Number(item.lat)) ? String(item.lat) : '';
+    input.dataset.lng = Number.isFinite(Number(item.lng)) ? String(item.lng) : '';
+    if (citySelect) citySelect.value = '';
+    return true;
+}
+
+function findExactCitySuggestion(query = '') {
+    const normalizedQuery = normalizeCityName(query);
+    if (!normalizedQuery) return null;
+    const exactCity = cities.find((cityItem) => normalizeCityName(cityItem.name) === normalizedQuery);
+    if (!exactCity) return null;
+    return {
+        kind: 'city',
+        city: exactCity.name,
+        label: exactCity.name
+    };
+}
+
+function findExactLocationSuggestion(items = [], query = '') {
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedQuery) return null;
+    return items.find((item) => {
+        const label = item.kind === 'city'
+            ? (item.city || item.label || '')
+            : (item.label || '');
+        return normalizeSearchText(label) === normalizedQuery;
+    }) || null;
+}
+
 function setupAddressAutocomplete(input, resultsEl, citySelect) {
     if (!input || !resultsEl) return;
     let controller = null;
@@ -3665,30 +3798,20 @@ function setupAddressAutocomplete(input, resultsEl, citySelect) {
         controller = new AbortController();
         const items = await fetchUnifiedLocationSuggestions(value, controller.signal).catch(() => []);
         if (input.value.trim() !== value) return;
+        const exactCity = findExactCitySuggestion(value);
+        if (exactCity) {
+            applyLocationSuggestionSelection(input, citySelect, exactCity);
+            clearResultsContainer(resultsEl);
+            return;
+        }
+        const exactSuggestion = findExactLocationSuggestion(items, value);
+        if (exactSuggestion) {
+            applyLocationSuggestionSelection(input, citySelect, exactSuggestion);
+            clearResultsContainer(resultsEl);
+            return;
+        }
         renderResults(resultsEl, items, value, (item) => {
-            input.dataset.kind = item.kind || '';
-            if (item.kind === 'city') {
-                input.value = item.city || item.label || '';
-                input.dataset.city = item.city || '';
-                input.dataset.placeId = '';
-                input.dataset.lat = '';
-                input.dataset.lng = '';
-                if (citySelect) citySelect.value = item.city || '';
-            } else if (item.kind === 'place') {
-                input.value = item.label || '';
-                input.dataset.city = '';
-                input.dataset.placeId = item.placeId || '';
-                input.dataset.lat = '';
-                input.dataset.lng = '';
-                if (citySelect) citySelect.value = '';
-            } else {
-                input.value = item.label;
-                input.dataset.city = '';
-                input.dataset.placeId = '';
-                input.dataset.lat = String(item.lat);
-                input.dataset.lng = String(item.lng);
-                if (citySelect) citySelect.value = '';
-            }
+            applyLocationSuggestionSelection(input, citySelect, item);
             clearResultsContainer(resultsEl);
         });
     };
@@ -3706,6 +3829,12 @@ function setupAddressAutocomplete(input, resultsEl, citySelect) {
             clearResultsContainer(resultsEl);
             return;
         }
+        const exactCity = findExactCitySuggestion(value);
+        if (exactCity) {
+            applyLocationSuggestionSelection(input, citySelect, exactCity);
+            clearResultsContainer(resultsEl);
+            return;
+        }
         debouncedSearch(value);
     });
     input.addEventListener('blur', () => {
@@ -3713,27 +3842,129 @@ function setupAddressAutocomplete(input, resultsEl, citySelect) {
     });
 }
 
+function scoreBrandAgainstQuery(optionText = '', optionValue = '', query = '') {
+    const label = formatBrandInputLabel(optionText || optionValue || '');
+    let score = Math.max(
+        scoreTextAgainstQuery(label, query),
+        scoreTextAgainstQuery(optionValue, query)
+    );
+    if (!score) return 0;
+    if (phraseInText(label, query)) score += 25;
+
+    const normalizedLabel = normalizeSearchText(label);
+    const normalizedQuery = normalizeSearchText(query);
+    if (normalizedLabel && normalizedQuery) {
+        if (normalizedLabel === normalizedQuery) score += 120;
+        else if (normalizedLabel.startsWith(normalizedQuery)) score += 35;
+    }
+    return score;
+}
+
+function collectBrandMatches(query = '') {
+    const q = query.trim();
+    if (!q) return [];
+    if (!brandOptionsSnapshot.length) snapshotBrandOptions();
+
+    return brandOptionsSnapshot
+        .map((data, idx) => ({
+            value: data.value,
+            label: formatBrandInputLabel(data.text || data.value || ''),
+            disabled: !!data.disabled,
+            idx,
+            score: scoreBrandAgainstQuery(data.text || '', data.value || '', q)
+        }))
+        .filter((item) => item.idx !== 0 && !item.disabled && item.value && item.score > 0)
+        .sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return a.idx - b.idx;
+        });
+}
+
+function getBrandOptionByKey(brandKey = '') {
+    const key = String(brandKey || '').trim().toLowerCase();
+    if (!key) return null;
+    if (!brandOptionsSnapshot.length) snapshotBrandOptions();
+    const targetValue = `brand-${key}`;
+    const found = brandOptionsSnapshot.find((data, idx) => (
+        idx !== 0 &&
+        !data.disabled &&
+        String(data.value || '').trim().toLowerCase() === targetValue
+    ));
+    if (!found) return null;
+    return {
+        value: found.value,
+        label: formatBrandInputLabel(found.text || found.value || ''),
+        score: Number.MAX_SAFE_INTEGER
+    };
+}
+
+async function syncBrandSelectionState({ preserveModelQuery = false, preservedModelQuery = '' } = {}) {
+    const modelQuery = preserveModelQuery
+        ? (String(preservedModelQuery || '').trim() || String(carTypeSearchInput?.value || '').trim())
+        : '';
+    syncBrandInputFromSelect();
+    await filterModelsByBrand();
+    if (preserveModelQuery && carTypeSearchInput) {
+        carTypeSearchInput.value = modelQuery;
+    } else {
+        syncModelInputFromSelect();
+    }
+    await updateModelResults(carTypeSearchInput?.value || '');
+    updateMyCarPreview();
+}
+
+async function applyBrandMatch(item, {
+    resetModel = true,
+    preserveModelQuery = false,
+    clearBrandResults = true
+} = {}) {
+    const brandValue = String(item?.value || '').trim();
+    if (!brandValue || !carBrandSelect) return false;
+
+    const modelQuery = preserveModelQuery ? String(carTypeSearchInput?.value || '').trim() : '';
+    carBrandSelect.value = brandValue;
+    if (!carBrandSelect.value) return false;
+
+    if (resetModel && carTypeSelect) carTypeSelect.value = '';
+    if (resetModel && carTypeSearchInput && !preserveModelQuery) carTypeSearchInput.value = '';
+    if (resetModel) clearResultsContainer(carTypeResults);
+    if (clearBrandResults) clearResultsContainer(carBrandResults);
+
+    await syncBrandSelectionState({
+        preserveModelQuery,
+        preservedModelQuery: modelQuery
+    });
+    return true;
+}
+
+async function resolveBrandSelectionFromInput({ preserveModelQuery = false } = {}) {
+    if (carBrandSelect?.value) return true;
+    const query = String(carBrandSearchInput?.value || '').trim();
+    if (!query) return false;
+    const best = collectBrandMatches(query)[0];
+    if (!best) return false;
+    return applyBrandMatch(best, {
+        resetModel: !preserveModelQuery,
+        preserveModelQuery,
+        clearBrandResults: true
+    });
+}
+
 function updateBrandResults(query = '') {
     if (!carBrandResults) return;
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) {
         clearResultsContainer(carBrandResults);
         return;
     }
 
-    if (!brandOptionsSnapshot.length) snapshotBrandOptions();
-    const matches = brandOptionsSnapshot
-        .filter((data, idx) => idx !== 0 && !data.disabled && (data.text.toLowerCase().includes(q) || data.value.toLowerCase().includes(q)))
-        .map(data => ({ value: data.value, label: data.text }));
-
+    const matches = collectBrandMatches(q).slice(0, 30);
     renderResults(carBrandResults, matches, query, (item) => {
-        carBrandSelect.value = item.value;
-        syncBrandInputFromSelect();
-        if (carTypeSearchInput) carTypeSearchInput.value = '';
-        if (carTypeSelect) carTypeSelect.value = '';
-        clearResultsContainer(carBrandResults);
-        clearResultsContainer(carTypeResults);
-        carBrandSelect.dispatchEvent(new Event('change'));
+        applyBrandMatch(item, {
+            resetModel: true,
+            preserveModelQuery: false,
+            clearBrandResults: true
+        }).catch(() => {});
     });
 }
 
@@ -3785,6 +4016,87 @@ function collectModelMatches(query = '', brandKey = '') {
     return results.sort((a, b) => (scoresByValue.get(b.value) || 0) - (scoresByValue.get(a.value) || 0));
 }
 
+async function collectUnifiedModelMatches(query = '', { includeCustomFallback = true } = {}) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return [];
+    if (!carOptionsSnapshot.length) snapshotCarOptionsStructure();
+
+    const selectedBrandKey = (carBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
+    const inferredBrandKey = selectedBrandKey ? '' : inferBrandKeyFromModelQuery(query);
+    const brandKey = selectedBrandKey || inferredBrandKey;
+    const selectedBrandLabel = formatBrandInputLabel(getSelectedOptionText(carBrandSelect));
+    const brandLabel = selectedBrandLabel || getBrandLabelFromKey(brandKey);
+
+    if (brandKey) await ensureBrandModelsLoaded(brandKey);
+    const localMatches = collectModelMatches(query, brandKey);
+    const officialMatches = await collectOfficialModelMatches(query, brandKey, brandLabel).catch(() => []);
+
+    const merged = [];
+    const seenLabels = new Set();
+    [...localMatches, ...officialMatches].forEach((item) => {
+        if (!item || !item.label) return;
+        const key = item.label.toLowerCase();
+        if (seenLabels.has(key)) return;
+        seenLabels.add(key);
+        merged.push(item);
+    });
+
+    let matches = merged.slice(0, 30);
+    if (!matches.length && includeCustomFallback) {
+        const customSuggestion = buildSuggestedModelPayload(query, query, {
+            official: false,
+            brandKeyOverride: brandKey,
+            brandLabelOverride: brandLabel
+        });
+        if (customSuggestion) matches = [customSuggestion];
+    }
+    return matches;
+}
+
+function applyModelMatch(item, { clearModelResults = true, triggerChange = true } = {}) {
+    if (!item || !carTypeSelect) return false;
+    if (item.customModel) {
+        appendModelsToSelect([item.customModel]);
+    }
+    carTypeSelect.value = item.value;
+    if (!carTypeSelect.value) return false;
+    syncModelInputFromSelect();
+    if (clearModelResults) clearResultsContainer(carTypeResults);
+    if (triggerChange) carTypeSelect.dispatchEvent(new Event('change'));
+    return true;
+}
+
+async function resolveModelSelectionFromInput() {
+    if (carTypeSelect?.value) return true;
+    const query = String(carTypeSearchInput?.value || '').trim();
+    if (!query) return false;
+
+    if (!carBrandSelect?.value) {
+        const inferredBrandKey = inferBrandKeyFromModelQuery(query);
+        const inferredBrand = getBrandOptionByKey(inferredBrandKey);
+        if (inferredBrand) {
+            await applyBrandMatch(inferredBrand, {
+                resetModel: false,
+                preserveModelQuery: true,
+                clearBrandResults: true
+            });
+        }
+    }
+
+    const matches = await collectUnifiedModelMatches(query, { includeCustomFallback: false });
+    const best = matches[0];
+    if (!best) return false;
+    return applyModelMatch(best, {
+        clearModelResults: true,
+        triggerChange: true
+    });
+}
+
+async function ensureVehicleFiltersResolvedFromText() {
+    await resolveBrandSelectionFromInput({ preserveModelQuery: true }).catch(() => false);
+    await resolveModelSelectionFromInput().catch(() => false);
+}
+
 async function updateModelResults(query = '') {
     const requestId = ++modelSearchRequestId;
     if (!carTypeResults) return;
@@ -3793,69 +4105,15 @@ async function updateModelResults(query = '') {
         clearResultsContainer(carTypeResults);
         return;
     }
-    if (!carOptionsSnapshot.length) snapshotCarOptionsStructure();
+    const matches = await collectUnifiedModelMatches(query, { includeCustomFallback: true });
+    if (requestId !== modelSearchRequestId) return;
 
-    const selectedBrandKey = (carBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
-    const inferredBrandKey = selectedBrandKey ? '' : inferBrandKeyFromModelQuery(query);
-    const brandKey = selectedBrandKey || inferredBrandKey;
-    const selectedBrandLabel = formatBrandInputLabel(getSelectedOptionText(carBrandSelect));
-    const brandLabel = selectedBrandLabel || getBrandLabelFromKey(brandKey);
-    try {
-        if (brandKey) await ensureBrandModelsLoaded(brandKey);
-        const localMatches = collectModelMatches(query, brandKey);
-        const officialMatches = await collectOfficialModelMatches(query, brandKey, brandLabel);
-        if (requestId !== modelSearchRequestId) return;
-
-        const merged = [];
-        const seenLabels = new Set();
-        [...localMatches, ...officialMatches].forEach((item) => {
-            if (!item || !item.label) return;
-            const key = item.label.toLowerCase();
-            if (seenLabels.has(key)) return;
-            seenLabels.add(key);
-            merged.push(item);
+    renderResults(carTypeResults, matches, query, (item) => {
+        applyModelMatch(item, {
+            clearModelResults: true,
+            triggerChange: true
         });
-
-        let matches = merged.slice(0, 30);
-        if (!matches.length) {
-            const customSuggestion = buildSuggestedModelPayload(query, query, {
-                official: false,
-                brandKeyOverride: brandKey,
-                brandLabelOverride: brandLabel
-            });
-            if (customSuggestion) matches = [customSuggestion];
-        }
-
-        renderResults(carTypeResults, matches, query, (item) => {
-            if (item.customModel) {
-                appendModelsToSelect([item.customModel]);
-            }
-            carTypeSelect.value = item.value;
-            syncModelInputFromSelect();
-            clearResultsContainer(carTypeResults);
-            carTypeSelect.dispatchEvent(new Event('change'));
-        });
-    } catch (err) {
-        if (requestId !== modelSearchRequestId) return;
-        let fallbackMatches = collectModelMatches(query, brandKey).slice(0, 30);
-        if (!fallbackMatches.length) {
-            const customSuggestion = buildSuggestedModelPayload(query, query, {
-                official: false,
-                brandKeyOverride: brandKey,
-                brandLabelOverride: brandLabel
-            });
-            if (customSuggestion) fallbackMatches = [customSuggestion];
-        }
-        renderResults(carTypeResults, fallbackMatches, query, (item) => {
-            if (item.customModel) {
-                appendModelsToSelect([item.customModel]);
-            }
-            carTypeSelect.value = item.value;
-            syncModelInputFromSelect();
-            clearResultsContainer(carTypeResults);
-            carTypeSelect.dispatchEvent(new Event('change'));
-        });
-    }
+    });
 }
 
 function getSelectedOptionText(selectEl) {
@@ -5779,6 +6037,8 @@ async function calculateTrip() {
     if (mapStatus) mapStatus.textContent = 'Calcolo percorso in corso...';
 
     try {
+        await ensureVehicleFiltersResolvedFromText();
+
         // Validazione
         if ((!departureSelect.value && !(departureAddressInput?.value || '').trim()) ||
             (!arrivalSelect.value && !(arrivalAddressInput?.value || '').trim()) ||
@@ -11740,12 +12000,17 @@ function resetCalculator() {
     updateMyCarPreview();
 }
 
-function handleBrandChange() {
-    syncBrandInputFromSelect();
-    filterModelsByBrand().then(() => {
-        syncModelInputFromSelect();
-        updateModelResults(carTypeSearchInput?.value || '');
-        updateMyCarPreview();
+function handleBrandChange(options = null) {
+    const preserveModelQuery = !!(options && typeof options === 'object' && options.preserveModelQuery === true);
+    syncBrandSelectionState({ preserveModelQuery }).catch(() => {});
+}
+
+function triggerTripCalculationFromInput() {
+    if (isAnyBlockingOverlayOpen()) return;
+    if (infoPage && infoPage.style.display === 'block') return;
+    calculateTrip().catch(err => {
+        console.error(err);
+        showError('Si è verificato un errore durante il calcolo. Riprova.');
     });
 }
 
@@ -11780,6 +12045,22 @@ carBrandSearchInput?.addEventListener('input', (e) => {
     clearResultsContainer(carTypeResults);
     updateBrandResults(query);
 });
+carBrandSearchInput?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    resolveBrandSelectionFromInput({ preserveModelQuery: true }).then((matched) => {
+        if (matched && carTypeSearchInput) {
+            carTypeSearchInput.focus();
+            carTypeSearchInput.select();
+        }
+    }).catch(() => {});
+});
+carBrandSearchInput?.addEventListener('blur', () => {
+    setTimeout(() => {
+        resolveBrandSelectionFromInput({ preserveModelQuery: true }).catch(() => {});
+        clearResultsContainer(carBrandResults);
+    }, 130);
+});
 carTypeSearchInput?.addEventListener('input', (e) => {
     const query = (e.target.value || '').trim();
     carTypeSelect.value = '';
@@ -11788,6 +12069,27 @@ carTypeSearchInput?.addEventListener('input', (e) => {
         return;
     }
     updateModelResults(query);
+});
+carTypeSearchInput?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    resolveModelSelectionFromInput().catch(() => {});
+});
+carTypeSearchInput?.addEventListener('blur', () => {
+    setTimeout(() => {
+        resolveModelSelectionFromInput().catch(() => {});
+        clearResultsContainer(carTypeResults);
+    }, 130);
+});
+departureAddressInput?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    triggerTripCalculationFromInput();
+});
+arrivalAddressInput?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    triggerTripCalculationFromInput();
 });
 infoBtn?.addEventListener('click', showInfoView);
 homeBtn?.addEventListener('click', showCalculatorView);
@@ -12127,7 +12429,7 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-const SW_BUILD_VERSION = '2026-02-21-05';
+const SW_BUILD_VERSION = '2026-02-21-06';
 let hasReloadedForServiceWorker = false;
 
 function forceActivateWaitingWorker(registration) {
