@@ -969,9 +969,7 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
     const validStations = displayStations.filter(
         (station) => Number.isFinite(Number(station.lat)) && Number.isFinite(Number(station.lng))
     );
-    const targetCenter = center && Number.isFinite(Number(center.lat)) && Number.isFinite(Number(center.lng))
-        ? { lat: Number(center.lat), lng: Number(center.lng) }
-        : (lastUserLocation ? { lat: Number(lastUserLocation.lat), lng: Number(lastUserLocation.lng) } : null);
+    const targetCenter = normalizeGeoCoordinatePair(center) || normalizeGeoCoordinatePair(lastUserLocation);
 
     clearFuelStationsOnMap();
 
@@ -9407,7 +9405,7 @@ function persistFuelFinderPosition(position) {
         lng: Number(position.lng),
         ts: Date.now()
     };
-    if (!Number.isFinite(payload.lat) || !Number.isFinite(payload.lng)) return;
+    if (!isValidGeoCoordinatePair(payload.lat, payload.lng)) return;
     fuelFinderLastPosition = payload;
     lastUserLocation = { lat: payload.lat, lng: payload.lng };
     try {
@@ -9423,7 +9421,7 @@ function loadFuelFinderPosition() {
         const parsed = JSON.parse(raw);
         const lat = Number(parsed?.lat);
         const lng = Number(parsed?.lng);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        if (!isValidGeoCoordinatePair(lat, lng)) return;
         fuelFinderLastPosition = {
             lat,
             lng,
@@ -9434,10 +9432,7 @@ function loadFuelFinderPosition() {
 }
 
 function getFuelFinderStoredPosition() {
-    const lat = Number(fuelFinderLastPosition?.lat);
-    const lng = Number(fuelFinderLastPosition?.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng };
+    return normalizeGeoCoordinatePair(fuelFinderLastPosition);
 }
 
 function isValidGeoCoordinatePair(lat = NaN, lng = NaN) {
@@ -9446,6 +9441,14 @@ function isValidGeoCoordinatePair(lat = NaN, lng = NaN) {
     if (!Number.isFinite(safeLat) || !Number.isFinite(safeLng)) return false;
     if (Math.abs(safeLat) > 90 || Math.abs(safeLng) > 180) return false;
     return true;
+}
+
+function normalizeGeoCoordinatePair(candidate = null) {
+    if (!candidate) return null;
+    const lat = Number(candidate.lat);
+    const lng = Number(candidate.lng);
+    if (!isValidGeoCoordinatePair(lat, lng)) return null;
+    return { lat, lng };
 }
 
 function looksInvalidFuelSearchError(err = null) {
@@ -9712,20 +9715,13 @@ function selectFuelFinderStationFromList(station = null) {
 }
 
 function getFuelFinderMapCenterFromState(items = []) {
-    if (fuelFinderLastPosition?.lat && fuelFinderLastPosition?.lng) {
-        return {
-            lat: Number(fuelFinderLastPosition.lat),
-            lng: Number(fuelFinderLastPosition.lng)
-        };
-    }
+    const storedCenter = normalizeGeoCoordinatePair(fuelFinderLastPosition);
+    if (storedCenter) return storedCenter;
     const firstWithCoords = Array.isArray(items)
         ? items.find((station) => Number.isFinite(Number(station?.lat)) && Number.isFinite(Number(station?.lng)))
         : null;
     if (!firstWithCoords) return null;
-    return {
-        lat: Number(firstWithCoords.lat),
-        lng: Number(firstWithCoords.lng)
-    };
+    return normalizeGeoCoordinatePair(firstWithCoords);
 }
 
 function renderFuelFinderResults(items = [], meta = {}) {
