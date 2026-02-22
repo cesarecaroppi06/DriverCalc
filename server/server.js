@@ -19,7 +19,18 @@ const AUTH_COOKIE_SECURE = String(process.env.AUTH_COOKIE_SECURE || (IS_PRODUCTI
 const AUTH_COOKIE_SAMESITE_RAW = String(process.env.AUTH_COOKIE_SAMESITE || (AUTH_COOKIE_SECURE ? 'none' : 'lax')).toLowerCase();
 const AUTH_COOKIE_SAMESITE = ['lax', 'strict', 'none'].includes(AUTH_COOKIE_SAMESITE_RAW) ? AUTH_COOKIE_SAMESITE_RAW : 'lax';
 const CORS_ORIGIN = String(process.env.CORS_ORIGIN || '').trim();
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
+const GOOGLE_MAPS_API_KEY = String(
+    process.env.GOOGLE_MAPS_API_KEY
+    || process.env.GOOGLE_MAPS_BROWSER_API_KEY
+    || process.env.GOOGLE_MAPS_JS_API_KEY
+    || ''
+).trim();
+const GOOGLE_MAPS_BROWSER_API_KEY = String(
+    process.env.GOOGLE_MAPS_BROWSER_API_KEY
+    || process.env.GOOGLE_MAPS_JS_API_KEY
+    || GOOGLE_MAPS_API_KEY
+    || ''
+).trim();
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
 const USE_POSTGRES_STATE = Boolean(DATABASE_URL);
 const DEFAULT_DB_FILE = 'db.json';
@@ -690,6 +701,19 @@ function applyStaticCacheHeaders(res, fileName = '') {
     res.setHeader('Cache-Control', getStaticCacheControlByFileName(fileName));
 }
 
+function buildRuntimePublicConfigScript(req) {
+    const browserGoogleKey = String(GOOGLE_MAPS_BROWSER_API_KEY || '').trim();
+    const publicBase = resolvePublicAppBase(req);
+    const apiBase = publicBase ? `${publicBase}/api` : '';
+    const keyValue = browserGoogleKey || 'YOUR_GOOGLE_MAPS_API_KEY';
+
+    return [
+        `window.GOOGLE_MAPS_API_KEY = ${JSON.stringify(keyValue)};`,
+        `window.USE_GOOGLE_MAPS = ${browserGoogleKey ? 'true' : 'false'};`,
+        `window.DRIVECALC_API_BASE = ${JSON.stringify(apiBase)};`
+    ].join('\n');
+}
+
 function registerWebClientRoutes() {
     if (!HAS_WEB_CLIENT) return;
 
@@ -724,7 +748,6 @@ function registerWebClientRoutes() {
         'guida-risparmio-carburante-viaggio.html',
         'style.css',
         'script.js',
-        'config.public.js',
         'manifest.webmanifest',
         'sw.js',
         'car_models.json',
@@ -748,6 +771,12 @@ function registerWebClientRoutes() {
         const origin = getRequestOrigin(req);
         res.setHeader('Cache-Control', 'public, max-age=1800');
         res.type('application/xml; charset=utf-8').send(buildSitemapXml(origin));
+    });
+
+    app.get('/config.public.js', (req, res) => {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.type('application/javascript; charset=utf-8');
+        return res.send(buildRuntimePublicConfigScript(req));
     });
 
     staticFiles.forEach((fileName) => {
@@ -3281,17 +3310,23 @@ app.get('/api/official-models', async (req, res) => {
 
 app.get('/api/health/google', async (req, res) => {
     const hasGoogleKey = !!GOOGLE_MAPS_API_KEY;
+    const hasGoogleBrowserKey = !!GOOGLE_MAPS_BROWSER_API_KEY;
     const shouldCheckUpstream = ['1', 'true', 'yes', 'on'].includes(
         String(req.query?.check || '').trim().toLowerCase()
     );
     const keyPreview = hasGoogleKey
         ? `${GOOGLE_MAPS_API_KEY.slice(0, 6)}...${GOOGLE_MAPS_API_KEY.slice(-4)}`
         : '';
+    const browserKeyPreview = hasGoogleBrowserKey
+        ? `${GOOGLE_MAPS_BROWSER_API_KEY.slice(0, 6)}...${GOOGLE_MAPS_BROWSER_API_KEY.slice(-4)}`
+        : '';
     const payload = {
         ok: hasGoogleKey,
         timestamp: new Date().toISOString(),
         hasGoogleMapsApiKey: hasGoogleKey,
         googleMapsApiKeyPreview: keyPreview,
+        hasGoogleMapsBrowserApiKey: hasGoogleBrowserKey,
+        googleMapsBrowserApiKeyPreview: browserKeyPreview,
         requiredGoogleApis: [
             'Maps JavaScript API',
             'Routes API',
