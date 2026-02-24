@@ -1078,6 +1078,33 @@ select:focus, input:focus {
     border-top-color: rgba(11, 16, 33, 0.92);
 }
 
+.fuel-map-popup {
+    color: #0b1021;
+    font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    font-size: 13px;
+    line-height: 1.35;
+    min-width: 185px;
+}
+
+.fuel-map-popup-name strong,
+.fuel-map-popup-price strong {
+    color: #0b1021;
+}
+
+.fuel-map-popup-price {
+    margin-top: 2px;
+}
+
+.fuel-map-popup-address {
+    margin-top: 6px;
+    color: #334155;
+}
+
+.fuel-map-popup-meta {
+    margin-top: 4px;
+    color: #475569;
+}
+
 .modal-header {
     display: flex;
     justify-content: space-between;

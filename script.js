@@ -428,8 +428,8 @@ let userLocationMarkerLeaflet = null;
 let lastUserLocation = null;
 let activeMapProvider = null;
 const FUEL_FINDER_DEFAULT_RADIUS_KM = 2;
-const FUEL_MARKER_DETAIL_ZOOM = 14;
-const FUEL_MARKER_LABEL_LIMIT = 90;
+const FUEL_MARKER_DETAIL_ZOOM = 13;
+const FUEL_MARKER_LABEL_LIMIT = 180;
 const FUEL_MARKER_HIGHLIGHT_Z_INDEX = 3200;
 let googleFuelZoomListener = null;
 let leafletFuelZoomListener = null;
@@ -823,16 +823,18 @@ function escapeFuelPopupText(value = '') {
         .replace(/'/g, '&#39;');
 }
 
-function buildFuelMarkerPriceLabel(station = {}, fuelType = 'benzina') {
+function buildFuelMarkerPriceLabel(station = {}, fuelType = 'benzina', { compact = false } = {}) {
     const price = Number(station.price);
-    if (!Number.isFinite(price)) return '€-';
+    if (!Number.isFinite(price)) return compact ? '-' : '€-';
     const suffix = fuelType === 'metano' ? '/kg' : '';
+    if (compact) return `${price.toFixed(3)}${suffix}`;
     return `€${price.toFixed(3)}${suffix}`;
 }
 
 function shouldShowFuelMarkerPriceLabels(mapZoom, markerCount = 0) {
     const zoom = Number(mapZoom);
     if (!Number.isFinite(zoom)) return false;
+    if (zoom >= (FUEL_MARKER_DETAIL_ZOOM + 2)) return true;
     return zoom >= FUEL_MARKER_DETAIL_ZOOM && Number(markerCount) <= FUEL_MARKER_LABEL_LIMIT;
 }
 
@@ -867,8 +869,8 @@ function applyGoogleFuelMarkerAppearance(marker, { showLabel = false, highlighte
     if (detailed && labelText) {
         marker.setLabel({
             text: labelText,
-            color: '#ffffff',
-            fontSize: highlighted ? '11px' : '10px',
+            color: '#0b1021',
+            fontSize: highlighted ? '12px' : '11px',
             fontWeight: '700'
         });
         marker.setZIndex(highlighted ? FUEL_MARKER_HIGHLIGHT_Z_INDEX : 1100);
@@ -953,7 +955,14 @@ function buildFuelStationPopupHtml(station = {}, fuelType = 'benzina') {
     const price = escapeFuelPopupText(formatFuelFinderPrice(station.price, fuelType));
     const distance = escapeFuelPopupText(formatFuelFinderDistance(station.distanceKm));
     const updated = escapeFuelPopupText(formatFuelFinderFreshnessText(station));
-    return `<strong>${title}</strong><br>${address}<br>${price} • ${distance}<br>${updated}`;
+    return [
+        '<div class="fuel-map-popup">',
+        `<div class="fuel-map-popup-name"><strong>${title}</strong></div>`,
+        `<div class="fuel-map-popup-price">Prezzo: <strong>${price}</strong></div>`,
+        `<div class="fuel-map-popup-address">${address}</div>`,
+        `<div class="fuel-map-popup-meta">${distance} • ${updated}</div>`,
+        '</div>'
+    ].join('');
 }
 
 async function renderFuelStationsOnMap(stations = [], center = null, options = {}) {
@@ -1040,7 +1049,7 @@ async function renderFuelStationsOnMap(stations = [], center = null, options = {
                 icon: buildGoogleFuelMarkerIcon()
             });
             marker.__fuelStationKey = stationKey;
-            marker.__fuelPriceLabel = buildFuelMarkerPriceLabel(station, fuelType);
+            marker.__fuelPriceLabel = buildFuelMarkerPriceLabel(station, fuelType, { compact: true });
             marker.__fuelHovered = false;
             marker.addListener('mouseover', () => {
                 marker.__fuelHovered = true;
