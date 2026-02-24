@@ -3941,12 +3941,16 @@ async function syncBrandSelectionState({ preserveModelQuery = false, preservedMo
         : '';
     syncBrandInputFromSelect();
     await filterModelsByBrand();
-    if (preserveModelQuery && carTypeSearchInput) {
+    if (USE_VEHICLE_TEXT_FILTERS && preserveModelQuery && carTypeSearchInput) {
         carTypeSearchInput.value = modelQuery;
     } else {
         syncModelInputFromSelect();
     }
-    await updateModelResults(carTypeSearchInput?.value || '');
+    if (USE_VEHICLE_TEXT_FILTERS) {
+        await updateModelResults(carTypeSearchInput?.value || '');
+    } else {
+        clearResultsContainer(carTypeResults);
+    }
     updateMyCarPreview();
 }
 
@@ -4139,6 +4143,7 @@ async function resolveModelSelectionFromInput() {
 }
 
 async function ensureVehicleFiltersResolvedFromText() {
+    if (!USE_VEHICLE_TEXT_FILTERS) return;
     await resolveBrandSelectionFromInput({ preserveModelQuery: true }).catch(() => false);
     await resolveModelSelectionFromInput().catch(() => false);
 }
@@ -4423,6 +4428,7 @@ const cancelMyCarConsentBtn = document.getElementById('cancelMyCarConsent');
 const acceptMyCarConsentBtn = document.getElementById('acceptMyCarConsent');
 const MAP_SECTION_DEFAULT_TITLE = 'Percorso e benzinai su mappa';
 const MAP_SECTION_FUEL_FINDER_TITLE = 'Benzinai trovati su mappa';
+const USE_VEHICLE_TEXT_FILTERS = false;
 
 const MODAL_ANIMATION_MS = 180;
 const PRIMARY_MODAL_OVERLAYS = [
@@ -4439,6 +4445,38 @@ const PRIMARY_MODAL_OVERLAYS = [
 if (typeof document !== 'undefined' && document.body) {
     document.body.classList.add('app-booting');
 }
+
+function configureVehicleSelectMode() {
+    if (USE_VEHICLE_TEXT_FILTERS) return;
+
+    const revealSelect = (selectEl) => {
+        if (!selectEl) return;
+        selectEl.classList.remove('location-hidden');
+        selectEl.removeAttribute('aria-hidden');
+        selectEl.removeAttribute('tabindex');
+        if (selectEl.style.display === 'none') selectEl.style.display = '';
+    };
+
+    const hideFilterNode = (node) => {
+        if (!node) return;
+        node.style.display = 'none';
+        node.setAttribute('aria-hidden', 'true');
+    };
+
+    revealSelect(carBrandSelect);
+    revealSelect(carTypeSelect);
+    hideFilterNode(carBrandSearchInput);
+    hideFilterNode(carTypeSearchInput);
+    hideFilterNode(carBrandResults);
+    hideFilterNode(carTypeResults);
+
+    const brandLabel = document.querySelector('label[for="carBrandSearch"]');
+    if (brandLabel) brandLabel.setAttribute('for', 'carBrand');
+    const modelLabel = document.querySelector('label[for="carTypeSearch"]');
+    if (modelLabel) modelLabel.setAttribute('for', 'carType');
+}
+
+configureVehicleSelectMode();
 
 function debounce(fn, waitMs = 140) {
     let timeoutId = null;
@@ -5298,7 +5336,9 @@ async function ensureBrandModelsLoaded(brandKey) {
 async function filterModelsByBrand(options = {}) {
     const brandKey = (carBrandSelect.value || '').replace(/^brand-/, '').trim().toLowerCase();
     const showAll = !brandKey;
-    const searchTerm = (options.searchTerm ?? (carTypeSearchInput?.value || '')).trim().toLowerCase();
+    const searchTerm = USE_VEHICLE_TEXT_FILTERS
+        ? (options.searchTerm ?? (carTypeSearchInput?.value || '')).trim().toLowerCase()
+        : '';
     const previousValue = carTypeSelect.value;
 
     await ensureBrandModelsLoaded(brandKey);
@@ -12547,58 +12587,60 @@ carTypeSelect.addEventListener('change', () => {
     updateMyCarPreview();
 });
 carBrandSelect.addEventListener('change', handleBrandChange);
-carBrandSearchInput?.addEventListener('input', (e) => {
-    const query = (e.target.value || '').trim();
-    if (!query) {
+if (USE_VEHICLE_TEXT_FILTERS) {
+    carBrandSearchInput?.addEventListener('input', (e) => {
+        const query = (e.target.value || '').trim();
+        if (!query) {
+            carBrandSelect.value = '';
+            if (carTypeSelect) carTypeSelect.value = '';
+            if (carTypeSearchInput) carTypeSearchInput.value = '';
+            clearResultsContainer(carBrandResults);
+            clearResultsContainer(carTypeResults);
+            return;
+        }
         carBrandSelect.value = '';
         if (carTypeSelect) carTypeSelect.value = '';
         if (carTypeSearchInput) carTypeSearchInput.value = '';
-        clearResultsContainer(carBrandResults);
         clearResultsContainer(carTypeResults);
-        return;
-    }
-    carBrandSelect.value = '';
-    if (carTypeSelect) carTypeSelect.value = '';
-    if (carTypeSearchInput) carTypeSearchInput.value = '';
-    clearResultsContainer(carTypeResults);
-    updateBrandResults(query);
-});
-carBrandSearchInput?.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    resolveBrandSelectionFromInput({ preserveModelQuery: true }).then((matched) => {
-        if (matched && carTypeSearchInput) {
-            carTypeSearchInput.focus();
-            carTypeSearchInput.select();
+        updateBrandResults(query);
+    });
+    carBrandSearchInput?.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        resolveBrandSelectionFromInput({ preserveModelQuery: true }).then((matched) => {
+            if (matched && carTypeSearchInput) {
+                carTypeSearchInput.focus();
+                carTypeSearchInput.select();
+            }
+        }).catch(() => {});
+    });
+    carBrandSearchInput?.addEventListener('blur', () => {
+        setTimeout(() => {
+            resolveBrandSelectionFromInput({ preserveModelQuery: true }).catch(() => {});
+            clearResultsContainer(carBrandResults);
+        }, 130);
+    });
+    carTypeSearchInput?.addEventListener('input', (e) => {
+        const query = (e.target.value || '').trim();
+        carTypeSelect.value = '';
+        if (!query) {
+            clearResultsContainer(carTypeResults);
+            return;
         }
-    }).catch(() => {});
-});
-carBrandSearchInput?.addEventListener('blur', () => {
-    setTimeout(() => {
-        resolveBrandSelectionFromInput({ preserveModelQuery: true }).catch(() => {});
-        clearResultsContainer(carBrandResults);
-    }, 130);
-});
-carTypeSearchInput?.addEventListener('input', (e) => {
-    const query = (e.target.value || '').trim();
-    carTypeSelect.value = '';
-    if (!query) {
-        clearResultsContainer(carTypeResults);
-        return;
-    }
-    updateModelResults(query);
-});
-carTypeSearchInput?.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    resolveModelSelectionFromInput().catch(() => {});
-});
-carTypeSearchInput?.addEventListener('blur', () => {
-    setTimeout(() => {
+        updateModelResults(query);
+    });
+    carTypeSearchInput?.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
         resolveModelSelectionFromInput().catch(() => {});
-        clearResultsContainer(carTypeResults);
-    }, 130);
-});
+    });
+    carTypeSearchInput?.addEventListener('blur', () => {
+        setTimeout(() => {
+            resolveModelSelectionFromInput().catch(() => {});
+            clearResultsContainer(carTypeResults);
+        }, 130);
+    });
+}
 departureAddressInput?.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
