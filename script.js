@@ -3982,9 +3982,15 @@ async function resolveBrandSelectionFromInput({ preserveModelQuery = false } = {
     if (carBrandSelect?.value) return true;
     const query = String(carBrandSearchInput?.value || '').trim();
     if (!query) return false;
-    const best = collectBrandMatches(query)[0];
-    if (!best) return false;
-    return applyBrandMatch(best, {
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedQuery) return false;
+    const exactMatch = collectBrandMatches(query).find((item) => {
+        const normalizedLabel = normalizeSearchText(item?.label || '');
+        const normalizedValue = normalizeSearchText(String(item?.value || '').replace(/^brand-/, '').replace(/-/g, ' '));
+        return normalizedLabel === normalizedQuery || normalizedValue === normalizedQuery;
+    });
+    if (!exactMatch) return false;
+    return applyBrandMatch(exactMatch, {
         resetModel: !preserveModelQuery,
         preserveModelQuery,
         clearBrandResults: true
@@ -4000,15 +4006,6 @@ function updateBrandResults(query = '') {
     }
 
     const matches = collectBrandMatches(q).slice(0, 30);
-    const best = matches[0];
-    if (best && isStrongAutocompleteMatch(best.label || best.value || '', q, { minPrefixLength: 3 })) {
-        applyBrandMatch(best, {
-            resetModel: true,
-            preserveModelQuery: false,
-            clearBrandResults: true
-        }).catch(() => {});
-        return;
-    }
     renderResults(carBrandResults, matches, query, (item) => {
         applyBrandMatch(item, {
             resetModel: true,
@@ -4120,6 +4117,8 @@ async function resolveModelSelectionFromInput() {
     if (carTypeSelect?.value) return true;
     const query = String(carTypeSearchInput?.value || '').trim();
     if (!query) return false;
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedQuery) return false;
 
     if (!carBrandSelect?.value) {
         const inferredBrandKey = inferBrandKeyFromModelQuery(query);
@@ -4134,9 +4133,13 @@ async function resolveModelSelectionFromInput() {
     }
 
     const matches = await collectUnifiedModelMatches(query, { includeCustomFallback: false });
-    const best = matches[0];
-    if (!best) return false;
-    return applyModelMatch(best, {
+    const exactMatch = matches.find((item) => {
+        const normalizedLabel = normalizeSearchText(item?.label || '');
+        const normalizedValue = normalizeSearchText(item?.value || '');
+        return normalizedLabel === normalizedQuery || normalizedValue === normalizedQuery;
+    });
+    if (!exactMatch) return false;
+    return applyModelMatch(exactMatch, {
         clearModelResults: true,
         triggerChange: true
     });
@@ -4158,15 +4161,6 @@ async function updateModelResults(query = '') {
     }
     const matches = await collectUnifiedModelMatches(query, { includeCustomFallback: true });
     if (requestId !== modelSearchRequestId) return;
-    const best = matches[0];
-    const bestLabel = `${best?.label || ''} ${best?.value || ''}`.trim();
-    if (best && isStrongAutocompleteMatch(bestLabel, q, { minPrefixLength: 3 })) {
-        applyModelMatch(best, {
-            clearModelResults: true,
-            triggerChange: true
-        });
-        return;
-    }
 
     renderResults(carTypeResults, matches, query, (item) => {
         applyModelMatch(item, {
@@ -4428,7 +4422,7 @@ const cancelMyCarConsentBtn = document.getElementById('cancelMyCarConsent');
 const acceptMyCarConsentBtn = document.getElementById('acceptMyCarConsent');
 const MAP_SECTION_DEFAULT_TITLE = 'Percorso e benzinai su mappa';
 const MAP_SECTION_FUEL_FINDER_TITLE = 'Benzinai trovati su mappa';
-const USE_VEHICLE_TEXT_FILTERS = false;
+const USE_VEHICLE_TEXT_FILTERS = true;
 
 const MODAL_ANIMATION_MS = 180;
 const PRIMARY_MODAL_OVERLAYS = [
@@ -12607,16 +12601,10 @@ if (USE_VEHICLE_TEXT_FILTERS) {
     carBrandSearchInput?.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
         e.preventDefault();
-        resolveBrandSelectionFromInput({ preserveModelQuery: true }).then((matched) => {
-            if (matched && carTypeSearchInput) {
-                carTypeSearchInput.focus();
-                carTypeSearchInput.select();
-            }
-        }).catch(() => {});
+        clearResultsContainer(carBrandResults);
     });
     carBrandSearchInput?.addEventListener('blur', () => {
         setTimeout(() => {
-            resolveBrandSelectionFromInput({ preserveModelQuery: true }).catch(() => {});
             clearResultsContainer(carBrandResults);
         }, 130);
     });
@@ -12632,11 +12620,10 @@ if (USE_VEHICLE_TEXT_FILTERS) {
     carTypeSearchInput?.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
         e.preventDefault();
-        resolveModelSelectionFromInput().catch(() => {});
+        clearResultsContainer(carTypeResults);
     });
     carTypeSearchInput?.addEventListener('blur', () => {
         setTimeout(() => {
-            resolveModelSelectionFromInput().catch(() => {});
             clearResultsContainer(carTypeResults);
         }, 130);
     });
